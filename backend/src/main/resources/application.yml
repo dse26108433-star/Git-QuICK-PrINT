@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------
+# Every ${...} value comes from an environment variable.
+# Put them in backend/.env (copy .env.example). Explanations are in there.
+# ---------------------------------------------------------------------
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework   # correct https:// behind a hosting proxy
+  error:
+    include-message: never
+  shutdown: graceful
+
+spring:
+  application:
+    name: print-server
+  config:
+    # Reads backend/.env automatically (KEY=value lines), so you do not have
+    # to set environment variables by hand. Real environment variables win.
+    import: optional:file:.env[.properties]
+
+  datasource:
+    # Supabase "Session pooler" JDBC string (port 5432). NOT the transaction
+    # pooler (6543): Hibernate needs prepared statements.
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5              # the free Supabase pooler has few slots
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      # db/setup.sql owns the schema. Hibernate never creates or checks tables,
+      # so a harmless type-name difference can never stop the server starting.
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  servlet:
+    multipart:
+      enabled: false          # PDFs go straight to storage, never through us
+
+campus:
+  supabase:
+    url: ${SUPABASE_URL}
+    # Secret key (sb_secret_...) or legacy service_role key. Server only.
+    # Never put it in the web app, the Android app or the Xerox PC.
+    service-key: ${SUPABASE_SERVICE_KEY}
+    bucket: print-documents
+    upload-url-ttl-seconds: 300
+    download-url-ttl-seconds: 300
+
+  payment:
+    # demo     = no real money (testing only)
+    # razorpay = real payments
+    mode: ${PAYMENT_MODE:demo}
+    razorpay-key-id: ${RAZORPAY_KEY_ID:}
+    razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
+
+  counter:
+    # Password for web/counter.html (the Xerox center staff screen).
+    password: ${COUNTER_PASSWORD:}
+
+  agent:
+    # Signs the Xerox PC's short-lived tokens. Any random text, 32+ characters.
+    token-secret: ${AGENT_TOKEN_SECRET}
+    token-ttl-seconds: 900
+    lease-seconds: 300
+    offline-after-seconds: 60
+
+  shop:
+    max-file-size-bytes: 52428800   # 50 MB (the most a free Supabase project accepts)
+    max-pages: 300                  # most pages PRINTED per copy
+    max-file-pages: 2000            # most pages a PDF may have; students choose the pages they need
+    max-copies: 50
+
+  ratelimit:
+    orders-per-minute: 60
+    orders-per-hour: 600
+
+  cors:
+    # Where the web pages are opened from. Comma separated, no trailing slash.
+    allowed-origins: ${WEB_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+
+logging:
+  level:
+    edu.campus.print: INFO
+    org.springframework.security: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

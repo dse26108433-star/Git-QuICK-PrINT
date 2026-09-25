@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Counter - Campus Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+.wrap { max-width: 1180px; }
+.login { max-width: 380px; margin: 60px auto; }
+.login input { width: 100%; min-height: 48px; padding: 0 12px; border: 1.5px solid var(--rule); border-radius: var(--radius); margin: 8px 0 12px; }
+.demo-banner { background: var(--lamp-stop); color: #fff; text-align: center; padding: 8px; font-weight: 600; }
+
+.printers { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); margin-bottom: 16px; }
+.printer { background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; }
+.printer .row { display: flex; align-items: center; gap: 8px; }
+.printer .name { font-weight: 700; flex: 1; }
+.printer .detail { font-size: 13px; color: var(--ink-soft); min-height: 18px; margin: 4px 0 8px; word-break: break-word; }
+.printer.off { opacity: .6; }
+.switch { font-size: 14px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0 12px; }
+.tab { border: 1.5px solid var(--rule); background: #fff; border-radius: 999px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+.tab.on { border-color: var(--ink); background: var(--ink); color: #fff; }
+.tab .n { display: inline-block; min-width: 22px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: rgba(0,0,0,.08); font-size: 13px; }
+.tab.on .n { background: rgba(255,255,255,.25); }
+.tab.alert .n { background: var(--lamp-stop); color: #fff; }
+.search { margin-left: auto; min-height: 42px; padding: 0 12px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 200px;
+          text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+
+.order { display: grid; grid-template-columns: 110px 1fr auto; gap: 14px; align-items: center;
+         background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 8px; }
+.order .code { font-size: 28px; font-weight: 700; letter-spacing: .1em; }
+.order .file { font-weight: 600; word-break: break-word; }
+.order .meta { font-size: 14px; color: var(--ink-soft); }
+.order .err { font-size: 14px; color: var(--lamp-stop); margin-top: 4px; }
+.order .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .order { grid-template-columns: 1fr; } .order .actions { justify-content: flex-start; } .search { width: 100%; margin: 6px 0 0; } }
+.empty { text-align: center; padding: 40px 0; color: var(--ink-soft); }
+.hint { font-size: 14px; color: var(--ink-soft); background: var(--sheet); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 12px; }
+.order .sheets { font-weight: 600; color: var(--ink); }
+.stamp { display: flex; align-items: center; gap: 10px; background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow);
+         padding: 10px 14px; margin-bottom: 16px; cursor: pointer; }
+.stamp input { width: 22px; height: 22px; accent-color: var(--lamp-ready); margin: 0; }
+.stamp b { display: block; }
+.stamp small { display: block; color: var(--ink-soft); font-size: 13px; }
+.stamp.off { background: #FBF6EE; }
+
+details.settings { margin-top: 26px; }
+details.settings summary { cursor: pointer; font-weight: 600; }
+.form { display: grid; gap: 10px; max-width: 420px; margin-top: 12px; }
+.form input { min-height: 44px; padding: 0 10px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 100%; }
+</style>
+</head>
+<body>
+<div id="demoBanner" class="demo-banner hidden">DEMO PAYMENT MODE - orders print without real money. Set PAYMENT_MODE=razorpay for real use.</div>
+<header class="top">
+  <div class="brand"><img class="brand-logo" src="icon.svg" alt=""><div>Counter <small id="centerName">Campus Print</small></div></div>
+  <div class="small" id="pcStatus"></div>
+</header>
+
+<main class="wrap">
+  <div id="error" class="notice stop hidden" role="alert"></div>
+
+  <!-- Login -->
+  <section id="loginBox" class="sheet login hidden">
+    <h2>Staff sign in</h2>
+    <p class="muted small">Use the counter password from backend/.env (COUNTER_PASSWORD).</p>
+    <input id="password" type="password" autocomplete="current-password" placeholder="Counter password">
+    <button class="btn block" id="loginBtn">Open counter</button>
+  </section>
+
+  <!-- Main screen -->
+  <section id="mainBox" class="hidden">
+    <div class="printers" id="printers"></div>
+    <label class="stamp" id="stampBox">
+      <input type="checkbox" id="stampToggle">
+      <span><b>Print pickup code on pages</b>
+        <small id="stampHint">A small label in the corner of each order's first page, so staff can find the right pages.</small></span>
+    </label>
+
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-view="active">Printing &amp; waiting <span class="n" id="nActive">0</span></button>
+      <button class="tab" data-view="ready">Ready to hand over <span class="n" id="nReady">0</span></button>
+      <button class="tab" data-view="problems" id="tabProblems">Problems <span class="n" id="nProblems">0</span></button>
+      <button class="tab" data-view="all">All recent</button>
+      <input class="search" id="search" placeholder="Code" maxlength="5" aria-label="Search pickup code">
+    </div>
+    <p class="hint hidden" id="hint">
+      <b>Handing over:</b> the student shows the code on their phone &rarr; type it in the <b>Code</b> box &rarr;
+      take the pages from the printer shown. Each order starts with a page that has the label
+      <b>Pickup&nbsp;CODE</b> in its bottom-right corner (no cover sheet) &rarr; check the number of sheets
+      &rarr; press <b>Handed over</b>.
+    </p>
+
+    <div id="orders"></div>
+
+    <details class="settings">
+      <summary>Prices and name</summary>
+      <div class="form">
+        <label>Center name <input id="setName"></label>
+        <label>Black &amp; white price per page (&#8377;) <input id="setBw" type="number" min="0" step="0.5"></label>
+        <label>Colour price per page (&#8377;) <input id="setColor" type="number" min="0" step="0.5"></label>
+        <button class="btn" id="saveSettings">Save</button>
+        <span class="small muted" id="settingsMsg"></span>
+      </div>
+    </details>
+    <p style="margin-top:24px"><button class="linkish" id="logout">Sign out of this screen</button></p>
+    <p class="small muted" style="margin-top:28px;text-align:center">Campus Print &middot; Designed &amp; developed by <b>Vedant Pravin Surve</b></p>
+  </section>
+</main>
+
+<script src="config.js"></script>
+<script>
+"use strict";
+const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
+const $ = (id) => document.getElementById(id);
+const PW_KEY = "campusprint.counter";
+const state = { view: "active", code: "", timer: null, settingsLoaded: false };
+
+function rupees(paise) {
+  if (paise == null) return "-";
+  return "\u20B9" + (paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2));
+}
+function when(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
+    (d.toDateString() === new Date().toDateString() ? "" : " " + d.toLocaleDateString());
+}
+function showError(msg) {
+  $("error").textContent = msg || "";
+  $("error").classList.toggle("hidden", !msg);
+}
+
+async function api(method, path, body) {
+  const headers = { "X-Counter-Password": sessionStorage.getItem(PW_KEY) || "" };
+  if (body != null) headers["Content-Type"] = "application/json";
+  let res;
+  try {
+    res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body) });
+  } catch (e) {
+    throw new Error("Cannot reach the backend at " + API + ". Is it running?");
+  }
+  if (res.status === 401) { signOut("Wrong password."); throw new Error("Wrong password."); }
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+  if (!res.ok) throw new Error((data && data.message) || ("Error " + res.status));
+  return data;
+}
+
+/* ---------------- sign in ---------------- */
+async function signIn() {
+  sessionStorage.setItem(PW_KEY, $("password").value);
+  try {
+    await refresh();
+    $("loginBox").classList.add("hidden");
+    $("mainBox").classList.remove("hidden");
+    showError(null);
+    clearInterval(state.timer);
+    state.timer = setInterval(refresh, 5000);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+function signOut(msg) {
+  clearInterval(state.timer);
+  sessionStorage.removeItem(PW_KEY);
+  $("mainBox").classList.add("hidden");
+  $("loginBox").classList.remove("hidden");
+  $("password").value = "";
+  showError(msg || null);
+}
+
+/* ---------------- screen ---------------- */
+async function refresh() {
+  const [summary, orders] = await Promise.all([
+    api("GET", "/api/v1/counter/summary"),
+    api("GET", "/api/v1/counter/orders?view=" + state.view + (state.code ? "&code=" + encodeURIComponent(state.code) : ""))
+  ]);
+  renderSummary(summary);
+  renderOrders(orders);
+  showError(null);
+}
+
+function renderSummary(s) {
+  $("centerName").textContent = s.centerName;
+  $("demoBanner").classList.toggle("hidden", s.paymentMode !== "demo");
+  $("nActive").textContent = s.waiting + s.printing;
+  $("nReady").textContent = s.ready;
+  $("nProblems").textContent = s.problems;
+  $("tabProblems").classList.toggle("alert", s.problems > 0);
+  setStampUi(s.stampCode !== false);
+
+  const pcOnline = s.pcs.some(p => p.online);
+  $("pcStatus").innerHTML = '<span class="lamp ' + (pcOnline ? "ready" : "stop") + '"></span> ' +
+    (s.pcs.length === 0 ? "No PC enrolled (seed.sql step 3)" : pcOnline ? "Xerox PC online" : "Xerox PC OFFLINE");
+
+  const box = $("printers");
+  box.innerHTML = "";
+  if (s.printers.length === 0) {
+    box.innerHTML = '<div class="notice">No printers set up yet. Add them with seed.sql step 2.</div>';
+  }
+  for (const p of s.printers) {
+    const lamp = !p.enabled ? "" : p.status === "READY" ? "ready" : p.status === "ERROR" ? "work" : "stop";
+    const words = !p.enabled ? "Switched off" : p.status === "READY" ? "Ready" : p.status === "ERROR" ? "Needs attention"
+      : p.status === "MISSING" ? "Not found in Windows" : "Offline";
+    const card = document.createElement("div");
+    card.className = "printer" + (p.enabled ? "" : " off");
+    card.innerHTML =
+      '<div class="row"><span class="lamp ' + lamp + '"></span><span class="name"></span>' +
+      '<span class="small muted">' + (p.supportsColor ? "Colour" : "B/W") + '</span></div>' +
+      '<div class="detail"></div>' +
+      '<label class="switch"><input type="checkbox"> Taking orders</label>';
+    card.querySelector(".name").textContent = p.name;
+    card.querySelector(".detail").textContent = words + (p.statusDetail ? " - " + p.statusDetail : "");
+    const cb = card.querySelector("input");
+    cb.checked = p.enabled;
+    cb.onchange = async () => {
+      try { await api("POST", "/api/v1/counter/printers/" + p.id + "/enabled", { enabled: cb.checked }); refresh(); }
+      catch (e) { showError(e.message); cb.checked = !cb.checked; }
+    };
+    box.appendChild(card);
+  }
+
+  if (!state.settingsLoaded) {
+    $("setName").value = s.centerName;
+    $("setBw").value = s.priceBwPaise / 100;
+    $("setColor").value = s.priceColorPaise / 100;
+    state.settingsLoaded = true;
+  }
+}
+
+const STATUS_WORDS = {
+  QUEUED: "Waiting for a printer", CLAIMED: "Starting", DOWNLOADING: "Starting", SUBMITTED: "Printing",
+  COMPLETED: "Printed", FAILED: "Problem", CANCELLED: "Cancelled", EXPIRED: "Not paid (expired)",
+  AWAITING_UPLOAD: "Uploading", AWAITING_PAYMENT: "Not paid yet"
+};
+
+/** "58 of 1000 pages (333-390)", or "12 page(s)" when the whole file prints. */
+function pagesText(o) {
+  const n = o.printPages || o.pageCount;
+  if (!n) return "? page(s)";
+  if (!o.pages) return n + (n === 1 ? " page" : " pages");
+  return n + " of " + o.pageCount + " pages (" + o.pages.replace(/,/g, ", ") + ")";
+}
+
+function renderOrders(list) {
+  const box = $("orders");
+  box.innerHTML = "";
+  $("hint").classList.toggle("hidden", !(state.view === "ready" || state.code));
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">' + (state.code ? "No order with code " + state.code : "Nothing here right now.") + "</div>";
+    return;
+  }
+  for (const o of list) {
+    const row = document.createElement("div");
+    row.className = "order";
+    row.innerHTML = '<div class="code"></div><div><div class="file"></div><div class="meta"></div><div class="err"></div></div>' +
+                    '<div class="actions"></div>';
+    row.querySelector(".code").textContent = o.pickupCode;
+    row.querySelector(".file").textContent = o.fileName;
+    const lamp = o.status === "COMPLETED" ? "ready" : (o.status === "FAILED" ? "stop" : "work");
+    row.querySelector(".meta").innerHTML = '<span class="lamp ' + lamp + '"></span> ';
+    row.querySelector(".meta").append(
+      (STATUS_WORDS[o.status] || o.status) + (o.printerName ? " on " + o.printerName : "") + " \u00B7 " +
+      pagesText(o) + " \u00D7 " + o.copies + " \u00B7 " + (o.color ? "COLOUR" : "B/W") + " \u00B7 " +
+      rupees(o.amountPaise) + " \u00B7 " + when(o.paidAt || o.createdAt) +
+      (o.collectedAt ? " \u00B7 handed over " + when(o.collectedAt) : ""));
+    if (o.status === "COMPLETED" && !o.collectedAt && (o.printPages || o.pageCount)) {
+      const n = (o.printPages || o.pageCount) * o.copies;
+      const sheets = document.createElement("div");
+      sheets.className = "sheets";
+      sheets.textContent = n + (n === 1 ? " sheet" : " sheets") + " \u00B7 first page has \u201CPickup " + o.pickupCode + "\u201D";
+      row.querySelector(".meta").after(sheets);
+    }
+    if (o.status === "FAILED" || o.status === "CANCELLED") {
+      row.querySelector(".err").textContent = (o.errorMessage || o.errorCode || "") +
+        (o.paymentId ? "  [payment " + o.paymentId + "]" : "");
+    }
+    const actions = row.querySelector(".actions");
+    const add = (label, cls, fn) => {
+      const b = document.createElement("button");
+      b.className = "btn small " + cls; b.textContent = label;
+      b.onclick = async () => {
+        b.disabled = true;
+        try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
+      };
+      actions.appendChild(b);
+    };
+    if (o.status === "COMPLETED" && !o.collectedAt) {
+      add("Handed over", "", () => api("POST", "/api/v1/counter/orders/" + o.id + "/collected"));
+    }
+    if (o.status === "FAILED" && o.paidAt && !o.collectedAt) {
+      if (o.fileKept) {
+        add("Print again", "", () => {
+          if (!confirm("Check the printer tray first: look for a page with \"Pickup " + o.pickupCode +
+                       "\" in its bottom-right corner. Nothing there? Print it again?")) return Promise.resolve();
+          return api("POST", "/api/v1/counter/orders/" + o.id + "/print-again");
+        });
+      }
+      add("Refunded / done", "ghost", () => {
+        if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand or refunded in Razorpay)?")) return Promise.resolve();
+        return api("POST", "/api/v1/counter/orders/" + o.id + "/collected");
+      });
+    }
+    if (o.status === "QUEUED") {
+      add("Cancel", "ghost", () => {
+        if (!confirm("Cancel " + o.pickupCode + "? You must refund the student in the Razorpay dashboard.")) return Promise.resolve();
+        return api("POST", "/api/v1/counter/orders/" + o.id + "/cancel");
+      });
+    }
+    box.appendChild(row);
+  }
+}
+
+/* The "Print pickup code on pages" tick: untick for a while if a student wants only their own file on the paper. */
+function setStampUi(on) {
+  $("stampToggle").checked = on;
+  $("stampBox").classList.toggle("off", !on);
+  $("stampHint").textContent = on
+    ? "A small label in the corner of each order's first page, so staff can find the right pages."
+    : "OFF: orders print with nothing added. Tick again when done.";
+}
+$("stampToggle").onchange = async () => {
+  const on = $("stampToggle").checked;
+  try { await api("PUT", "/api/v1/counter/settings", { stampCode: on }); setStampUi(on); }
+  catch (e) { setStampUi(!on); showError(e.message); }
+};
+
+async function saveSettings() {
+  const bw = Math.round(parseFloat($("setBw").value) * 100);
+  const color = Math.round(parseFloat($("setColor").value) * 100);
+  if (!(bw >= 0) || !(color >= 0)) { $("settingsMsg").textContent = "Enter both prices."; return; }
+  try {
+    await api("PUT", "/api/v1/counter/settings", { centerName: $("setName").value, priceBwPaise: bw, priceColorPaise: color });
+    $("settingsMsg").textContent = "Saved.";
+    state.settingsLoaded = false;
+    refresh();
+  } catch (e) { $("settingsMsg").textContent = e.message; }
+}
+
+/* ---------------- wiring ---------------- */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  state.view = t.dataset.view;
+  state.code = "";
+  $("search").value = "";
+  refresh().catch(e => showError(e.message));
+});
+$("search").addEventListener("input", () => {
+  state.code = $("search").value.trim().toUpperCase();
+  if (state.code.length === 0 || state.code.length === 5) refresh().catch(e => showError(e.message));
+});
+$("loginBtn").onclick = signIn;
+$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
+$("saveSettings").onclick = saveSettings;
+$("logout").onclick = () => signOut();
+
+if (!API) showError("config.js has no apiBase. Open config.js and set it.");
+if (sessionStorage.getItem(PW_KEY)) {
+  $("password").value = sessionStorage.getItem(PW_KEY);
+  signIn();
+} else {
+  $("loginBox").classList.remove("hidden");
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# secrets - never commit
+backend/.env
+agent/winsw/agent.yml
+
+# build output
+**/target/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+.idea/
+*.iml
+
+# installer build output (rebuild with agent/packaging/build-installer.ps1)
+agent/packaging/build/
+agent/packaging/out/
+installer/*.exe

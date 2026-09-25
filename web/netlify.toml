@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------
+# The student website on Netlify (drag this web folder onto
+# app.netlify.com/drop, or connect the repository with base "web").
+#
+# Before deploying: set apiBase in config.js to your backend's
+# https:// address, and put this site's address (e.g.
+# https://campus-print.netlify.app) in WEB_ORIGINS on the backend.
+# ---------------------------------------------------------------
+[build]
+  publish = "."
+
+# The staff counter is the Campus Print Station app on the Xerox PC,
+# not part of the public website.
+[[redirects]]
+  from = "/counter.html"
+  to = "/"
+  status = 302
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# config.js changes when the backend moves: never cache it for long.
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# The "install as an app" parts: always check for a newer version.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

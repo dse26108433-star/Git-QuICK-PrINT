@@ -1,0 +1,70 @@
+/* ---------------------------------------------------------------
+   Shared look for index.html (students) and counter.html (staff).
+
+   The vocabulary comes from the machines in the Xerox center: sheets
+   of paper and the indicator lamps on the front of a copier. Status is
+   a lamp: green ready, amber working, red attention. Those lamps are
+   the only strong colours, so state reads at a glance.
+   --------------------------------------------------------------- */
+:root {
+  --paper:      #EDEEE9;
+  --sheet:      #FFFFFF;
+  --ink:        #14263B;
+  --ink-soft:   #5A6B7C;
+  --rule:       #D3D6CF;
+  --lamp-ready: #2E7D4F;
+  --lamp-work:  #B3701A;
+  --lamp-stop:  #B33A2B;
+  --lamp-off:   #9AA3AC;
+  --radius: 4px;
+  --shadow: 0 1px 0 var(--rule), 0 12px 28px -18px rgba(20, 38, 59, .45);
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: "Familjen Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px; line-height: 1.45;
+}
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--ink); }
+.wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+header.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--rule); background: var(--paper);
+}
+.brand { font-weight: 700; letter-spacing: -.01em; font-size: 20px; display: flex; align-items: center; gap: 10px; line-height: 1.15; }
+.brand small { display: block; font-weight: 400; font-size: 13px; color: var(--ink-soft); letter-spacing: 0; }
+.brand-logo { width: 34px; height: 34px; flex: none; }
+.sheet { background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 14px; }
+h1 { font-size: 28px; line-height: 1.15; margin: 8px 0 12px; letter-spacing: -.02em; }
+h2 { font-size: 20px; margin: 0 0 10px; }
+.lamp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--lamp-off);
+        box-shadow: 0 0 0 3px rgba(0,0,0,.05); vertical-align: middle; flex: none; }
+.lamp.ready { background: var(--lamp-ready); }
+.lamp.work  { background: var(--lamp-work); animation: pulse 1.4s ease-in-out infinite; }
+.lamp.stop  { background: var(--lamp-stop); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .lamp.work { animation: none; } }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 20px; border-radius: var(--radius); border: 1.5px solid var(--ink);
+  background: var(--ink); color: #fff; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.btn { transition: background .15s, transform .05s; }
+.btn:hover:not(:disabled) { background: #22374F; border-color: #22374F; }
+.btn.ghost:hover:not(:disabled) { background: #fff; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { background: transparent; color: var(--ink); }
+.btn.small { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.btn.danger { background: var(--lamp-stop); border-color: var(--lamp-stop); }
+.btn.block { width: 100%; }
+.linkish { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; color: var(--ink-soft); }
+.notice { border-left: 4px solid var(--lamp-work); background: #FBF6EE; padding: 10px 12px; border-radius: 2px; margin: 10px 0; }
+.notice.stop { border-color: var(--lamp-stop); background: #FBF0EE; }
+.notice.ok { border-color: var(--lamp-ready); background: #EFF7F2; }
+.hidden { display: none !important; }
+:focus-visible { outline: 3px solid #5B8DEF; outline-offset: 2px; }

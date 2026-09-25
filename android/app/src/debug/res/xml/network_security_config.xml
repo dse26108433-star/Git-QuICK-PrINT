@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG builds only (the green Run button in Android Studio): plain http:// is
+  allowed so the phone can talk to the backend on your laptop while testing,
+  for example http://192.168.1.10:8080. Release builds use the HTTPS-only file
+  in src/main/res/xml.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

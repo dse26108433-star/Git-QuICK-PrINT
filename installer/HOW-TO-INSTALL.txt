@@ -1,0 +1,39 @@
+CAMPUS PRINT STATION - INSTALLING AT A XEROX CENTER
+====================================================
+
+You need: this installer on a pen drive, the Campus Print server address,
+and the counter password. Nothing else (no Java, no other programs).
+
+1. Make sure the printers are installed in Windows and print a Windows test
+   page (Settings > Printers & scanners). Put paper in them.
+
+2. Double-click  CampusPrintStation-Setup-3.0.0.exe
+   - If Windows shows "Windows protected your PC": click "More info",
+     then "Run anyway". (This happens because the installer is not
+     code-signed yet; see the note below.)
+   - Click Next / Install. No administrator password is needed.
+   - On the last page keep "Open Campus Print Station now" ticked > Finish.
+
+3. The app opens with a short setup:
+   a) Connect this PC: server address, counter password, a name for the PC.
+   b) Choose the printers: tick the ones to use, name them ("Printer 1"),
+      choose "Black & white only" / "Colour and black & white" / "Colour only",
+      and press "Test B/W" / "Test colour" on each one. Check the paper:
+      B/W test = red box GREY, colour test = red box RED, and the label
+      "Pickup TEST1" readable in the bottom-right corner.
+   c) "This PC is ready" > Open the counter.
+
+Done. From now on:
+- Paid orders print by themselves. Closing the window does not stop printing;
+  the Campus Print icon next to the clock opens it again.
+- It starts together with Windows.
+- To update: run a newer installer; it closes the old version by itself.
+- To remove: Windows Settings > Apps > Campus Print Station > Uninstall.
+
+Code signing (optional, for a warning-free install): buy a code-signing
+certificate (or use Microsoft "Trusted Signing") and sign the .exe with
+signtool. Until then the "More info > Run anyway" step is normal.
+
+Making an installer for a new college (server address already filled in):
+    cd agent\packaging
+    powershell -ExecutionPolicy Bypass -File build-installer.ps1 -BackendUrl "https://print.college.in"

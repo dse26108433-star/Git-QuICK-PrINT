@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------
+# Render "Blueprint": puts the backend online with HTTPS.
+# render.com -> New -> Blueprint -> pick this repository.
+# Render asks for each value marked sync: false (copy them from
+# backend/.env). WEB_ORIGINS = your Netlify address.
+# ---------------------------------------------------------------
+services:
+  - type: web
+    name: campus-print-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # "free": costs nothing. It sleeps after 15 minutes without visitors; while
+    # the Xerox PC is on it keeps it awake, so only the first visit of the
+    # morning waits about a minute.
+    # "starter" (paid) never sleeps: switch to it once students rely on it.
+    plan: free
+    region: singapore
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: PAYMENT_MODE
+        value: razorpay
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: COUNTER_PASSWORD
+        sync: false
+      - key: AGENT_TOKEN_SECRET
+        generateValue: true
+      - key: WEB_ORIGINS
+        sync: false

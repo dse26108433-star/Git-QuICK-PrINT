@@ -1,0 +1,32 @@
+<!--
+  Windows service definition for WinSW (https://github.com/winsw/winsw).
+  install-service.ps1 fills in JAVA_EXE and saves this as print-agent.xml.
+  Runs as LocalSystem, which can use every printer installed "for all users".
+-->
+<service>
+  <id>CampusPrintAgent</id>
+  <name>Campus Print Agent</name>
+  <description>Prints paid student orders on the Xerox center printers.</description>
+
+  <executable>JAVA_EXE</executable>
+  <arguments>-Xmx1g -Djava.awt.headless=true -jar "%BASE%\print-agent.jar" "%BASE%\agent.yml"</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+
+  <!-- If it ever crashes, Windows starts it again. -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>1 hour</resetfailure>
+
+  <!-- Gives an order that is printing time to finish when the PC shuts down. -->
+  <stoptimeout>40 sec</stoptimeout>
+
+  <logpath>C:\ProgramData\CampusPrintAgent\service-logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

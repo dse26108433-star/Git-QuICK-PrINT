@@ -1,0 +1,40 @@
+# Campus Print agent - settings for the Xerox center PC.
+# The install script writes a real copy of this file next to print-agent.jar.
+# The PRINTERS are not listed here: they are in the database (seed.sql step 2).
+
+# Where the backend runs. https:// in real use. http:// is allowed only for a
+# backend on this PC or the same local network while testing.
+backendUrl: "http://localhost:8080"
+
+# From seed.sql step 3:  select * from enroll_agent('Xerox PC');
+agentId: ""
+agentSecret: ""
+
+# How often each printer asks for new work, and how often this PC reports in.
+pollIntervalSeconds: 3
+heartbeatSeconds: 20
+
+workDir: "C:/ProgramData/CampusPrintAgent"
+maxFileSizeBytes: 52428800      # 50 MB, same as the website limit
+tempRetentionMinutes: 60
+
+# How staff match paper to students, WITHOUT wasting a sheet:
+# the pickup code is printed small in the bottom-right corner of the first
+# page of every order ("Pickup K7M4X · 3 pages × 2"). If that corner is not
+# blank, the first page is shrunk by about 4% to make room.
+pickupCodeOnPage: true
+# A separate cover sheet with the code in huge letters costs one extra sheet.
+#   0  = never (saves the most paper)
+#   30 = only for big orders of 30 or more sheets (pages x copies)
+# If pickupCodeOnPage is false, EVERY order gets a cover sheet.
+coverSheetMinSheets: 0
+
+# pdfbox   - pure Java, the default, nothing else to install
+# external - use SumatraPDF instead (only if some files print badly)
+printStrategy: "pdfbox"
+externalToolPath: "C:/Program Files/SumatraPDF/SumatraPDF.exe"
+externalToolTimeoutSeconds: 180
+
+# Watch the Windows print queue to report the real result.
+verifyViaSpooler: true
+spoolerPollSeconds: 3

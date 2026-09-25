@@ -1,0 +1,4 @@
+# never put secrets or build output in the image
+.env
+target/
+*.log

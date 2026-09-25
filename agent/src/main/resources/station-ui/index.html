@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campus Print Station</title>
+<link rel="icon" href="icon-64.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="logo" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="14" fill="#14263B"/>
+      <path d="M20 13h17l9 9v29a2 2 0 0 1-2 2H20a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z" fill="#fff"/>
+      <path d="M37 13v9h9" fill="#D9DCD4"/>
+      <rect x="23" y="29" width="18" height="2.6" rx="1.3" fill="#9AA3AC"/>
+      <rect x="23" y="35" width="14" height="2.6" rx="1.3" fill="#9AA3AC"/>
+      <circle cx="46" cy="47" r="8" fill="#2E7D4F" stroke="#14263B" stroke-width="3"/>
+    </symbol>
+    <symbol id="i-counter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 10h18M5 10V20h14V10M8 10V6a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-printer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  </defs>
+</svg>
+
+<div id="boot" class="boot">Starting Campus Print&hellip;</div>
+
+<!-- =============================== SETUP WIZARD =============================== -->
+<section id="setup" class="setup hidden">
+  <div class="setup-card">
+    <div class="setup-brand">
+      <svg class="logo"><use href="#logo"/></svg>
+      <div><b>Campus Print Station</b><small>Set up this Xerox center PC</small></div>
+    </div>
+    <ol class="steps">
+      <li id="ss1">1. Connect</li><li id="ss2">2. Printers</li><li id="ss3">3. Ready</li>
+    </ol>
+
+    <!-- step 1 -->
+    <div class="card" id="setupConnect">
+      <h1>Connect this PC</h1>
+      <p class="lead">Campus Print needs to know where your online shop lives. You only do this once.</p>
+      <div class="form">
+        <label class="field"><span>Campus Print server address</span>
+          <input class="input" id="suUrl" placeholder="https://your-print-server.example.com" autocomplete="off" spellcheck="false">
+          <small>The address of your backend. Ask the person who set up the website if you do not know it.</small>
+        </label>
+        <label class="field"><span>Counter password</span>
+          <input class="input" id="suPassword" type="password" autocomplete="current-password">
+          <small>The staff password (COUNTER_PASSWORD). It is remembered on this PC.</small>
+        </label>
+        <label class="field"><span>Name of this PC</span>
+          <input class="input" id="suName" maxlength="60">
+          <small>Shown on the counter screen, e.g. "Front desk PC".</small>
+        </label>
+      </div>
+      <div id="suError" class="notice stop hidden" style="margin-top:16px" role="alert"></div>
+      <div class="form-actions">
+        <span class="small muted">Version <span class="ver"></span> &middot; by Vedant Pravin Surve</span>
+        <button class="btn lg" id="suConnect">Connect</button>
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div id="setupPrinters" class="hidden">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h1>Choose the printers</h1>
+            <p class="lead" style="margin:6px 0 0">We found these printers on this PC. Tick the ones Campus Print may use,
+              give each a short name, and say if it prints in colour.</p>
+          </div>
+          <button class="btn ghost sm" data-scan>Scan again</button>
+        </div>
+        <div class="plist" id="suPrinterList"></div>
+        <div id="suPrintersError" class="notice stop hidden" style="margin-top:14px" role="alert"></div>
+        <div class="form-actions">
+          <span class="small muted">Tip: press <b>Test print</b> to check each printer before you finish.</span>
+          <button class="btn lg" id="suSavePrinters">Save and continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 3 -->
+    <div class="card hidden" id="setupDone">
+      <div class="done-mark"><svg width="30" height="30" style="color:var(--lamp-ready)"><use href="#i-check"/></svg></div>
+      <h1>This PC is ready</h1>
+      <p class="lead" style="margin-top:6px">Paid orders from the student website now print here automatically.</p>
+      <ul class="checklist">
+        <li>Each order's first page shows its pickup code in the corner (no cover sheets, no wasted paper).</li>
+        <li id="suAutostartLine">Campus Print starts together with Windows and keeps printing when this window is closed.</li>
+        <li>The printer icon next to the clock opens this screen again.</li>
+      </ul>
+      <div class="form-actions">
+        <span></span>
+        <button class="btn lg go" id="suFinish">Open the counter</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================ THE APP ================================ -->
+<div id="app" class="app hidden">
+  <aside class="side">
+    <div class="side-brand">
+      <svg class="logo"><use href="#logo"/></svg>
+      <div><b>Campus Print</b><small id="sideCenter">Xerox center</small></div>
+    </div>
+    <nav class="nav" aria-label="Pages">
+      <button data-view="counter" class="on"><svg><use href="#i-counter"/></svg>Counter<span class="count hidden" id="navReady"></span></button>
+      <button data-view="printers"><svg><use href="#i-printer"/></svg>Printers<span class="count alert hidden" id="navPrinters">!</span></button>
+      <button data-view="settings"><svg><use href="#i-settings"/></svg>Settings</button>
+    </nav>
+    <div class="side-foot">
+      <div class="pc"><span class="lamp" id="pcLamp"></span><span id="pcText">Checking&hellip;</span></div>
+      <div class="pc-detail" id="pcDetail"></div>
+      <div class="version">Campus Print Station <span class="ver"></span></div>
+      <div class="credit">by Vedant Pravin Surve</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to Razorpay before real use.</div>
+    <div id="appError" class="notice stop hidden" style="margin-bottom:16px" role="alert"></div>
+
+    <!-- ------------------------------ COUNTER ------------------------------ -->
+    <section id="view-counter">
+      <div class="page-head">
+        <div>
+          <h1>Counter</h1>
+          <p class="sub" id="counterSub">&nbsp;</p>
+        </div>
+        <label class="label-switch" id="stampCard" title="Switch off for a while if a student wants nothing but their own file on the paper">
+          <span class="switch"><input type="checkbox" id="stampToggle" aria-label="Print pickup code on pages"><i></i></span>
+          <span><b>Pickup code on pages</b><small id="stampHint">Printed small in the corner of each first page</small></span>
+        </label>
+      </div>
+
+      <div class="find">
+        <div class="find-box">
+          <input class="input" id="findCode" maxlength="5" placeholder="Type the student's pickup code" autocomplete="off" spellcheck="false" aria-label="Pickup code">
+          <div class="find-hint">The student shows the code on their phone. Press <b>Enter</b> to hand over.</div>
+        </div>
+        <div class="find-result" id="findResult" aria-live="polite"></div>
+      </div>
+
+      <div class="printer-strip" id="printerStrip"></div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-list="active">Printing &amp; waiting <span class="n" id="nActive">0</span></button>
+        <button class="tab" data-list="ready">Ready to hand over <span class="n" id="nReady">0</span></button>
+        <button class="tab" data-list="problems" id="tabProblems">Problems <span class="n" id="nProblems">0</span></button>
+        <button class="tab" data-list="all">All recent</button>
+      </div>
+      <div class="orders" id="orderList"></div>
+    </section>
+
+    <!-- ------------------------------ PRINTERS ------------------------------ -->
+    <section id="view-printers" class="hidden">
+      <div class="page-head">
+        <div>
+          <h1>Printers</h1>
+          <p class="sub">Printers installed on this PC. Ticked printers take orders from the student website.</p>
+        </div>
+        <button class="btn ghost" data-scan>Scan again</button>
+      </div>
+      <div class="plist" id="printerEditor"></div>
+      <div id="printersError" class="notice stop hidden" style="margin-top:14px" role="alert"></div>
+      <div class="page-actions">
+        <span class="small muted" id="printersSaved"></span>
+        <button class="btn" id="savePrinters">Save printers</button>
+      </div>
+    </section>
+
+    <!-- ------------------------------ SETTINGS ------------------------------ -->
+    <section id="view-settings" class="hidden">
+      <div class="page-head"><div><h1>Settings</h1><p class="sub">Prices, the pickup code, and this PC.</p></div></div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Shop</h2>
+          <p class="small muted" style="margin-bottom:14px">Students see these on the website straight away.</p>
+          <div class="form">
+            <label class="field"><span>Center name</span><input class="input" id="setName" maxlength="80"></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <label class="field"><span>Black &amp; white, per page</span>
+                <div class="prefix"><b>&#8377;</b><input class="input" id="setBw" type="number" min="0" step="0.5"></div></label>
+              <label class="field"><span>Colour, per page</span>
+                <div class="prefix"><b>&#8377;</b><input class="input" id="setColor" type="number" min="0" step="0.5"></div></label>
+            </div>
+          </div>
+          <div class="page-actions"><span class="small muted" id="shopSaved"></span><button class="btn" id="saveShop">Save</button></div>
+        </div>
+
+        <div class="card">
+          <h2>Pickup code on pages</h2>
+          <div class="set-row">
+            <div><b>Print the pickup code on each order</b>
+              <small>Small label in the corner of the first page, so staff can find the right pages. Switch it off for a
+                while if a student wants only their own file on the paper, then switch it on again.</small></div>
+            <span class="switch"><input type="checkbox" id="stampToggle2" aria-label="Print pickup code on pages"><i></i></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>This PC</h2>
+          <dl class="kv" style="margin:10px 0 14px">
+            <dt>Name</dt><dd id="setPcName"></dd>
+            <dt>Server</dt><dd id="setServer"></dd>
+            <dt>Printing</dt><dd id="setPrinting"></dd>
+          </dl>
+          <div class="set-row">
+            <div><b>Start with Windows</b><small>Recommended: orders keep printing after a restart.</small></div>
+            <span class="switch"><input type="checkbox" id="autostartToggle" aria-label="Start with Windows"><i></i></span>
+          </div>
+          <div class="set-row">
+            <div style="flex:1"><b>Counter password</b><small>Changed the password on the server? Type the new one here.</small>
+              <div style="display:flex;gap:8px;margin-top:8px"><input class="input" id="newPassword" type="password" placeholder="New counter password">
+                <button class="btn ghost" id="savePassword">Save</button></div></div>
+          </div>
+          <div class="set-row">
+            <div><b>Log files</b><small>For troubleshooting.</small></div>
+            <button class="btn ghost sm" id="openLogs">Open folder</button>
+          </div>
+          <div class="set-row">
+            <div><b>About</b><small>Campus Print Station <span class="ver"></span> &middot; Designed &amp; developed by
+              <b style="display:inline;color:var(--ink)">Vedant Pravin Surve</b></small></div>
+          </div>
+          <div class="set-row">
+            <div><b>Disconnect this PC</b><small>It stops printing, and its printers are removed from Campus Print.</small></div>
+            <button class="btn danger sm" id="disconnect">Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
