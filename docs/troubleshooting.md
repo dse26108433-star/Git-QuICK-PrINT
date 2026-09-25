@@ -43,7 +43,7 @@ Find your problem, try the fix, then do the step again.
 | `relation "orders" does not exist` | Run `db/setup.sql` in the Supabase SQL Editor. |
 | `The shop is not set up yet` | Run `db/setup.sql` (it creates the settings row). |
 | Uploads fail with 400/403 | Check `SUPABASE_URL` and that `SUPABASE_SERVICE_KEY` is the **secret** key, not the publishable/anon key. |
-| `PAYMENT_MODE is razorpay but RAZORPAY_KEY_ID ... are empty` | Fill both keys in `.env`, or set `PAYMENT_MODE=demo` while testing. |
+| `PAYMENT_MODE is razorpay but RAZORPAY_KEY_ID ... are empty` (on Render: deploy fails, "No open ports detected") | Fill both keys: `.env` on a laptop, or Render → your service → **Environment** → `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` (test keys `rzp_test_…` from Razorpay → Account & Settings → API Keys) → Save, rebuild and deploy. `PAYMENT_MODE=demo` only for private tests: demo prints without payment. |
 | Razorpay 401 in the log | Wrong key id/secret pair, or test key used in live mode (or the other way). |
 
 ## Website / app

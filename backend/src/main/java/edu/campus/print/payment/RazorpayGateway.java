@@ -46,7 +46,9 @@ public class RazorpayGateway implements PaymentGateway {
     public RazorpayGateway(String keyId, String keySecret) {
         if (keyId == null || keyId.isBlank() || keySecret == null || keySecret.isBlank()) {
             throw new IllegalStateException(
-                    "PAYMENT_MODE is razorpay but RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are empty. Set them in backend/.env");
+                    "PAYMENT_MODE is razorpay but RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are empty. Set both in "
+                    + "backend/.env, or on Render: your service -> Environment (test keys rzp_test_... from "
+                    + "dashboard.razorpay.com -> Account & Settings -> API Keys). PAYMENT_MODE=demo only for private tests.");
         }
         this.keyId = keyId.trim();
         this.keySecret = keySecret.trim();

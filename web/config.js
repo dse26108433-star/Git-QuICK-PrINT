@@ -5,5 +5,5 @@
  * No secret keys go in this file: everyone can read it.
  */
 window.CONFIG = {
-  apiBase: "http://localhost:8080"
+  apiBase: "https://campus-print-backend.onrender.com"
 };
