@@ -5,6 +5,7 @@ agent/winsw/agent.yml
 # build output
 **/target/
 android/.gradle/
+android/.kotlin/
 android/build/
 android/app/build/
 android/local.properties

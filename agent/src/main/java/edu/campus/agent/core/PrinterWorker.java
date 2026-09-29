@@ -3,7 +3,7 @@ package edu.campus.agent.core;
 import edu.campus.agent.net.BackendClient;
 import edu.campus.agent.net.BackendClient.OfflineException;
 import edu.campus.agent.net.BackendClient.RejectedException;
-import edu.campus.agent.net.Messages.ClaimedOrder;
+import edu.campus.agent.net.Messages.ClaimedJob;
 import edu.campus.agent.net.Messages.PrinterConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +13,12 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * One thread per printer. It asks for the next order THIS printer can do,
- * prints it, waits until the paper is out, then asks again.
+ * One thread per printer. It asks for the next document THIS printer can do
+ * (the server only hands out what the printer's features allow), prints it,
+ * waits until the paper is out, then asks again.
  *
  * Because each printer only asks when it is free, work spreads over the
- * printers by itself: a free printer takes the next order, a busy one waits.
+ * printers by itself: a free printer takes the next document, a busy one waits.
  */
 public class PrinterWorker implements Runnable {
 
@@ -25,13 +26,13 @@ public class PrinterWorker implements Runnable {
 
     private final AtomicReference<PrinterConfig> config;
     private final BackendClient backend;
-    private final OrderProcessor processor;
+    private final JobProcessor processor;
     private final PrinterHealth health;
     private final Duration poll;
     private volatile boolean running = true;
     private Thread thread;
 
-    public PrinterWorker(PrinterConfig config, BackendClient backend, OrderProcessor processor,
+    public PrinterWorker(PrinterConfig config, BackendClient backend, JobProcessor processor,
                          PrinterHealth health, Duration poll) {
         this.config = new AtomicReference<>(config);
         this.backend = backend;
@@ -46,7 +47,7 @@ public class PrinterWorker implements Runnable {
         thread.start();
     }
 
-    /** Stops after the current order (an order already sent is never interrupted). */
+    /** Stops after the current document (one already sent is never interrupted). */
     public void stop() {
         running = false;
     }
@@ -70,10 +71,10 @@ public class PrinterWorker implements Runnable {
                     sleep(Duration.ofSeconds(10));        // switched off, or not installed in Windows
                     continue;
                 }
-                Optional<ClaimedOrder> order = backend.claim(c.id());
+                Optional<ClaimedJob> job = backend.claim(c.id());
                 backoff = poll;
-                if (order.isPresent()) {
-                    processor.process(order.get());
+                if (job.isPresent()) {
+                    processor.process(job.get());
                 } else {
                     sleep(poll);
                 }

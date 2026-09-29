@@ -22,10 +22,11 @@ import java.awt.image.BufferedImage;
  * Prints the pickup code small in the bottom-right corner of the FIRST page,
  * instead of spending a whole extra sheet on a cover page:
  *
- *     [ Pickup K7M4X · 3 pages × 2 ]
+ *     [ Pickup K7M4X · 2/3 · 3 sheets × 2 ]
  *
- * Every copy starts with that page, so staff can see where each order (and
- * each copy) begins in the printer tray, and how many sheets to count.
+ * (file 2 of the order's 3, 3 sheets of paper per copy, 2 copies). Every copy
+ * starts with that page, so staff can see where each file (and each copy)
+ * begins in the printer tray, and how many sheets to count.
  *
  * The student's layout is kept: if that corner of the page is blank (almost
  * always - documents have a bottom margin) the label goes into the margin and
@@ -54,23 +55,21 @@ public final class PickupCodeStamp {
     private PickupCodeStamp() {
     }
 
-    public static Result apply(PDDocument doc, PrintStrategy.Settings s) throws Exception {
+    public static Result apply(PDDocument doc, PrintJob job, int sheetsPerCopy) throws Exception {
         // One font object per document: several printers stamp at the same time.
         PDFont bold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
         PDFont regular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
-        int pages = doc.getNumberOfPages();
         PDPage page = doc.getPage(0);
-        View v = View.of(page);
+        PageView v = PageView.of(page);
 
         String before = "Pickup ";
-        String code = s.pickupCode();
-        String after = "  ·  " + pages + (pages == 1 ? " page" : " pages")
-                + (s.copies() > 1 ? " × " + s.copies() : "");
+        String code = job.pickupCode();
+        String after = label(job, sheetsPerCopy);
         float wBefore = width(regular, TEXT_SIZE, before);
         float wCode = width(bold, CODE_SIZE, code);
         float wAfter = width(regular, TEXT_SIZE, after);
         float boxW = PAD + wBefore + wCode + wAfter + PAD;
-        float boxX = v.width - EDGE_RIGHT - boxW;
+        float boxX = v.width() - EDGE_RIGHT - boxW;
 
         boolean blank = cornerIsBlank(doc, v, boxX - 4, BOX_BOTTOM - 4, boxW + 8, BOX_HEIGHT + 10);
         if (!blank) {
@@ -79,7 +78,7 @@ public final class PickupCodeStamp {
 
         try (PDPageContentStream cs = new PDPageContentStream(doc, page, AppendMode.APPEND, true, true)) {
             cs.saveGraphicsState();
-            cs.transform(new Matrix(v.toPage));
+            cs.transform(new Matrix(v.toPage()));
 
             // White background, so the label reads cleanly even on a light page colour.
             cs.setNonStrokingColor(Color.WHITE);
@@ -107,27 +106,13 @@ public final class PickupCodeStamp {
 
     // ------------------------------------------------------------------ helpers
 
-    /**
-     * The page "as the student sees it": width/height after the page's own
-     * rotation, and the transform from those coordinates to the PDF's own
-     * (possibly rotated, possibly offset) coordinates.
-     */
-    private record View(float width, float height, AffineTransform toPage) {
-
-        static View of(PDPage page) {
-            PDRectangle box = page.getCropBox();
-            float llx = box.getLowerLeftX(), lly = box.getLowerLeftY();
-            float urx = box.getUpperRightX(), ury = box.getUpperRightY();
-            int rotation = ((page.getRotation() % 360) + 360) % 360;
-            // Viewers turn the page clockwise by /Rotate; these map a point
-            // (x from the left, y up from the bottom, as seen) back onto the page.
-            return switch (rotation) {
-                case 90 -> new View(box.getHeight(), box.getWidth(), new AffineTransform(0, 1, -1, 0, urx, lly));
-                case 180 -> new View(box.getWidth(), box.getHeight(), new AffineTransform(-1, 0, 0, -1, urx, ury));
-                case 270 -> new View(box.getHeight(), box.getWidth(), new AffineTransform(0, -1, 1, 0, llx, ury));
-                default -> new View(box.getWidth(), box.getHeight(), new AffineTransform(1, 0, 0, 1, llx, lly));
-            };
-        }
+    /** "  ·  2/3  ·  3 sheets × 2" (the file number only when the order has several). */
+    static String label(PrintJob job, int sheetsPerCopy) {
+        StringBuilder b = new StringBuilder();
+        if (job.documentCount() > 1) b.append("  ·  ").append(job.documentNumber()).append('/').append(job.documentCount());
+        b.append("  ·  ").append(sheetsPerCopy).append(sheetsPerCopy == 1 ? " sheet" : " sheets");
+        if (job.copies() > 1) b.append(" × ").append(job.copies());
+        return b.toString();
     }
 
     /**
@@ -135,11 +120,11 @@ public final class PickupCodeStamp {
      * where the label would go. Any doubt counts as "not blank", which only
      * means the page gets the white strip.
      */
-    private static boolean cornerIsBlank(PDDocument doc, View v, float x, float y, float w, float h) {
+    private static boolean cornerIsBlank(PDDocument doc, PageView v, float x, float y, float w, float h) {
         try {
             BufferedImage img = new PDFRenderer(doc).renderImage(0, 1f, ImageType.GRAY);
-            double sx = img.getWidth() / (double) v.width;
-            double sy = img.getHeight() / (double) v.height;
+            double sx = img.getWidth() / (double) v.width();
+            double sy = img.getHeight() / (double) v.height();
             int x0 = clamp((int) Math.floor(x * sx), img.getWidth());
             int x1 = clamp((int) Math.ceil((x + w) * sx), img.getWidth());
             int y0 = clamp((int) Math.floor(img.getHeight() - (y + h) * sy), img.getHeight());   // image rows go down
@@ -163,16 +148,16 @@ public final class PickupCodeStamp {
      * Shrinks the first page's content (and its filled-in form fields) evenly,
      * keeping it centred and at the top, to free a white strip at the bottom.
      */
-    private static void makeStrip(PDDocument doc, PDPage page, View v) throws Exception {
-        float strip = Math.min(STRIP, v.height * 0.15f);
-        double scale = (v.height - strip) / v.height;
+    private static void makeStrip(PDDocument doc, PDPage page, PageView v) throws Exception {
+        float strip = Math.min(STRIP, v.height() * 0.15f);
+        double scale = (v.height() - strip) / v.height();
         AffineTransform seen = new AffineTransform();
-        seen.translate(v.width * (1 - scale) / 2, strip);
+        seen.translate(v.width() * (1 - scale) / 2, strip);
         seen.scale(scale, scale);
         // Same change expressed in the page's own coordinates: to view, shrink, back.
-        AffineTransform onPage = new AffineTransform(v.toPage);
+        AffineTransform onPage = new AffineTransform(v.toPage());
         onPage.concatenate(seen);
-        onPage.concatenate(v.toPage.createInverse());
+        onPage.concatenate(v.toPage().createInverse());
 
         try (PDPageContentStream cs = new PDPageContentStream(doc, page, AppendMode.PREPEND, true)) {
             cs.saveGraphicsState();

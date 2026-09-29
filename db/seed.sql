@@ -1,20 +1,30 @@
 -- =====================================================================
 -- First-time setup. Run AFTER setup.sql.
 -- Do ONE STEP AT A TIME: select the lines of a step, then press Run.
+--
+-- With Campus Print Station (the usual way) only STEP 1 is needed, and even
+-- that can be done in the Station (Settings). The Station adds the printers
+-- itself, reads what each can do (paper sizes, two-sided, stapling...) and
+-- lets staff choose what students may pick.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
 -- STEP 1 - Name and prices.  Prices are in PAISE:  200 = Rs 2.
+-- A price is per PRINTED SIDE: a two-sided sheet is two sides.
+-- Extra for bigger paper, special paper and finishing: shop_settings.pricing
+-- (A3 = 200 % to start with), easiest to change in the Station.
 -- ---------------------------------------------------------------------
 update shop_settings
    set center_name       = 'Main Xerox Center',
-       price_bw_paise    = 200,     -- Rs 2 per B/W page
-       price_color_paise = 1000     -- Rs 10 per colour page
+       price_bw_paise    = 200,     -- Rs 2 per printed B/W side
+       price_color_paise = 1000     -- Rs 10 per printed colour side
  where id = 1;
 
 
 -- ---------------------------------------------------------------------
--- STEP 2 - Add your printers. One line per printer.
+-- STEP 2 - Only WITHOUT the Station: add your printers by hand.
+-- Printers added here offer plain A4 one-sided printing until a
+-- Station 4.0 reads what they can really do.
 -- The last-but-one value is the name Windows uses: copy it EXACTLY
 -- from   PrinterSmokeTest --list   on the Xerox PC.
 -- supports_color: true for a colour Canon, false for B/W only.
@@ -52,6 +62,8 @@ select * from enroll_agent('Xerox PC');
 -- select name, host_name, last_seen_at from agents;
 -- Printer status as the PC sees it:
 -- select name, windows_printer_name, status, status_detail, status_at from printers;
--- Recent orders:
--- select pickup_code, status, file_name, copies, color, amount_paise, error_message, created_at
---   from orders order by created_at desc limit 20;
+-- What students may choose on each printer (what it can do, narrowed by staff):
+-- select name, effective from printers;
+-- Recent orders with their files:
+-- select o.pickup_code, o.status, d.position, d.file_name, d.status, d.settings, d.amount_paise
+--   from orders o join order_documents d on d.order_id = o.id order by o.created_at desc, d.position limit 40;

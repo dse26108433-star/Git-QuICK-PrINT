@@ -19,6 +19,7 @@ import java.util.Map;
 /**
  * Every failure becomes the same small JSON shape:
  *   {"error": "CODE", "message": "Words a person can act on"}
+ * sometimes with more, e.g. "documents": [{"id": ..., "message": ...}].
  * Internal details go to the log with a reference number, never to the screen.
  */
 @RestControllerAdvice
@@ -28,7 +29,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> handle(ApiException e) {
-        return ResponseEntity.status(e.status()).body(body(e.code(), e.getMessage()));
+        Map<String, Object> b = body(e.code(), e.getMessage());
+        if (e.details() != null) b.putAll(e.details());
+        return ResponseEntity.status(e.status()).body(b);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

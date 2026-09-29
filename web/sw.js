@@ -6,8 +6,9 @@
  * is only used when the network fails. It never touches the print service
  * (orders, payments), config.js, or any other website.
  */
-const CACHE = "campusprint-v2";
-const SHELL = ["./", "index.html", "icon.svg", "icon-192.png", "icon-512.png", "manifest.webmanifest"];
+const CACHE = "campusprint-v3";
+const SHELL = ["./", "index.html", "css/app.css", "js/print-core.js", "js/app.js", "icon.svg", "icon-192.png",
+               "icon-512.png", "manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

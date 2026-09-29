@@ -43,6 +43,11 @@
 .empty { text-align: center; padding: 40px 0; color: var(--ink-soft); }
 .hint { font-size: 14px; color: var(--ink-soft); background: var(--sheet); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 12px; }
 .order .sheets { font-weight: 600; color: var(--ink); }
+.docs { display: grid; gap: 6px; margin-top: 6px; }
+.doc { border-left: 3px solid var(--rule); padding: 2px 0 2px 10px; font-size: 14px; }
+.doc b { font-weight: 600; word-break: break-word; }
+.doc .meta { font-size: 13px; }
+.doc .actions { justify-content: flex-start; margin-top: 4px; }
 .stamp { display: flex; align-items: center; gap: 10px; background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow);
          padding: 10px 14px; margin-bottom: 16px; cursor: pointer; }
 .stamp input { width: 22px; height: 22px; accent-color: var(--lamp-ready); margin: 0; }
@@ -103,8 +108,8 @@ details.settings summary { cursor: pointer; font-weight: 600; }
       <summary>Prices and name</summary>
       <div class="form">
         <label>Center name <input id="setName"></label>
-        <label>Black &amp; white price per page (&#8377;) <input id="setBw" type="number" min="0" step="0.5"></label>
-        <label>Colour price per page (&#8377;) <input id="setColor" type="number" min="0" step="0.5"></label>
+        <label>Black &amp; white price per printed side (&#8377;) <input id="setBw" type="number" min="0" step="0.5"></label>
+        <label>Colour price per printed side (&#8377;) <input id="setColor" type="number" min="0" step="0.5"></label>
         <button class="btn" id="saveSettings">Save</button>
         <span class="small muted" id="settingsMsg"></span>
       </div>
@@ -204,7 +209,7 @@ function renderSummary(s) {
   const box = $("printers");
   box.innerHTML = "";
   if (s.printers.length === 0) {
-    box.innerHTML = '<div class="notice">No printers set up yet. Add them with seed.sql step 2.</div>';
+    box.innerHTML = '<div class="notice">No printers set up yet. Add them on the Printers screen of Campus Print Station.</div>';
   }
   for (const p of s.printers) {
     const lamp = !p.enabled ? "" : p.status === "READY" ? "ready" : p.status === "ERROR" ? "work" : "stop";
@@ -237,18 +242,11 @@ function renderSummary(s) {
 }
 
 const STATUS_WORDS = {
-  QUEUED: "Waiting for a printer", CLAIMED: "Starting", DOWNLOADING: "Starting", SUBMITTED: "Printing",
-  COMPLETED: "Printed", FAILED: "Problem", CANCELLED: "Cancelled", EXPIRED: "Not paid (expired)",
-  AWAITING_UPLOAD: "Uploading", AWAITING_PAYMENT: "Not paid yet"
+  QUEUED: "Waiting for a printer", PRINTING: "Printing", CLAIMED: "Starting", DOWNLOADING: "Starting",
+  SUBMITTED: "Printing", COMPLETED: "Printed", FAILED: "Problem", CANCELLED: "Cancelled",
+  EXPIRED: "Not paid (expired)", AWAITING_UPLOAD: "Adding files", AWAITING_PAYMENT: "Not paid yet",
+  UPLOADING: "Uploading", READY: "Not paid yet", REJECTED: "Refused"
 };
-
-/** "58 of 1000 pages (333-390)", or "12 page(s)" when the whole file prints. */
-function pagesText(o) {
-  const n = o.printPages || o.pageCount;
-  if (!n) return "? page(s)";
-  if (!o.pages) return n + (n === 1 ? " page" : " pages");
-  return n + " of " + o.pageCount + " pages (" + o.pages.replace(/,/g, ", ") + ")";
-}
 
 function renderOrders(list) {
   const box = $("orders");
@@ -261,25 +259,71 @@ function renderOrders(list) {
   for (const o of list) {
     const row = document.createElement("div");
     row.className = "order";
-    row.innerHTML = '<div class="code"></div><div><div class="file"></div><div class="meta"></div><div class="err"></div></div>' +
+    row.innerHTML = '<div class="code"></div><div><div class="meta"></div><div class="docs"></div><div class="err"></div></div>' +
                     '<div class="actions"></div>';
     row.querySelector(".code").textContent = o.pickupCode;
-    row.querySelector(".file").textContent = o.fileName;
+    const docs = o.documents || [];
     const lamp = o.status === "COMPLETED" ? "ready" : (o.status === "FAILED" ? "stop" : "work");
     row.querySelector(".meta").innerHTML = '<span class="lamp ' + lamp + '"></span> ';
     row.querySelector(".meta").append(
-      (STATUS_WORDS[o.status] || o.status) + (o.printerName ? " on " + o.printerName : "") + " \u00B7 " +
-      pagesText(o) + " \u00D7 " + o.copies + " \u00B7 " + (o.color ? "COLOUR" : "B/W") + " \u00B7 " +
-      rupees(o.amountPaise) + " \u00B7 " + when(o.paidAt || o.createdAt) +
-      (o.collectedAt ? " \u00B7 handed over " + when(o.collectedAt) : ""));
-    if (o.status === "COMPLETED" && !o.collectedAt && (o.printPages || o.pageCount)) {
-      const n = (o.printPages || o.pageCount) * o.copies;
+      (STATUS_WORDS[o.status] || o.status) + " · " + docs.length + (docs.length === 1 ? " file" : " files") +
+      " · " + (o.totalSheets || 0) + (o.totalSheets === 1 ? " sheet" : " sheets") + " · " +
+      rupees(o.amountPaise) + " · " + when(o.paidAt || o.createdAt) +
+      (o.collectedAt ? " · handed over " + when(o.collectedAt) : "") +
+      (o.refundDuePaise ? " · REFUND DUE " + rupees(o.refundDuePaise) : ""));
+    const docBox = row.querySelector(".docs");
+    for (const d of docs) {
+      const r = document.createElement("div");
+      r.className = "doc";
+      const title = document.createElement("b");
+      title.textContent = d.position + ". " + d.fileName;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const pages = d.fileType === "PDF" ? (d.pages ? "pages " + d.pages.replace(/,/g, ", ") + " of " + d.pageCount
+        : (d.pageCount || 0) + " pages") : "picture";
+      meta.textContent = (d.noPrinter ? "NO PRINTER CAN DO THIS NOW" : (STATUS_WORDS[d.status] || d.status) +
+        (d.printerName ? " on " + d.printerName : "")) + " · " + pages + " · " + d.settingsText +
+        " × " + d.copies + " · " + (d.sheets || 0) * d.copies + " sheets";
+      r.append(title, meta);
+      if (d.status === "FAILED" && d.errorMessage) {
+        const err = document.createElement("div");
+        err.className = "err";
+        err.textContent = d.errorMessage;
+        r.append(err);
+      }
+      const acts = document.createElement("div");
+      acts.className = "actions";
+      const add = (label, fn) => {
+        const b = document.createElement("button");
+        b.className = "btn small ghost"; b.textContent = label;
+        b.onclick = async () => {
+          b.disabled = true;
+          try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
+        };
+        acts.appendChild(b);
+      };
+      if (d.status === "FAILED" && o.paidAt && !o.collectedAt && d.fileKept) {
+        add("Print this again", () => {
+          if (!confirm("Check the printer tray first. Nothing there? Print \"" + d.fileName + "\" again?")) return Promise.resolve();
+          return api("POST", "/api/v1/counter/documents/" + d.id + "/print-again");
+        });
+      }
+      if ((d.status === "QUEUED" && d.noPrinter) || (d.status === "FAILED" && o.paidAt && !o.collectedAt)) {
+        add("Cancel this file", () => {
+          if (!confirm("Cancel \"" + d.fileName + "\"? Refund " + rupees(d.amountPaise) + " in Razorpay.")) return Promise.resolve();
+          return api("POST", "/api/v1/counter/documents/" + d.id + "/cancel");
+        });
+      }
+      if (acts.children.length) r.append(acts);
+      docBox.append(r);
+    }
+    if (o.status === "COMPLETED" && !o.collectedAt) {
       const sheets = document.createElement("div");
       sheets.className = "sheets";
-      sheets.textContent = n + (n === 1 ? " sheet" : " sheets") + " \u00B7 first page has \u201CPickup " + o.pickupCode + "\u201D";
-      row.querySelector(".meta").after(sheets);
+      sheets.textContent = (o.totalSheets || 0) + " sheets · each file's first page has “Pickup " + o.pickupCode + "”";
+      row.querySelector(".docs").after(sheets);
     }
-    if (o.status === "FAILED" || o.status === "CANCELLED") {
+    if ((o.status === "FAILED" || o.status === "CANCELLED") && !docs.some(d => d.errorMessage)) {
       row.querySelector(".err").textContent = (o.errorMessage || o.errorCode || "") +
         (o.paymentId ? "  [payment " + o.paymentId + "]" : "");
     }
@@ -293,17 +337,11 @@ function renderOrders(list) {
       };
       actions.appendChild(b);
     };
+    const failed = docs.filter(d => d.status === "FAILED");
     if (o.status === "COMPLETED" && !o.collectedAt) {
       add("Handed over", "", () => api("POST", "/api/v1/counter/orders/" + o.id + "/collected"));
     }
-    if (o.status === "FAILED" && o.paidAt && !o.collectedAt) {
-      if (o.fileKept) {
-        add("Print again", "", () => {
-          if (!confirm("Check the printer tray first: look for a page with \"Pickup " + o.pickupCode +
-                       "\" in its bottom-right corner. Nothing there? Print it again?")) return Promise.resolve();
-          return api("POST", "/api/v1/counter/orders/" + o.id + "/print-again");
-        });
-      }
+    if ((o.status === "FAILED" || failed.length || o.refundDuePaise) && o.paidAt && !o.collectedAt) {
       add("Refunded / done", "ghost", () => {
         if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand or refunded in Razorpay)?")) return Promise.resolve();
         return api("POST", "/api/v1/counter/orders/" + o.id + "/collected");

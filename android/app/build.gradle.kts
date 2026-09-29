@@ -13,8 +13,13 @@ android {
         applicationId = "edu.campus.printapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "3.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Where the print service runs: the live one, unless built with -PapiBase=http://... (see AppConfig.kt)
+        val apiBase = (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
+        buildConfigField("String", "API_BASE", "\"$apiBase\"")
     }
 
     buildTypes {
@@ -27,6 +32,16 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    testOptions {
+        unitTests.all {
+            // the shared rule cases (spec/cases) and, when asked, the real backend (-Dcampusprint.api=http://localhost:8080)
+            it.systemProperty("campusprint.spec", rootProject.file("../spec/cases").absolutePath)
+            System.getProperty("campusprint.api")?.let { api -> it.systemProperty("campusprint.api", api) }
+            it.testLogging { events("passed", "failed", "skipped"); showStandardStreams = true }
+        }
     }
 
     compileOptions {
@@ -55,4 +70,15 @@ dependencies {
     implementation("com.razorpay:checkout:1.6.41")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")   // older ones break on Android 16 (InputManager)
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

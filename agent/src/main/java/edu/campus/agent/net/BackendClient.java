@@ -75,17 +75,28 @@ public class BackendClient {
         return JSON.readValue(res.body(), HeartbeatResult.class);
     }
 
-    /** Asks for the next order for one printer. Empty = nothing to print. */
-    public Optional<ClaimedOrder> claim(String printerId) throws IOException {
+    /**
+     * Asks for the next document one printer can print. Empty = nothing to print.
+     * Each document comes with its settings, exactly as the student saw them.
+     */
+    public Optional<ClaimedJob> claim(String printerId) throws IOException {
         ObjectNode n = JSON.createObjectNode().put("printerId", printerId);
-        HttpResponse<String> res = authed(() -> post("/agent/v1/orders/claim", n));
+        HttpResponse<String> res = authed(() -> post("/agent/v1/jobs/claim", n));
         if (res.statusCode() == 204) return Optional.empty();
         requireOk(res);
-        return Optional.of(JSON.readValue(res.body(), ClaimedOrder.class));
+        return Optional.of(JSON.readValue(res.body(), ClaimedJob.class));
     }
 
-    public String downloadUrl(String orderId, String claimToken) throws IOException {
-        HttpResponse<String> res = authed(() -> base("/agent/v1/orders/" + orderId + "/download-url")
+    /** What a printer can do, as this PC found it in Windows. The server works out what students can pick. */
+    public void sendCapabilities(String printerId, JsonNode capabilities, String hash) throws IOException {
+        ObjectNode n = JSON.createObjectNode().put("hash", hash);
+        n.set("capabilities", capabilities);
+        HttpResponse<String> res = authed(() -> post("/agent/v1/printers/" + printerId + "/capabilities", n));
+        requireOk(res);
+    }
+
+    public String downloadUrl(String jobId, String claimToken) throws IOException {
+        HttpResponse<String> res = authed(() -> base("/agent/v1/jobs/" + jobId + "/download-url")
                 .header("X-Claim-Token", claimToken).GET().build());
         requireOk(res);
         return JSON.readTree(res.body()).path("url").asText();
@@ -109,31 +120,31 @@ public class BackendClient {
     }
 
     /** DOWNLOADING, SUBMITTED, COMPLETED or FAILED. Carries the claim token. */
-    public void reportStatus(String orderId, String claimToken, String status, String code, String message)
+    public void reportStatus(String jobId, String claimToken, String status, String code, String message)
             throws IOException {
         ObjectNode n = JSON.createObjectNode()
                 .put("claimToken", claimToken)
                 .put("status", status)
                 .put("errorCode", code == null ? "" : code)
                 .put("message", truncate(message == null ? "" : message, 900));
-        HttpResponse<String> res = authed(() -> post("/agent/v1/orders/" + orderId + "/status", n));
+        HttpResponse<String> res = authed(() -> post("/agent/v1/jobs/" + jobId + "/status", n));
         requireOk(res);
     }
 
-    /** Gives an order back before anything printed. Returns the new status. */
-    public String release(String orderId, String claimToken, String code, String message) throws IOException {
+    /** Gives a document back before anything printed. Returns the new status. */
+    public String release(String jobId, String claimToken, String code, String message) throws IOException {
         ObjectNode n = JSON.createObjectNode()
                 .put("claimToken", claimToken)
                 .put("errorCode", code == null ? "" : code)
                 .put("message", truncate(message == null ? "" : message, 900));
-        HttpResponse<String> res = authed(() -> post("/agent/v1/orders/" + orderId + "/release", n));
+        HttpResponse<String> res = authed(() -> post("/agent/v1/jobs/" + jobId + "/release", n));
         requireOk(res);
         return JSON.readTree(res.body()).path("status").asText("");
     }
 
-    public void renewLease(String orderId, String claimToken) throws IOException {
+    public void renewLease(String jobId, String claimToken) throws IOException {
         ObjectNode n = JSON.createObjectNode().put("claimToken", claimToken);
-        HttpResponse<String> res = authed(() -> post("/agent/v1/orders/" + orderId + "/lease", n));
+        HttpResponse<String> res = authed(() -> post("/agent/v1/jobs/" + jobId + "/lease", n));
         requireOk(res);
     }
 

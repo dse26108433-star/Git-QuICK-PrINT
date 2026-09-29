@@ -2,6 +2,7 @@ package edu.campus.agent.station;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.campus.agent.print.CapabilityDiscovery;
 import edu.campus.agent.print.PrinterDiscovery;
 
 import javax.print.PrintService;
@@ -11,7 +12,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The printer scan: every printer installed in Windows on this PC, with what
- * staff need to choose (colour or not, connected how, working or not), and
+ * staff need to choose (colour or not, connected how, working or not), what
+ * it can do (paper sizes, two-sided, stapling...: CapabilityDiscovery), and
  * whether it is a "virtual" printer that only makes a file.
  */
 public final class WindowsPrinters {
@@ -24,6 +26,8 @@ public final class WindowsPrinters {
 
     public static List<Map<String, Object>> scan() {
         Map<String, JsonNode> details = windowsDetails();
+        List<String> names = PrinterDiscovery.all().stream().map(PrintService::getName).toList();
+        Map<String, CapabilityDiscovery.Discovered> features = CapabilityDiscovery.discover(names);
         List<Map<String, Object>> out = new ArrayList<>();
         for (PrintService s : PrinterDiscovery.all()) {
             String name = s.getName();
@@ -39,6 +43,11 @@ public final class WindowsPrinters {
             m.put("connection", connection(port));
             m.put("status", status.isBlank() ? "Normal" : status);
             m.put("virtual", isVirtual(name, driver));
+            CapabilityDiscovery.Discovered f = features.get(name);
+            if (f != null) {
+                m.put("capabilities", f.capabilities());
+                m.put("capabilitiesHash", CapabilityDiscovery.hash(f.capabilities()));
+            }
             out.add(m);
         }
         // Real printers first, then by name.

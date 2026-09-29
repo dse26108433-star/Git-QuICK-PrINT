@@ -10,6 +10,7 @@
 drop trigger if exists on_auth_user_created on auth.users;
 
 drop table if exists order_events  cascade;
+drop table if exists order_documents cascade;
 drop table if exists orders        cascade;
 drop table if exists shop_settings cascade;
 drop table if exists printers      cascade;
@@ -32,6 +33,12 @@ drop function if exists claim_next_order(uuid, uuid, int) cascade;
 drop function if exists release_order(uuid, uuid, text, text) cascade;
 drop function if exists guard_order_transition() cascade;
 drop function if exists reap_expired_leases() cascade;
+drop function if exists claim_next_job(uuid, uuid, int, boolean) cascade;
+drop function if exists release_job(uuid, uuid, text, text) cascade;
+drop function if exists mark_order_paid(uuid, text, text) cascade;
+drop function if exists printer_can_do(jsonb, boolean, boolean, jsonb) cascade;
+drop function if exists guard_document_transition() cascade;
+drop function if exists sync_order_status() cascade;
 drop function if exists touch_updated_at() cascade;
 
 drop policy if exists docs_insert_own on storage.objects;

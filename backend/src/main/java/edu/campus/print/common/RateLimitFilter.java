@@ -56,7 +56,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /** Only order creation is limited; checking status must always work. */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        return !("POST".equals(req.getMethod()) && "/api/v1/orders".equals(req.getServletPath()));
+        return !("POST".equals(req.getMethod()) && "/api/v1/orders".equals(pathOf(req)));
     }
 
     private static Bucket bucket(Map<String, Bucket> map, String key, int capacity, Duration window) {
@@ -90,5 +90,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         synchronized boolean isStale() {
             return Instant.now().isAfter(start.plus(window).plus(window));
         }
+    }
+
+    /** The path without the context path, the same in a real server and in tests. */
+    private static String pathOf(jakarta.servlet.http.HttpServletRequest r) {
+        String uri = r.getRequestURI();
+        String ctx = r.getContextPath();
+        return ctx != null && !ctx.isEmpty() && uri.startsWith(ctx) ? uri.substring(ctx.length()) : uri;
     }
 }

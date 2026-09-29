@@ -1,32 +1,60 @@
-CAMPUS PRINT STATION - INSTALLING AT A XEROX CENTER
-====================================================
+CAMPUS PRINT STATION 4.0.0 - INSTALLING AT A XEROX CENTER
+==========================================================
 
 You need: this installer on a pen drive, the Campus Print server address,
 and the counter password. Nothing else (no Java, no other programs).
 
-1. Make sure the printers are installed in Windows and print a Windows test
-   page (Settings > Printers & scanners). Put paper in them.
+Which installer?
+- CampusPrintStation-Setup-4.0.0-GitQuickPrint.exe : for Git QuICK PrINT.
+  The server address (https://campus-print-backend.onrender.com) is already
+  filled in.
+- CampusPrintStation-Setup-4.0.0.exe : any other college; you type the
+  server address in step 3a.
 
-2. Double-click  CampusPrintStation-Setup-3.0.0.exe
+Important: Station 4.0.0 needs the version 4 server. Deploy the new backend
+first (START-HERE.md, section "Version 4"), then install this.
+
+1. Make sure the printers are installed in Windows with the FULL Canon
+   driver (UFR II or PS) and print a Windows test page (Settings > Printers
+   & scanners). In each printer's Properties > Device Settings, set what is
+   really fitted: duplex unit, finisher (stapler, puncher). Put paper in.
+
+2. Double-click the installer.
    - If Windows shows "Windows protected your PC": click "More info",
      then "Run anyway". (This happens because the installer is not
      code-signed yet; see the note below.)
    - Click Next / Install. No administrator password is needed.
+   - An older Campus Print Station is updated in place; its settings stay.
    - On the last page keep "Open Campus Print Station now" ticked > Finish.
 
-3. The app opens with a short setup:
+3. The app opens with a short setup (skipped when updating):
    a) Connect this PC: server address, counter password, a name for the PC.
    b) Choose the printers: tick the ones to use, name them ("Printer 1"),
-      choose "Black & white only" / "Colour and black & white" / "Colour only",
-      and press "Test B/W" / "Test colour" on each one. Check the paper:
-      B/W test = red box GREY, colour test = red box RED, and the label
-      "Pickup TEST1" readable in the bottom-right corner.
+      choose "Black & white only" / "Colour and black & white" / "Colour only".
+      Under each printer, labels show what Windows says it can do (paper
+      sizes, two-sided, finishing). Open "What students can choose on this
+      printer" and untick paper sizes you do not keep and options you do
+      not want to offer. Press "Test B/W" / "Test colour" on each one.
+      Check the paper: B/W test = red box GREY, colour test = red box RED,
+      and the label "Pickup TEST1" readable in the bottom-right corner.
+      Printers that can print two-sided also have "Test two-sided": one
+      sheet, printed on both sides.
    c) "This PC is ready" > Open the counter.
 
+4. Settings > prices: black & white and colour per printed side; under
+   "Paper sizes, paper types and finishing" the extra for A3 (200 % preset)
+   or special paper, and a price per copy for stapling, punching, binding.
+
+5. Send one test order from a phone for each option you offer (two-sided,
+   A3, 2 per sheet, each staple / punch position). Untick any option that
+   does not come out right.
+
 Done. From now on:
-- Paid orders print by themselves. Closing the window does not stop printing;
-  the Campus Print icon next to the clock opens it again.
+- Paid files print by themselves, each on a printer that can do everything
+  it needs. Closing the window does not stop printing; the Campus Print
+  icon next to the clock opens it again.
 - It starts together with Windows.
+- A new printer, or a changed driver setting: Printers > "Scan again".
 - To update: run a newer installer; it closes the old version by itself.
 - To remove: Windows Settings > Apps > Campus Print Station > Uninstall.
 

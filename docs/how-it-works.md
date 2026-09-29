@@ -3,11 +3,11 @@
 ## The parts
 
 ```
- web/index.html  ─┐                              ┌─ Supabase Postgres (orders, printers, prices)
+ web/index.html  ─┐                              ┌─ Supabase Postgres (orders, files of each order, printers, prices)
  Android app     ─┼─► backend (Spring Boot) ─────┤
  web/counter.html ┘        ▲                      └─ Supabase Storage (private bucket: the files)
                            │ HTTPS, PC always calls out
-                    Xerox center PC (agent, Windows service)
+                    Xerox center PC (Campus Print Station)
                            │ Windows print queue + Canon drivers
                     Printer 1   Printer 2   Printer 3   Printer 4 (colour)
 ```
@@ -15,53 +15,215 @@
 Phones and browsers **never** talk to the database. Only the backend does, with its own connection.
 The database has row level security switched on and gives nothing to Supabase's public keys.
 
+## One order, many files
+
+A student puts **all their files in one order** (up to 25: PDFs, JPGs and PNGs mixed) and sets up each
+file on its own: pages, copies, colour, sides, paper size, layout, finishing. They pay once and collect
+everything with **one pickup code**.
+
+In the database an order (`orders`) has one row per file (`order_documents`). **Each file is its own print
+job**: it has its own settings, price, status and printer. The order's status follows from its files.
+
+Example (the one this was designed around), all in one order:
+
+| File | Settings | Goes to |
+|---|---|---|
+| Notes.pdf | pages 1–10, 1 copy, B/W, two-sided | a B/W printer that can print two-sided |
+| Assignment.pdf | pages 3, 7, 2 copies, colour, one-sided | the colour printer |
+| Photo.jpg | 1 copy, colour, A4, fill the page | the colour printer |
+
 ## An order's life
 
-| Status | Meaning | Who moves it |
-|---|---|---|
-| `AWAITING_UPLOAD` | order created, file being sent | student app |
-| `AWAITING_PAYMENT` | file checked, pages counted, price fixed | backend |
-| `QUEUED` | paid, waiting for a printer | backend (after verifying payment) |
-| `CLAIMED` | a printer took it | PC |
-| `DOWNLOADING` | PC is fetching and checking the file | PC |
-| `SUBMITTED` | handed to Windows for printing | PC |
-| `COMPLETED` | left the printer queue: pages are out | PC |
-| `FAILED` | problem; paid ones show at the counter | PC / backend |
-| `CANCELLED` | before payment by student, or by staff | student / staff |
-| `EXPIRED` | never paid (24 h) or never uploaded (1 h) | backend |
+| Order status | Meaning |
+|---|---|
+| `AWAITING_UPLOAD` | files are being added and set up |
+| `AWAITING_PAYMENT` | the server checked and priced every file (the student is on "Review and pay") |
+| `QUEUED` | paid, no file has started printing yet |
+| `PRINTING` | at least one file is at a printer |
+| `COMPLETED` | every file is printed (or cancelled by staff): ready at the counter |
+| `FAILED` | a paid file had a problem: shows at the counter |
+| `CANCELLED` / `EXPIRED` | by the student or staff / never paid (24 h) or never finished uploading |
 
-A trigger in the database (`guard_order_transition`) refuses any other move, so a bug cannot put an
-order into an impossible state. Every change is written to `order_events`.
+| File status | Meaning | Who moves it |
+|---|---|---|
+| `UPLOADING` | being sent to storage | student |
+| `READY` / `REJECTED` | checked: pages counted / not a usable file | backend |
+| `QUEUED` | paid, waiting for a printer that can do it | backend |
+| `CLAIMED` → `DOWNLOADING` → `SUBMITTED` | a printer took it, the PC fetched it, Windows has it | PC |
+| `COMPLETED` / `FAILED` / `CANCELLED` | printed / problem / cancelled by staff | PC / staff |
+
+Triggers in the database (`guard_order_transition`, `guard_document_transition`) refuse any other move, and
+`sync_order_status` keeps a paid order's status in line with its files, so a bug cannot put anything into an
+impossible state. Every change is written to `order_events` (with the file it was about).
+
+"Change something" after "Review and pay" puts the order back to `AWAITING_UPLOAD` (`POST /orders/{id}/edit`),
+so files can be added, removed or changed; the next review checks and prices everything again.
 
 ## No login: how an order stays private
 
-When the app creates an order, the backend makes a random 256-bit **access key**, returns it once, and
-stores only its SHA-256. The app saves the key on the device and sends it as `X-Order-Key`. Without it,
-nobody can see, pay for, or cancel that order. The **pickup code** (5 characters, no look-alike letters)
-is only for the counter and the label on the printed pages.
+When the website creates an order, the backend makes a random 256-bit **access key**, returns it once, and
+stores only its SHA-256. The website saves it on the device and sends it as `X-Order-Key`. Without it,
+nobody can see, change, pay for, or cancel that order. The **pickup code** (5 characters, no look-alike
+letters) is only for the counter and the label on the printed pages.
+
+The website also keeps the unfinished order (files and settings, not the files' contents) in the browser, so
+a reload or a closed tab comes back to the same place; the files are fetched again from storage.
+
+## What the printers can do decides what students see
+
+The website only offers what the connected printers can really do. Nothing is hard-coded.
+
+1. **The Station reads each printer** when it starts, when printers change, when staff press **Scan again**,
+   every 30 minutes, and at once when a printer turns out unable to do something. It asks Windows three ways:
+   the driver's own *PrintCapabilities* (the document behind the printer's settings dialog), Java's view of the
+   same driver, and WMI. Only what can really be asked for when printing counts: colour, two-sided (long /
+   short edge), paper sizes (only those both Java can request and the driver lists), finishing (staple
+   positions, hole punch, binding), paper types, borderless, print quality, trays, most copies. This is the
+   printer's `capabilities` in the database, with a hash so only real changes are sent.
+2. **Staff choose what to offer** on each printer (Station → Printers → "What students can choose on this
+   printer"): which paper sizes they keep in stock, two-sided on/off, which finishing, which paper types.
+   This is `offered`. By default: A4, A3, A5, Legal, Folio if the printer takes them; no special paper types.
+3. **What students get** is capabilities ∩ offered = `effective`, worked out by the server
+   (`EffectiveFeatures`). A printer switched off at the counter ("Taking orders" off) offers nothing. A printer
+   that is only offline for a while (paper jam, PC restarting) keeps its options: its files wait for it, and
+   the website shows "Printers offline". The website asks for this (`GET /api/v1/shop`) on start, every minute, and when the tab
+   comes back into view, and updates the choices on screen straight away.
+
+On the website a choice appears only if **some** printer can do it. If it cannot be combined with the
+student's other choices, it says what it would change (e.g. *A3 → black & white*); picking it makes that
+change and says so. If the printers change while a student is setting up (a printer switched off), the file
+shows what no longer works and a **Change to …** button that makes the smallest change that can be printed.
+
+### Which printer prints a file
+
+`claim_next_job(pc, printer)` in `db/setup.sql`. A free printer asks for work and gets **one** file:
+
+```
+only files this printer can do completely (printer_can_do: colour, paper size, sides, finishing,
+   paper type, borderless, quality)
+this printer's own started orders first, and leave orders another printer is busy with
+   → one order's files come out of one printer when possible
+then the oldest paid order; colour printers take colour work first
+FOR UPDATE SKIP LOCKED → two printers asking at the same moment never get the same file
+```
+
+A paid file that **no** printer can do any more (e.g. the only two-sided printer broke) is shown at the counter
+as *"No printer can do this now"*; staff can cancel it (refund) or wait for the printer.
+
+Stations older than 4.0 still work: they only get plain A4 one-sided files (`legacy_ok`), everything else waits
+for a 4.0 Station.
+
+## Settings of one file
+
+| Setting | Choices | Notes |
+|---|---|---|
+| Pages (PDF) | all, or e.g. `3, 7, 10-12` | typed, or picked on page pictures (All / None / Odd / Even / Invert). Shown as *"Selected: 3, 7, 10–12 · Total pages to print: 5"* |
+| Copies | 1, 2, 3 or any number up to 50 | collated (1-2-3, 1-2-3) or not (1-1, 2-2, 3-3) |
+| Colour | black & white / colour | |
+| Sides | one-sided / two-sided, long edge / short edge | only if a printer can |
+| Paper size | A4, A3, A5, Legal, Folio, Letter, photo sizes… | only sizes a printer takes and staff offer |
+| Orientation | auto / portrait / landscape | auto turns each sheet to fit its page |
+| Scale | fit, actual size, custom % (pictures: also fill) | |
+| Pages per sheet | 1, 2, 4, 6, 9, 16 | pages are fitted in a grid with a 3 mm gap |
+| Margins | none (borderless), 5, 10, 20 mm, custom | none only on a borderless printer |
+| Pictures | turn left / right, centre | **proportions are always kept: never stretched** |
+| Finishing | staple, hole punch, bind (positions the printer has) | only if a printer has it; needs 2+ sheets |
+| Paper type, quality | as offered by staff | |
+
+**The server has the last word.** `POST /orders/{id}/review` sends every file's settings; `SettingsChecker`
+checks and tidies them against the file (real page count, picture size) and the printers, and prices them.
+What the student then sees on "Review and pay" is exactly what is stored and printed. The website only shows
+the server's answer; if the server refuses a file, the file shows why and nothing is charged.
+
+### The same rules in three places, checked by one set of tests
+
+The page-range reader, prices, printer rules and page layout exist in Java (backend and Station), in SQL
+(`printer_can_do`) and in JavaScript (`web/js/print-core.js`, for the live price and preview). The cases in
+`spec/cases/*.json` are run against all of them (`SharedRulesTest`, the Station's tests, `node
+spec/web-core.test.js`), so they cannot drift apart.
+
+## What comes out of the printer is what the preview shows
+
+The website draws the preview from the same layout rules the Station prints with (`layout.json` cases):
+
+- Each sheet is made at the exact paper size, and printed at **100 %** from the paper's corner
+  (`ExactPageable`): the driver is not allowed to shrink it again.
+- A PDF page is placed as it looks on screen (its rotation and crop box are applied); filled-in form fields
+  and other printable notes are drawn too.
+- Pictures are turned upright from their EXIF orientation, then turned as the student chose, then fitted,
+  filled or placed at actual size. Width and height are always scaled by the same factor.
+- Several pages per sheet: the grid (1×2 or 2×1, 2×2, 2×3 or 3×2, 3×3, 4×4) that makes the pages largest.
+- Two-sided with an odd number of sides: a blank back is added so the next copy starts on a new sheet.
+- Settings Java's printing cannot express (staple, punch, bind, borderless, paper type, quality, sometimes
+  two-sided) go into a Windows **print ticket**. The Station checks the driver kept every option; if the
+  driver drops one, the file is **not** printed and goes back with a clear message. The printer's own default
+  settings are restored afterwards.
 
 ## Matching paper to students (no cover sheet)
 
-Printing a separate cover sheet for every order wasted one sheet per order, which is a lot for 1-3 page
-orders. Instead, the agent prints the pickup code **small in the bottom-right corner of the first page**:
+The pickup code is printed **small in the bottom-right corner of the first sheet of each file**:
 
-    [ Pickup K7M4X · 3 pages × 2 ]
+    [ Pickup K7M4X  ·  2/3  ·  3 sheets × 2 ]
 
-- Every copy starts with that page, so staff see where each order (and each copy) begins in the tray,
-  and how many sheets to count (pages × copies).
-- The student's layout is kept. The agent first draws page 1 at low resolution and checks the corner.
-  If it is blank (almost always) the label goes into the margin. If something is there (page number,
-  full-page photo), only page 1 is shrunk by about 4 % to make a white strip. Filled-in form fields move
-  with the page.
-- The label is at least 6 mm from the paper edge, inside the area every printer can reach.
-- Only the copy in memory is changed. If adding the label fails for any reason, the order still
-  prints, with a cover sheet instead.
-- `agent.yml`: `pickupCodeOnPage: true` (default) and `coverSheetMinSheets: 0` (default, never).
-  Set for example `coverSheetMinSheets: 30` to add a cover sheet only for thick orders of 30+ sheets.
-  With `pickupCodeOnPage: false` every order gets a cover sheet (the old behaviour).
+(file 2 of the order's 3, 3 sheets per copy, 2 copies). Every copy starts with that sheet, so staff see where
+each file (and each copy) begins in the tray, and how many sheets to count. The label sits in the white margin
+at least 6 mm from the edge. Borderless prints get no label. If adding it ever fails, the file prints with a
+cover sheet instead. The **"Pickup code on pages"** switch in the Station turns it off for everyone
+(`shop_settings.stamp_code`); `agent.yml` `coverSheetMinSheets: 30` adds a cover sheet only for thick files.
 
-At the counter: the student shows the code on their phone, staff type it in the **Code** box, see the
-printer and number of sheets, take the pages whose first page shows that code, and press **Handed over**.
+At the counter: staff type the code, see each file with its printer and sheets, take the pages whose first
+sheet shows that code, and press **Handed over**.
+
+## Price and payment
+
+```
+per printed side = B/W or colour price × paper size % × paper type %     (rounded to the paise)
+per copy         = printed sides × per side + finishing (staple, punch, bind)
+file             = copies × per copy                  order = sum of its files (Razorpay minimum ₹1)
+```
+
+Prices and the extra percentages (e.g. A3 = 200 %) and finishing prices are set in the Station
+(Settings → Shop, and "Paper sizes, paper types and finishing"); they are in `shop_settings`. A two-sided sheet
+is two printed sides.
+
+1. Each file is uploaded straight to storage with its own 5-minute upload link (`POST
+   /orders/{id}/documents/{doc}/upload-url`); up to 3 at a time, each can be cancelled and tried again.
+2. `POST .../documents/{doc}/uploaded`: the backend downloads the file, checks what it really is (first bytes,
+   not the name), opens it (PDFBox / ImageIO), counts pages, reads picture size, resolution and EXIF turn.
+   Locked or broken files are refused here, before any payment.
+3. `POST /orders/{id}/review` checks and prices every file (above). `POST /orders/{id}/payment` makes a
+   **Razorpay order** for that exact amount.
+4. On success the website sends `payment_id` + `signature` to `POST /orders/{id}/payment/confirm`. The backend
+   checks `HMAC-SHA256(our_razorpay_order_id + "|" + payment_id, key_secret)`, asks Razorpay for the payment,
+   checks order id and amount, and captures it if it is only "authorized". `mark_order_paid` then puts every
+   file in the queue in one step.
+5. Safety net: every minute the backend asks Razorpay about unpaid orders, so a student who closed the page
+   right after paying still gets printed.
+
+`PAYMENT_MODE=demo` replaces steps 3–4 with a test button. The backend log and counter screen warn loudly.
+The Android app (3.0.0) uses the same endpoints and settings as the website; its rules (`core/PrintCore.kt`) run
+the shared `spec/cases`, and its tests check against the real backend that the reviewed settings, prices and the
+print jobs the PC receives are identical. Older app versions (one file per order, `/orders/{id}/uploaded`) keep working.
+
+## Why a file is never printed twice by accident
+
+On the PC, for each file:
+
+1. tell the backend `DOWNLOADING`
+2. download, check size + type + SHA-256, and lay out the sheets — a problem here gives the file back (nothing printed)
+3. tell the backend `SUBMITTED` — **if this fails, do not print**
+4. write `journal/<file>.sent` to disk and force it onto the disk
+5. print — *point of no return*
+6. watch the Windows queue until the document leaves it
+7. tell the backend `COMPLETED` / `FAILED` — if offline, the journal keeps the result and sends it later
+
+If the PC disappears:
+- before step 5 → the backend's recovery (lease expiry) puts the file back in the queue (safe, nothing printed);
+- after step 5 → the file becomes `FAILED` with "check the tray". Only a person pressing **Print again** on the
+  counter prints it again. When the PC comes back it reports `COMPLETED` from its journal if it did print.
+
+Paper out, jam, offline printer: Windows keeps the document, so the file stays "printing" and the counter
+shows the printer lamp amber with the reason. It finishes by itself once staff fix the printer.
 
 ## Campus Print Station (the Xerox center app)
 
@@ -69,105 +231,29 @@ One installer (`installer/CampusPrintStation-Setup-<version>.exe`, built by `age
 It contains a trimmed private Java made with `jlink` and a launcher made with `jpackage`, wrapped by Inno Setup,
 so the PC needs nothing else. It installs per user (no administrator), adds shortcuts and an uninstaller.
 
-- **Setup wizard** (first start): server address + counter password + PC name. The Station checks the password,
-  then registers itself with `POST /api/v1/counter/pcs` (the server runs `enroll_agent` and returns the PC's
-  own sign-in, kept in `%LOCALAPPDATA%\CampusPrint\station.json`). No SQL needed any more.
-- **Printer scan**: every Windows printer with colour ability, connection (USB / network) and status; virtual
-  printers (PDF, OneNote, Fax) are marked. Ticked printers are created on the server for this PC
-  (`POST/PUT/DELETE /api/v1/counter/printers`); "Test B/W" / "Test colour" print the Step 1 test page.
-- **Printing**: the same agent code as before, started inside the app. It keeps printing when the window is
-  closed (tray icon), and starts with Windows (`HKCU\...\Run`, `--background`).
-- **Screens**: served by a tiny web server on `127.0.0.1:47800` and shown in a Microsoft Edge app window (no
-  address bar). It only answers requests for 127.0.0.1/localhost and each call needs the random token the
-  window was opened with, so other websites cannot use it. Counter actions are passed on to the server with
-  the saved counter password.
-- **Pickup code switch**: `shop_settings.stamp_code`, sent to the PC with every order. Off = the order prints
-  with nothing added (no label, no cover sheet).
-- Logs: `%LOCALAPPDATA%\CampusPrint\logs`. The old Windows-service way (`agent/winsw/`) still works for
-  special cases.
+- **Setup wizard** (first start): server address + counter password + PC name. The Station registers itself
+  (`POST /api/v1/counter/pcs`, the server runs `enroll_agent`) and keeps its sign-in in
+  `%LOCALAPPDATA%\CampusPrint\station.json`.
+- **Printers**: every Windows printer with what it can do (paper sizes, two-sided, finishing…); virtual printers
+  (PDF, OneNote, Fax) are marked. Ticked printers take orders; "What students can choose on this printer" sets
+  what is offered; **Test B/W** / **Test colour** / **Test two-sided** print a test page.
+- **Printing**: one worker per printer, each asks for the next file it can do. It keeps printing when the window
+  is closed (tray icon), and starts with Windows.
+- **Counter**: orders with their files; per file: printer, sheets, **Print again**, **Cancel**; a red banner when a
+  paid file waits that no printer can do.
+- **Screens** are served on `127.0.0.1:47800` and shown in a Microsoft Edge app window; each call needs the random
+  token the window was opened with, so other websites cannot use it.
+- Logs: `%LOCALAPPDATA%\CampusPrint\logs`.
 
-## Choosing pages
+For a new printer model, `PrinterSmokeTest` shows what the Station reads and prints any combination by hand:
 
-A student who needs only part of a big PDF (say pages 333-390 of a 1000-page book) chooses
-**Choose pages** and types the pages the way print dialogs accept them:
-
-    102        333-390        1-5, 8, 12-15        333-  (= to the end)
-
-- Numbers are the PDF's own (1 = first page of the file). The preview shows the chosen pages, so a
-  student can see if a book's printed page numbers differ from the PDF's.
-- Pages print in order, each once (`8, 1-3, 2` prints 1, 2, 3, 8). A reversed range (`390-333`) is read
-  the right way round.
-- Limits (`application.yml`): files up to `max-file-pages` (2000) pages and 50 MB; up to `max-pages` (300)
-  pages printed per copy. A file with more than 300 pages opens with "Choose pages" already selected.
-- The same rules exist three times, and a test keeps them identical: `web/index.html` (live price),
-  the Android app (`PageChoice.kt`, with `PageChoiceTest`), and the server (`PageRanges.java`). **Only the
-  server's answer counts**: it checks the choice against the uploaded file and sets the price.
-- The database stores the tidy form in `orders.page_ranges` (`null` = all pages) and the number of
-  printed pages in `orders.print_pages`. The Xerox PC gets both with the order, removes every other page
-  before printing (it refuses to print if a page does not exist), and puts the pickup code on the first
-  printed page. The counter shows e.g. *"58 of 1000 pages (333-390)"*.
-
-## Price and payment
-
-1. The app uploads the file straight to storage using a 5-minute upload link.
-2. `POST /orders/{id}/uploaded`: the backend downloads the file, checks what it really is (first bytes,
-   not the name), opens it (PDFBox / ImageIO), counts pages, checks the student's page choice against
-   the real page count, and computes `chosen pages × copies × price per page`. Locked or broken files
-   and impossible page choices are refused here, before any payment.
-3. `POST /orders/{id}/payment`: the backend creates a **Razorpay order** for that exact amount.
-4. The app opens Razorpay. On success it sends `payment_id` + `signature` to
-   `POST /orders/{id}/payment/confirm`. The backend checks
-   `HMAC-SHA256(our_razorpay_order_id + "|" + payment_id, key_secret)`, then asks Razorpay for the
-   payment, checks order id and amount, and captures it if it is only "authorized".
-5. Safety net: every minute (and whenever the app checks status) the backend asks Razorpay about unpaid
-   orders, so a student who closed the app right after paying still gets printed.
-
-`PAYMENT_MODE=demo` replaces steps 3–4 with a test button. The backend log and counter screen warn loudly.
-
-## Several printers at once
-
-The agent asks the backend for the printer list (from the `printers` table) every 20 seconds and runs
-**one worker thread per printer**. A worker only asks for work when its printer is free:
-
-```
-claim_next_order(pc, printer):
-   pick the oldest paid order this printer can do
-     colour printer → colour orders first, then B/W (unless accepts_bw = false)
-     B/W printer    → B/W orders only
-   FOR UPDATE SKIP LOCKED  → two printers asking at the same moment never get the same order
-```
-
-So load spreads by itself: whichever printer is free takes the next order.
-
-## Why an order is never printed twice by accident
-
-On the PC, for each order:
-
-1. tell backend `DOWNLOADING`
-2. download, check size + type + SHA-256 — a problem here gives the order back (nothing printed)
-3. tell backend `SUBMITTED` — **if this fails, do not print**
-4. write `journal/<order>.sent` to disk and force it onto the disk
-5. print the file (pickup code on its first page) — *point of no return*
-6. watch the Windows queue until the document leaves it
-7. tell backend `COMPLETED` / `FAILED` — if offline, the journal keeps the result and sends it later
-
-If the PC disappears:
-- before step 5 → the backend's recovery puts the order back in the queue (safe, nothing printed);
-- after step 5 → the order becomes `FAILED` with "check the tray". Only a person pressing
-  **Print again** on the counter prints it again. When the PC comes back it reports `COMPLETED`
-  from its journal if it did print.
-
-Paper out, jam, offline printer: Windows keeps the document, so the order stays "printing" and the
-counter shows the printer lamp amber with the reason. It finishes by itself once staff fix the printer.
+    java -cp print-agent.jar edu.campus.agent.print.PrinterSmokeTest --features "Canon iR2625"
+    java -cp print-agent.jar edu.campus.agent.print.PrinterSmokeTest "Canon iR2625" file.pdf --duplex long --nup 2 --staple top-left
 
 ## Files
 
-- Private bucket `print-documents`, max 25 MB, only PDF/PNG/JPEG.
+- Private bucket `print-documents`, max 50 MB per file, only PDF/PNG/JPEG. Up to 25 files per order, up to 2000
+  pages per PDF, up to 300 pages printed per file (`application.yml`).
 - Uploads and downloads use 5-minute signed links made by the backend.
-- On the PC, files sit in a folder only SYSTEM/administrators can open, and are overwritten then deleted after printing.
-- In storage: deleted after printing; unpaid or cancelled after expiry; failed paid orders kept 24 h (for "Print again").
-
-## Pictures
-
-PNG/JPG become a one-page A4 PDF on the PC (centred, fitted, landscape for wide pictures).
-Phone photos are turned upright using their EXIF orientation, so they print the way they looked on screen.
+- On the PC, files sit in the Station's own work folder and are deleted after printing.
+- In storage: deleted after printing; unpaid or cancelled after expiry; failed paid files kept 24 h (for "Print again").

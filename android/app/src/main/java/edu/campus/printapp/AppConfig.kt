@@ -1,15 +1,14 @@
 package edu.campus.printapp
 
 /**
- * The ONE setting you change in the app.
+ * Where the print service runs. Set when the app is built:
  *
- * Testing with the backend on your laptop: use the laptop's Wi-Fi address,
- * for example "http://192.168.1.10:8080" (phone and laptop on the same Wi-Fi;
- * find the address with `ipconfig` on Windows). "localhost" does NOT work
- * from a phone. http:// only works in debug builds.
+ *   gradlew assembleRelease                                  the live service (https://campus-print-backend.onrender.com)
+ *   gradlew assembleDebug -PapiBase=http://192.168.1.10:8080 your laptop on the same Wi-Fi (debug builds allow http://)
+ *   gradlew assembleDebug -PapiBase=http://10.0.2.2:8080     the laptop, from the Android emulator
  *
- * Real use: "https://your-backend-address"
+ * "localhost" does NOT work from a phone.
  */
 object AppConfig {
-    const val API_BASE = "http://192.168.1.10:8080"
+    val API_BASE: String = BuildConfig.API_BASE
 }

@@ -31,6 +31,17 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+# The website's own code: always check for a newer version (small files; the service worker keeps a copy).
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 # The "install as an app" parts: always check for a newer version.
 [[headers]]
   for = "/sw.js"

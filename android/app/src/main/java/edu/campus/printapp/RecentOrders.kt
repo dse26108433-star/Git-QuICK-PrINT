@@ -1,50 +1,49 @@
 package edu.campus.printapp
 
 import android.content.Context
-import kotlinx.serialization.Serializable
+import edu.campus.printapp.flow.Draft
+import edu.campus.printapp.flow.DraftStore
+import edu.campus.printapp.flow.OrderMemory
+import edu.campus.printapp.flow.SavedOrder
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-/** An order made on this phone. The key is what proves it is ours (no login). */
-@Serializable
-data class SavedOrder(
-    val orderId: String,
-    val key: String,
-    val code: String,
-    val fileName: String,
-    val at: Long
-)
-
-/** Orders remembered on this phone only (private app storage, not backed up). */
-class RecentOrders(context: Context) {
+/**
+ * Orders made on this phone, and the unfinished order, in the app's private
+ * storage (not backed up: the order keys are like passwords).
+ */
+class PhoneStores(context: Context) : OrderMemory, DraftStore {
 
     private val prefs = context.getSharedPreferences("orders", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val listSerializer = ListSerializer(SavedOrder.serializer())
 
-    fun all(): List<SavedOrder> =
-        runCatching { json.decodeFromString(listSerializer, prefs.getString("list", "[]") ?: "[]") }
-            .getOrDefault(emptyList())
+    override fun all(): List<SavedOrder> =
+        runCatching { json.decodeFromString(listSerializer, prefs.getString("list", "[]") ?: "[]") }.getOrDefault(emptyList())
 
-    fun add(order: SavedOrder) {
-        save((listOf(order) + all().filter { it.orderId != order.orderId }).take(15))
-    }
+    override fun add(order: SavedOrder) = saveList((listOf(order) + all().filter { it.orderId != order.orderId }).take(15))
 
-    fun remove(orderId: String) {
-        save(all().filter { it.orderId != orderId })
-    }
+    override fun remove(orderId: String) = saveList(all().filter { it.orderId != orderId })
 
-    /** The order whose payment screen is open, in case Android restarts the app meanwhile. */
-    fun setPending(orderId: String?) {
+    override fun setPending(orderId: String?) {
         prefs.edit().putString("pending", orderId).apply()
     }
 
-    fun pending(): SavedOrder? {
+    override fun pending(): SavedOrder? {
         val id = prefs.getString("pending", null) ?: return null
         return all().find { it.orderId == id }
     }
 
-    private fun save(list: List<SavedOrder>) {
+    override fun load(): Draft? =
+        prefs.getString("draft", null)?.let { runCatching { json.decodeFromString(Draft.serializer(), it) }.getOrNull() }
+
+    override fun save(draft: Draft?) {
+        prefs.edit().apply {
+            if (draft == null) remove("draft") else putString("draft", json.encodeToString(Draft.serializer(), draft))
+        }.apply()
+    }
+
+    private fun saveList(list: List<SavedOrder>) {
         prefs.edit().putString("list", json.encodeToString(listSerializer, list)).apply()
     }
 }

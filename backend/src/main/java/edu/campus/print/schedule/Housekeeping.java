@@ -1,7 +1,9 @@
 package edu.campus.print.schedule;
 
+import edu.campus.print.domain.OrderDocument;
 import edu.campus.print.domain.PrintOrder;
 import edu.campus.print.orders.OrderService;
+import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
 import edu.campus.print.storage.SupabaseStorage;
 import org.slf4j.Logger;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Background jobs:
@@ -24,11 +27,14 @@ public class Housekeeping {
     private static final Logger log = LoggerFactory.getLogger(Housekeeping.class);
 
     private final OrderRepository orders;
+    private final OrderDocumentRepository documents;
     private final OrderService orderService;
     private final SupabaseStorage storage;
 
-    public Housekeeping(OrderRepository orders, OrderService orderService, SupabaseStorage storage) {
+    public Housekeeping(OrderRepository orders, OrderDocumentRepository documents, OrderService orderService,
+                        SupabaseStorage storage) {
         this.orders = orders;
+        this.documents = documents;
         this.orderService = orderService;
         this.storage = storage;
     }
@@ -42,12 +48,12 @@ public class Housekeeping {
     @Transactional
     public void recoverStuckOrders() {
         try {
-            List<Object[]> rows = orders.reapExpiredLeases();
+            List<Object[]> rows = documents.reapExpiredLeases();
             if (!rows.isEmpty()) {
                 int requeued = ((Number) rows.get(0)[0]).intValue();
                 int failed = ((Number) rows.get(0)[1]).intValue();
                 if (requeued > 0 || failed > 0) {
-                    log.warn("Recovery: {} order(s) put back in the queue, {} marked for staff to check",
+                    log.warn("Recovery: {} file(s) put back in the queue, {} marked for staff to check",
                             requeued, failed);
                 }
             }
@@ -64,20 +70,23 @@ public class Housekeeping {
                 orderService.reconcile(o);
             }
         } catch (Exception e) {
-            log.error("Payment check failed; will retry", e);
+            log.error("Payment check for orders failed; will retry", e);
         }
     }
 
     @Scheduled(fixedDelay = 300_000, initialDelay = 60_000)
     public void cleanUp() {
         try {
-            int expired = orders.expireUnpaid();
-            if (expired > 0) {
-                log.info("Expired {} unpaid order(s)", expired);
+            List<UUID> expired = orders.expireUnpaid();
+            for (UUID id : expired) {
+                documents.cancelDraftDocuments(id);
             }
-            for (PrintOrder o : orders.findFilesToDelete()) {
-                storage.delete(o.getStoragePath());
-                orders.markFileDeleted(o.getId());
+            if (!expired.isEmpty()) {
+                log.info("Expired {} unpaid order(s)", expired.size());
+            }
+            for (OrderDocument d : documents.findFilesToDelete()) {
+                storage.delete(d.getStoragePath());
+                documents.markFileDeleted(d.getId());
             }
         } catch (Exception e) {
             log.error("Clean-up failed; will retry", e);

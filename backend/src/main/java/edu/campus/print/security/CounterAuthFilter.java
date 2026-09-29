@@ -75,7 +75,7 @@ public class CounterAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        return !req.getServletPath().startsWith("/api/v1/counter/") || "OPTIONS".equals(req.getMethod());
+        return !pathOf(req).startsWith("/api/v1/counter/") || "OPTIONS".equals(req.getMethod());
     }
 
     private static void reject(HttpServletResponse res, int status, String code, String message) throws IOException {
@@ -83,5 +83,12 @@ public class CounterAuthFilter extends OncePerRequestFilter {
         res.setContentType(MediaType.APPLICATION_JSON_VALUE);
         res.setCharacterEncoding("UTF-8");
         res.getWriter().write("{\"error\":\"" + code + "\",\"message\":\"" + message + "\"}");
+    }
+
+    /** The path without the context path, the same in a real server and in tests. */
+    private static String pathOf(jakarta.servlet.http.HttpServletRequest r) {
+        String uri = r.getRequestURI();
+        String ctx = r.getContextPath();
+        return ctx != null && !ctx.isEmpty() && uri.startsWith(ctx) ? uri.substring(ctx.length()) : uri;
     }
 }

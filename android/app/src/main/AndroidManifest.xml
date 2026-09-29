@@ -32,6 +32,17 @@
                 <data android:mimeType="image/jpeg" />
             </intent-filter>
 
+            <!-- "Share" several files at once -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/png" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
             <!-- "Open with" Campus Print -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

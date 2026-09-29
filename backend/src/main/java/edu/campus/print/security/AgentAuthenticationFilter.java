@@ -50,6 +50,13 @@ public class AgentAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return "/agent/v1/token".equals(request.getServletPath());
+        return "/agent/v1/token".equals(pathOf(request));
+    }
+
+    /** The path without the context path, the same in a real server and in tests. */
+    private static String pathOf(jakarta.servlet.http.HttpServletRequest r) {
+        String uri = r.getRequestURI();
+        String ctx = r.getContextPath();
+        return ctx != null && !ctx.isEmpty() && uri.startsWith(ctx) ? uri.substring(ctx.length()) : uri;
     }
 }

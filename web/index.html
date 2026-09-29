@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Campus Print · Print from your phone, skip the queue</title>
-<meta name="description" content="Send a PDF or photo, choose the pages, pay with UPI and collect your prints at the campus Xerox center with a pickup code. No login, no waiting in line.">
+<meta name="description" content="Send PDFs and photos, choose pages, sides, paper and copies for each, pay with UPI and collect your prints at the campus Xerox center with a pickup code. No login, no waiting in line.">
 <meta name="theme-color" content="#0E1A2B">
 <meta name="author" content="Vedant Pravin Surve">
 <meta property="og:type" content="website">
@@ -19,305 +19,28 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@500..700&display=swap" rel="stylesheet">
-<style>
-/* ==========================================================================
-   Campus Print - student website
-   Design: Vedant Pravin Surve. Ink navy + paper white; the green "ready"
-   lamp of a copier is the only accent colour.
-   ========================================================================== */
-:root {
-  --bg: #F5F6F3;
-  --surface: #FFFFFF;
-  --surface-2: #FAFBF9;
-  --sunk: #EEF0EB;
-  --ink: #0E1A2B;
-  --ink-2: #22324A;
-  --muted: #5B6879;
-  --faint: #8C97A4;
-  --line: #E3E6E0;
-  --line-2: #D2D7CF;
-  --accent: #1F8A55;
-  --accent-soft: #E3F3EA;
-  --warn: #B26B12;
-  --warn-soft: #FBF1E2;
-  --danger: #B4382A;
-  --danger-soft: #FCECE9;
-  --focus: #3B6FF0;
-  --radius: 16px;
-  --shadow-sm: 0 1px 2px rgba(14, 26, 43, .06);
-  --shadow: 0 1px 2px rgba(14, 26, 43, .05), 0 16px 40px -18px rgba(14, 26, 43, .22);
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
-}
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0; background: var(--bg); color: var(--ink);
-  font-family: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
-}
-button, input, select { font: inherit; color: inherit; }
-a { color: inherit; }
-h1, h2, h3 { margin: 0; letter-spacing: -.02em; }
-p { margin: 0; }
-.hidden { display: none !important; }
-.muted { color: var(--muted); }
-.small { font-size: 14px; }
-.container { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
-::selection { background: #CFE7DA; }
-
-/* ------------------------------------------------------------------ lamps */
-.lamp { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
-.lamp.ready { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.lamp.work { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); animation: pulse 1.4s ease-in-out infinite; }
-.lamp.stop { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
-@keyframes pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .lamp.work { animation: none; } * { transition: none !important; } }
-
-/* ------------------------------------------------------------------ buttons */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; padding: 0 22px;
-  border-radius: 12px; border: 1px solid var(--ink); background: var(--ink); color: #fff; font-weight: 600; font-size: 15px;
-  cursor: pointer; text-decoration: none; white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 8px 20px -10px rgba(14,26,43,.55);
-  transition: background .15s, border-color .15s, box-shadow .15s, transform .06s;
-}
-.btn:hover:not(:disabled) { background: var(--ink-2); border-color: var(--ink-2); }
-.btn:active:not(:disabled) { transform: translateY(1px); }
-.btn:disabled { opacity: .38; cursor: not-allowed; box-shadow: none; }
-.btn.lg { height: 54px; font-size: 16px; border-radius: 14px; }
-.btn.block { width: 100%; }
-.btn.ghost { background: var(--surface); color: var(--ink); border-color: var(--line-2); box-shadow: var(--shadow-sm); }
-.btn.ghost:hover:not(:disabled) { border-color: var(--ink); background: var(--surface); }
-.btn.sm { height: 36px; padding: 0 14px; font-size: 14px; border-radius: 10px; }
-.btn svg { width: 18px; height: 18px; flex: none; }
-.linkish { background: none; border: 0; padding: 4px 2px; color: var(--muted); cursor: pointer; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
-.linkish:hover { color: var(--ink); }
-
-/* ------------------------------------------------------------------ top bar */
-.topbar { position: sticky; top: 0; z-index: 30; background: rgba(245, 246, 243, .85);
-          -webkit-backdrop-filter: saturate(180%) blur(14px); backdrop-filter: saturate(180%) blur(14px);
-          border-bottom: 1px solid var(--line); }
-.topbar .container { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 64px; }
-.brand { display: flex; align-items: center; gap: 11px; min-width: 0; text-decoration: none; }
-.brand img { width: 34px; height: 34px; flex: none; }
-.brand b { display: block; font-size: 16px; font-weight: 650; letter-spacing: -.01em; line-height: 1.15; }
-.brand small { display: block; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
-.top-actions { display: flex; align-items: center; gap: 8px; }
-.pill { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 999px;
-        background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
-
-/* ------------------------------------------------------------------ progress (steps 2-4) */
-.steps { display: flex; gap: 8px; list-style: none; margin: 22px 0 0; padding: 0; }
-.steps li { flex: 1; font-size: 13px; font-weight: 500; color: var(--faint); padding-top: 10px; border-top: 3px solid var(--line-2); transition: color .2s, border-color .2s; }
-.steps li.on { color: var(--ink); border-color: var(--ink); }
-body[data-step="1"] .steps { display: none; }
-
-.alert { border-radius: 12px; padding: 12px 16px; font-size: 14.5px; margin: 18px 0 0; border: 1px solid; }
-.notice { border-radius: 12px; padding: 11px 14px; font-size: 14px; border: 1px solid #EDD8B4; background: var(--warn-soft); color: #6D4411; margin: 12px 0 0; }
-.notice.stop, .alert { border-color: #F0C9C2; background: var(--danger-soft); color: #7C2A1F; }
-
-/* ================================================================== STEP 1: landing */
-.hero { display: grid; grid-template-columns: 1.14fr .86fr; gap: 52px; align-items: center; padding: 64px 0 48px; }
-.eyebrow { display: inline-flex; align-items: center; gap: 9px; height: 32px; padding: 0 13px 0 11px; border-radius: 999px;
-           background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--ink-2); box-shadow: var(--shadow-sm); }
-.hero h1 { font-size: clamp(36px, 4.9vw, 58px); line-height: 1.02; letter-spacing: -.04em; font-weight: 700; margin: 20px 0 18px; }
-.hero h1 span { color: var(--muted); }
-.lead { font-size: 18px; color: var(--muted); max-width: 31em; }
-.trust { list-style: none; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(2, max-content); gap: 12px 28px; font-size: 14.5px; color: var(--ink-2); }
-.trust li { display: flex; align-items: center; gap: 9px; }
-.trust svg { width: 18px; height: 18px; color: var(--accent); flex: none; }
-
-.upload { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 10px; box-shadow: var(--shadow); }
-.drop { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 46px 24px 40px; border-radius: 16px;
-        border: 1.5px dashed var(--line-2); background: linear-gradient(180deg, var(--surface-2), var(--surface)); cursor: pointer;
-        transition: border-color .15s, background .15s; }
-.drop:hover, .drop.over { border-color: var(--ink); background: var(--surface); }
-.drop-icon { width: 60px; height: 60px; border-radius: 18px; background: var(--ink); color: #fff; display: grid; place-items: center;
-             box-shadow: 0 14px 28px -12px rgba(14,26,43,.6); margin-bottom: 18px; transition: transform .2s; }
-.drop:hover .drop-icon, .drop.over .drop-icon { transform: translateY(-3px); }
-.drop-icon svg { width: 28px; height: 28px; }
-.drop strong { font-size: 20px; font-weight: 650; letter-spacing: -.015em; }
-.drop .muted { font-size: 14.5px; margin-top: 4px; }
-.drop .fake-btn { margin-top: 22px; pointer-events: none; }
-.chips { display: flex; gap: 6px; justify-content: center; margin-top: 18px; }
-.chip { font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: var(--sunk); color: var(--muted); }
-.upload-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 4px; font-size: 13px; color: var(--muted); }
-.upload-foot span { display: inline-flex; align-items: center; gap: 6px; }
-.upload-foot svg { width: 14px; height: 14px; }
-
-.section { padding: 36px 0; }
-.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-.section h2 { font-size: 24px; font-weight: 650; }
-.section .sub { color: var(--muted); margin-top: 4px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
-
-.recent-list { display: grid; gap: 8px; }
-.recent-item { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line);
-               border-radius: 14px; padding: 14px 16px; cursor: pointer; box-shadow: var(--shadow-sm); transition: border-color .15s, transform .06s; }
-.recent-item:hover { border-color: var(--line-2); }
-.recent-item:active { transform: translateY(1px); }
-.recent-item .code { font-family: var(--mono); font-weight: 650; font-size: 17px; letter-spacing: .12em; }
-.recent-item .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.recent-item .file { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
-.recent-item .stage { font-size: 13.5px; }
-.recent-item::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--faint); border-top: 2px solid var(--faint); transform: rotate(45deg); flex: none; }
-
-.how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.how .card { padding: 22px; position: relative; }
-.how .ico { width: 42px; height: 42px; border-radius: 12px; background: var(--sunk); display: grid; place-items: center; color: var(--ink); margin-bottom: 16px; }
-.how .ico svg { width: 22px; height: 22px; }
-.how .n { position: absolute; top: 20px; right: 20px; font-family: var(--mono); font-size: 13px; color: var(--faint); }
-.how h3 { font-size: 17px; font-weight: 650; margin-bottom: 4px; }
-.how p { color: var(--muted); font-size: 14.5px; }
-
-.prices { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-.price { display: flex; align-items: center; gap: 16px; padding: 20px 22px; }
-.swatch { width: 44px; height: 44px; border-radius: 12px; flex: none; border: 1px solid var(--line); }
-.swatch.bw { background: linear-gradient(135deg, #111 0 50%, #fff 50% 100%); }
-.swatch.color { background: conic-gradient(from 200deg, #E4453A, #F2B233, #2FA36B, #2F7BE4, #9B51E0, #E4453A); }
-.price .what { flex: 1; }
-.price .what span { display: block; color: var(--muted); font-size: 14px; }
-.price b { font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
-.price small { color: var(--muted); font-size: 14px; font-weight: 500; }
-
-.faq { padding: 4px 22px; }
-.faq details { border-bottom: 1px solid var(--line); }
-.faq details:last-child { border-bottom: 0; }
-.faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; font-weight: 600; }
-.faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: ""; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .2s; margin-right: 4px; flex: none; }
-.faq details[open] summary::after { transform: rotate(-135deg); }
-.faq details p { color: var(--muted); padding: 0 0 18px; max-width: 60em; }
-
-/* ================================================================== STEP 2: check + options */
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 26px 0 18px; }
-.page-head h1 { font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
-.page-head p { color: var(--muted); margin-top: 4px; }
-.setup { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 24px; align-items: start; }
-.viewer { background: #252E3A; border-radius: 20px; padding: 18px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.04); }
-.preview { max-height: 74vh; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 6px; }
-.preview canvas, .preview img { max-width: 100%; height: auto; background: #fff; border-radius: 2px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.6); }
-.preview.bw canvas, .preview.bw img { filter: grayscale(1); }
-.preview .pnum { font-family: var(--mono); font-size: 12px; color: #AAB5C2; margin-top: -6px; }
-.preview::-webkit-scrollbar { width: 10px; }
-.preview::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 10px; }
-.viewer-note { color: #AAB5C2; font-size: 13px; text-align: center; padding: 10px 0 2px; min-height: 18px; }
-
-.options { position: sticky; top: 84px; padding: 22px; }
-.file-head { display: flex; gap: 12px; align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.file-ico { width: 40px; height: 40px; border-radius: 10px; background: var(--sunk); display: grid; place-items: center; flex: none; }
-.file-ico svg { width: 20px; height: 20px; }
-.filename { font-weight: 600; word-break: break-word; line-height: 1.3; }
-.opt { padding-top: 18px; }
-.opt-label { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; display: flex; justify-content: space-between; }
-.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--sunk); border-radius: 12px; }
-.seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg label { display: block; text-align: center; padding: 9px 8px; border-radius: 9px; cursor: pointer; font-weight: 550; font-size: 14.5px; color: var(--muted);
-             transition: background .15s, color .15s, box-shadow .15s; }
-.seg label small { display: block; font-size: 12.5px; font-weight: 500; color: var(--faint); }
-.seg input:checked + label { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(14,26,43,.08), 0 4px 12px -4px rgba(14,26,43,.14); }
-.seg input:checked + label small { color: var(--muted); }
-.seg input:disabled + label { opacity: .4; cursor: not-allowed; }
-.seg input:focus-visible + label { outline: 2px solid var(--focus); }
-.pages-input { width: 100%; height: 46px; margin-top: 10px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface);
-               font-family: var(--mono); font-size: 15px; transition: border-color .15s, box-shadow .15s; }
-.pages-input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px rgba(14,26,43,.08); }
-.pages-input.bad { border-color: var(--danger); }
-.hint { font-size: 12.5px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
-.pages-msg { font-size: 13.5px; margin-top: 8px; min-height: 0; }
-.pages-msg:empty { display: none; }
-.pages-msg.bad { color: var(--danger); font-weight: 550; }
-.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: var(--surface); }
-.stepper button { width: 46px; height: 44px; border: 0; background: none; font-size: 20px; cursor: pointer; color: var(--ink); }
-.stepper button:hover:not(:disabled) { background: var(--sunk); }
-.stepper button:disabled { color: var(--line-2); cursor: not-allowed; }
-.stepper output { min-width: 52px; text-align: center; font-weight: 650; font-size: 17px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); line-height: 44px; }
-.bill { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-.bill .line { color: var(--muted); font-size: 14px; }
-.bill .total-row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 2px; }
-.bill .total-row span:first-child { font-weight: 600; }
-.bill .total { font-size: 32px; font-weight: 700; letter-spacing: -.03em; }
-.bill .note { font-size: 13px; color: var(--muted); }
-.bill .note:empty { display: none; }
-.continue { margin-top: 18px; }
-.change { text-align: center; margin-top: 10px; }
-
-/* ================================================================== STEP 3: pay */
-.panel { max-width: 520px; margin: 34px auto 0; padding: 28px; }
-.panel h2 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
-.bar { height: 6px; background: var(--sunk); border-radius: 999px; overflow: hidden; margin: 20px 0 10px; }
-.bar > i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 999px; transition: width .2s; }
-.summary { margin: 18px 0 4px; }
-.summary .line { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
-.summary .line span:first-child { color: var(--muted); }
-.summary .line span:last-child { text-align: right; font-weight: 500; word-break: break-word; }
-.summary .line:last-child { border: 0; padding-top: 16px; font-size: 22px; font-weight: 700; }
-.summary .line:last-child span:first-child { color: var(--ink); }
-.secure { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; color: var(--muted); margin-top: 12px; }
-.secure svg { width: 14px; height: 14px; }
-
-/* ================================================================== STEP 4: ticket */
-.ticket { max-width: 460px; margin: 30px auto 0; background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; }
-.ticket-top { background: var(--ink); color: #fff; text-align: center; padding: 28px 24px 34px;
-              background-image: radial-gradient(420px 180px at 50% -40%, rgba(47, 163, 107, .35), transparent 70%); }
-.ticket-top .label { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: #9FB0C3; font-weight: 600; }
-.ticket-top .code { font-family: var(--mono); font-size: clamp(54px, 17vw, 78px); font-weight: 650; letter-spacing: .14em; line-height: 1.05; margin: 10px 0 6px; padding-left: .14em; }
-.ticket-top .sub { font-size: 13.5px; color: #B5C2D0; }
-.perf { position: relative; height: 0; border-top: 2px dashed var(--line-2); margin: 0 26px; }
-.perf::before, .perf::after { content: ""; position: absolute; top: -13px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); }
-.perf::before { left: -39px; } .perf::after { right: -39px; }
-.ticket-body { padding: 22px 26px 26px; }
-.state { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 18px; font-weight: 650; text-align: center; }
-.ticket-body .msg { text-align: center; color: var(--muted); margin-top: 6px; font-size: 14.5px; }
-.ticket-body .msg:empty { display: none; }
-.track { list-style: none; padding: 0; margin: 20px 0 0; }
-.track li { position: relative; display: flex; gap: 12px; align-items: center; padding: 9px 0; color: var(--faint); font-weight: 500; }
-.track li:not(:last-child)::after { content: ""; position: absolute; left: 3.5px; top: 26px; bottom: -8px; width: 1px; background: var(--line-2); }
-.track li.done { color: var(--ink); }
-.track li.now { color: var(--ink); font-weight: 650; }
-.details { font-size: 13.5px; color: var(--muted); margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); word-break: break-word; }
-.ticket-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-.ticket-actions .btn.block { grid-column: 1 / -1; }
-.ticket-actions:has(#notifyBtn.hidden) #shareBtn { grid-column: 1 / -1; }
-.notify-note { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
-.notify-note:empty { display: none; }
-
-/* ================================================================== footer */
-.footer { margin-top: 64px; border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
-.footer .container { display: flex; align-items: center; justify-content: space-between; gap: 14px 24px; flex-wrap: wrap; }
-.footer .brand img { width: 26px; height: 26px; }
-.footer .brand b { font-size: 14px; }
-.credit { line-height: 1.6; }
-.credit b { color: var(--ink); font-weight: 600; white-space: nowrap; }
-.credit .dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--line-2); vertical-align: middle; margin: 0 8px; }
-
-/* ================================================================== small screens */
-@media (max-width: 900px) {
-  .hero { grid-template-columns: 1fr; gap: 32px; padding: 36px 0 28px; }
-  .setup { grid-template-columns: 1fr; }
-  .options { position: static; }
-  .how { grid-template-columns: 1fr; }
-}
-@media (max-width: 560px) {
-  .container { padding: 0 16px; }
-  .footer .container { flex-direction: column; align-items: flex-start; }
-  .brand small { max-width: 36vw; }
-  .pill .pill-text { display: none; }
-  .pill { padding: 0 11px; }
-  .lead { font-size: 16.5px; }
-  .trust { grid-template-columns: 1fr; }
-  .prices { grid-template-columns: 1fr; }
-  .drop { padding: 36px 18px 32px; }
-  .page-head h1 { font-size: 26px; }
-  .panel { padding: 22px; margin-top: 20px; }
-  .ticket-actions { grid-template-columns: 1fr; }
-  .viewer { padding: 10px; border-radius: 16px; }
-  .preview { max-height: 62vh; }
-}
-</style>
+<link rel="stylesheet" href="css/app.css">
 </head>
-<body data-step="1">
+<body data-step="choose">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.5 17 19 7.5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-rotl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-rotr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+  </defs>
+</svg>
 
 <header class="topbar">
   <div class="container">
@@ -326,9 +49,7 @@ body[data-step="1"] .steps { display: none; }
       <span><b>Campus Print</b><small id="centerName">Xerox Center</small></span>
     </a>
     <div class="top-actions">
-      <button class="btn ghost sm hidden" id="installBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>
-        Install app</button>
+      <button class="btn ghost sm hidden" id="installBtn" type="button"><svg><use href="#i-upload"/></svg>Install app</button>
       <div class="pill" id="printerChip" aria-live="polite"><span class="lamp"></span><span class="pill-text">Checking printers&hellip;</span></div>
     </div>
   </div>
@@ -336,37 +57,38 @@ body[data-step="1"] .steps { display: none; }
 
 <main class="container">
   <ol class="steps" aria-label="Steps">
-    <li id="st1" class="on">1. Choose</li><li id="st2">2. Check</li><li id="st3">3. Pay</li><li id="st4">4. Collect</li>
+    <li data-s="setup">1. Add &amp; set up</li><li data-s="review">2. Review &amp; pay</li><li data-s="status">3. Collect</li>
   </ol>
 
   <div id="globalError" class="alert hidden" role="alert"></div>
 
-  <!-- ============================== STEP 1: CHOOSE ============================== -->
+  <!-- ============================== LANDING ============================== -->
   <section id="s-choose">
     <div class="hero">
       <div>
         <span class="eyebrow"><span class="lamp ready"></span><span><span data-center>Xerox Center</span> &middot; online printing</span></span>
         <h1>Print from your phone.<br><span>Skip the queue.</span></h1>
-        <p class="lead">Send a PDF or photo, choose the pages, pay with UPI, and collect your prints with a pickup code. No login, no waiting in line.</p>
+        <p class="lead">Add all your PDFs and photos at once, choose pages, sides, paper and copies for each, pay with UPI,
+          and collect everything with one pickup code.</p>
         <ul class="trust">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.5 17 19 7.5"/></svg>No account needed</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.5 17 19 7.5"/></svg>UPI, cards &amp; wallets</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.5 17 19 7.5"/></svg>Pay only for the pages you pick</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 9.5 17 19 7.5"/></svg>Files deleted after printing</li>
+          <li><svg><use href="#i-check"/></svg>Many files in one order</li>
+          <li><svg><use href="#i-check"/></svg>See every page before paying</li>
+          <li><svg><use href="#i-check"/></svg>Pay only for the pages you pick</li>
+          <li><svg><use href="#i-check"/></svg>No account &middot; files deleted after printing</li>
         </ul>
       </div>
 
       <div class="upload">
         <label class="drop" id="drop" for="fileInput">
-          <span class="drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
-          <strong>Choose a file to print</strong>
-          <span class="muted">or drop it here &middot; up to <span id="maxMb">50</span> MB</span>
-          <span class="btn fake-btn">Browse files</span>
-          <span class="chips"><span class="chip">PDF</span><span class="chip">JPG</span><span class="chip">PNG</span></span>
-          <input id="fileInput" type="file" class="hidden" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+          <span class="drop-icon"><svg><use href="#i-upload"/></svg></span>
+          <strong>Add files to print</strong>
+          <span class="muted">Drop them here, or choose several at once</span>
+          <span class="btn fake-btn">Choose files</span>
+          <span class="chips"><span class="chip">PDF</span><span class="chip">JPG</span><span class="chip">PNG</span><span class="chip-note">up to <span data-maxmb>50</span> MB each</span></span>
+          <input id="fileInput" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
         </label>
         <div class="upload-foot">
-          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Private: only the Xerox center can print it</span>
+          <span><svg><use href="#i-lock"/></svg>Private: only the Xerox center can print them</span>
           <span>You see the price before paying</span>
         </div>
       </div>
@@ -378,134 +100,163 @@ body[data-step="1"] .steps { display: none; }
     </div>
 
     <div class="section">
-      <div class="section-head"><div><h2>How it works</h2><p class="sub">Three steps. Your prints wait for you, not the other way round.</p></div></div>
+      <div class="section-head"><div><h2>How it works</h2><p class="sub">Your prints wait for you, not the other way round.</p></div></div>
       <div class="how">
         <div class="card"><span class="n">01</span>
-          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6m-2.5 2.5L12 12l2.5 2.5"/></svg></div>
-          <h3>Upload</h3><p>Choose a PDF or photo. Pick all pages or just the ones you need, B/W or colour, and how many copies.</p></div>
+          <div class="ico"><svg><use href="#i-upload"/></svg></div>
+          <h3>Add your files</h3><p>All of them at once. For each: which pages, copies, colour or B/W, one- or two-sided, paper size and more.</p></div>
         <div class="card"><span class="n">02</span>
-          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg></div>
-          <h3>Pay</h3><p>Pay securely with UPI, card or wallet. The exact price is shown before you pay.</p></div>
+          <div class="ico"><svg><use href="#i-lock"/></svg></div>
+          <h3>Check &amp; pay</h3><p>See a preview of every sheet and the exact price, then pay with UPI, card or wallet.</p></div>
         <div class="card"><span class="n">03</span>
-          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4a2 2 0 0 0 0-4z"/><path d="M13 6v2m0 3v2m0 3v2"/></svg></div>
+          <div class="ico"><svg><use href="#i-check"/></svg></div>
           <h3>Collect</h3><p>When your order says Ready, show your pickup code at the counter and take your pages.</p></div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-head"><div><h2>Prices</h2><p class="sub">Per printed page. No hidden charges.</p></div></div>
+      <div class="section-head"><div><h2>Prices</h2><p class="sub">Per printed side. A two-sided sheet is two sides. No hidden charges.</p></div></div>
       <div class="prices">
-        <div class="card price"><span class="swatch bw"></span><span class="what">Black &amp; white<span>Notes, assignments, forms</span></span><b id="priceBw">&ndash;</b><small>/page</small></div>
-        <div class="card price"><span class="swatch color"></span><span class="what">Colour<span>Photos, charts, covers</span></span><b id="priceColor">&ndash;</b><small>/page</small></div>
+        <div class="card price"><span class="swatch bw"></span><span class="what">Black &amp; white<span>Notes, assignments, forms</span></span><b id="priceBw">&ndash;</b><small>/side</small></div>
+        <div class="card price"><span class="swatch color"></span><span class="what">Colour<span>Photos, charts, covers</span></span><b id="priceColor">&ndash;</b><small>/side</small></div>
       </div>
+      <p class="price-extra" id="priceExtra"></p>
     </div>
 
     <div class="section">
       <div class="section-head"><div><h2>Questions</h2></div></div>
       <div class="card faq">
+        <details><summary>Can I print several files in one order?</summary>
+          <p>Yes. Add as many PDFs and photos as you like, at once or one after another, and set each one up on its own:
+            which pages, how many copies, colour or black &amp; white, one- or two-sided, paper size, pages per sheet and more.
+            You pay once and collect everything with one pickup code.</p></details>
+        <details><summary>Can I print only some pages of a big PDF?</summary>
+          <p>Yes. Tap the pages you want on the thumbnails, or type them, for example <code>3, 7, 10-12</code>. You only pay for those pages.</p></details>
+        <details><summary>Why are some options missing or marked?</summary>
+          <p>You only see what the printers at the Xerox center can really do right now. If an option only works with another
+            choice (for example two-sided only in black &amp; white), it says so, and picking it changes the other choice for you.</p></details>
+        <details><summary>Will my photo be stretched?</summary>
+          <p>Never. Photos keep their proportions: <b>Fit</b> shows the whole photo, <b>Fill</b> covers the page and trims the edges.
+            The preview shows exactly what the paper will look like.</p></details>
+        <details><summary>How do I collect my prints?</summary>
+          <p>Wait until your order says <b>Ready</b>, then show the pickup code at the counter. The code is also printed small on the
+            corner of the first page of each file, so staff find your pages in seconds.</p></details>
         <details><summary>Do I need to sign up?</summary>
           <p>No. Your order is saved on this phone or laptop. Keep this page, or note your pickup code.</p></details>
-        <details><summary>How do I collect my prints?</summary>
-          <p>Wait until your order says <b>Ready</b>, then show the pickup code at the counter. Your code is also printed small on the corner of your first page, so staff find your pages in seconds.</p></details>
-        <details><summary>Can I print only some pages of a big PDF?</summary>
-          <p>Yes. Choose <b>Choose pages</b> and type the pages, for example <code>102</code> or <code>333-390</code> or <code>1-5, 8</code>. You only pay for those pages.</p></details>
         <details><summary>Are my files private?</summary>
           <p>Files are stored privately, can only be downloaded by the Xerox center printer, and are deleted after printing.</p></details>
         <details><summary>Something went wrong after I paid?</summary>
           <p>Your payment is safe. Show your pickup code at the counter: staff will print it again or refund you.</p></details>
-        <details><summary>Can I add this to my home screen?</summary>
-          <p>Yes. On Android tap <b>Install app</b> at the top (or the browser menu &rarr; <i>Add to Home screen</i>). On iPhone tap <b>Share</b> &rarr; <i>Add to Home Screen</i>.</p></details>
       </div>
     </div>
   </section>
 
-  <!-- ============================== STEP 2: CHECK ============================== -->
+  <!-- ============================== WORKSPACE ============================== -->
   <section id="s-setup" class="hidden">
-    <div class="page-head">
-      <div><h1>Check your order</h1><p>Look through the pages, then choose how to print them.</p></div>
-    </div>
-    <div class="setup">
-      <div class="viewer">
-        <div class="preview" id="preview" aria-label="Preview of your file"></div>
-        <p class="viewer-note" id="previewNote"></p>
+    <div class="ws-head">
+      <div>
+        <h1>Your files</h1>
+        <p class="sub" id="wsSub">Set up each file, then review your order.</p>
       </div>
-      <div class="card options">
-        <div class="file-head">
-          <span class="file-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
-          <div style="min-width:0"><div class="filename" id="fileName"></div><div class="muted small" id="fileInfo"></div></div>
-        </div>
+      <label class="btn ghost" for="addInput"><svg><use href="#i-plus"/></svg>Add files
+        <input id="addInput" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+    </div>
 
-        <div class="opt hidden" id="pagesBox">
-          <div class="opt-label">Pages</div>
-          <div class="seg" role="radiogroup" aria-label="Pages">
-            <input type="radio" name="pmode" id="pagesAll" value="all" checked>
-            <label for="pagesAll">All pages<small id="pagesAllN"></small></label>
-            <input type="radio" name="pmode" id="pagesSome" value="some">
-            <label for="pagesSome">Choose pages<small>e.g. 5, 10-20</small></label>
-          </div>
-          <div id="pagesPick" class="hidden">
-            <input id="pagesInput" class="pages-input" autocomplete="off" spellcheck="false" maxlength="200"
-                   placeholder="102  or  333-390  or  1-5, 8" aria-label="Pages to print">
-            <p class="hint">Use the PDF's own page numbers (page 1 = first page of the file). They can differ from numbers printed on the pages, so check the preview.</p>
-          </div>
-          <div class="pages-msg" id="pagesMsg" aria-live="polite"></div>
-        </div>
+    <div class="workspace">
+      <aside class="queue" aria-label="Files in this order">
+        <div class="queue-top" id="queueTop" aria-live="polite"></div>
+        <div class="queue-list" id="queueList"></div>
+        <label class="queue-add" for="addInput2"><svg><use href="#i-plus"/></svg><span>Add more files<small>or drop them anywhere</small></span>
+          <input id="addInput2" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+      </aside>
 
-        <div class="opt">
-          <div class="opt-label">Print</div>
-          <div class="seg" role="radiogroup" aria-label="Colour">
-            <input type="radio" name="mode" id="modeBw" value="bw" checked>
-            <label for="modeBw">Black &amp; white<small id="segBw"></small></label>
-            <input type="radio" name="mode" id="modeColor" value="color">
-            <label for="modeColor">Colour<small id="segColor"></small></label>
+      <div class="editor" id="editor" aria-label="File settings">
+        <div class="editor-head">
+          <button class="icon-btn phone-only" id="edClose" type="button" aria-label="Back to all files"><svg><use href="#i-left"/></svg></button>
+          <div class="ed-title">
+            <div class="ed-name" id="edName"></div>
+            <div class="ed-meta" id="edMeta"></div>
           </div>
-          <div class="hint" id="colorNote"></div>
-        </div>
-
-        <div class="opt">
-          <div class="opt-label">Copies</div>
-          <div class="stepper">
-            <button type="button" id="minus" aria-label="One copy less">&minus;</button>
-            <output id="copies" aria-live="polite">1</output>
-            <button type="button" id="plus" aria-label="One copy more">+</button>
+          <div class="ed-nav">
+            <button class="icon-btn" id="edPrev" type="button" aria-label="Previous file"><svg><use href="#i-left"/></svg></button>
+            <span id="edPos"></span>
+            <button class="icon-btn" id="edNext" type="button" aria-label="Next file"><svg><use href="#i-right"/></svg></button>
           </div>
         </div>
+        <div class="editor-body">
+          <div class="preview-panel">
+            <div class="pv-tabs" role="tablist">
+              <button role="tab" id="tabPreview" class="on" aria-selected="true" type="button">Print preview</button>
+              <button role="tab" id="tabPages" aria-selected="false" type="button">Choose pages</button>
+            </div>
+            <div class="pv-stage" id="pvStage">
+              <canvas id="sheetCanvas" aria-label="Preview of the printed sheet"></canvas>
+              <div class="pv-empty hidden" id="pvEmpty"></div>
+            </div>
+            <div class="pv-foot" id="pvFoot">
+              <button class="icon-btn" id="sheetPrev" type="button" aria-label="Previous sheet"><svg><use href="#i-left"/></svg></button>
+              <span id="sheetLabel"></span>
+              <button class="icon-btn" id="sheetNext" type="button" aria-label="Next sheet"><svg><use href="#i-right"/></svg></button>
+            </div>
+            <div class="pages-panel hidden" id="pagesPanel">
+              <div class="pages-bar">
+                <span id="pagesBarText"></span>
+                <span class="quick">
+                  <button type="button" data-quick="all">All</button><button type="button" data-quick="none">None</button><button type="button" data-quick="odd">Odd</button>
+                  <button type="button" data-quick="even">Even</button><button type="button" data-quick="invert">Invert</button>
+                </span>
+              </div>
+              <div class="pages-grid" id="pagesGrid"></div>
+            </div>
+          </div>
 
-        <div class="bill">
-          <div class="line" id="billLine">&ndash;</div>
-          <div class="total-row"><span>Total</span><span class="total" id="billTotal">&ndash;</span></div>
-          <div class="note" id="billNote"></div>
+          <div class="settings-panel" id="settingsPanel"></div>
         </div>
-        <p id="offlineNote" class="notice hidden"></p>
-        <button class="btn lg block continue" id="continueBtn">Continue to payment</button>
-        <div class="change"><button class="linkish" id="changeFile">Choose a different file</button></div>
+        <div class="editor-foot phone-only">
+          <div><b id="edPrice">&ndash;</b><small id="edPriceSub"></small></div>
+          <button class="btn" id="edDone" type="button">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="checkout-bar" id="checkoutBar">
+      <div class="container">
+        <div class="cb-sum"><b id="cbTotal">&ndash;</b><span id="cbDetail"></span></div>
+        <div class="cb-go">
+          <button class="cb-why" id="cbWhy" type="button"></button>
+          <button class="btn lg" id="reviewBtn" type="button">Review order</button>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ============================== STEP 3: PAY ============================== -->
-  <section id="s-pay" class="hidden">
-    <div class="card panel">
-      <div id="uploadBox">
-        <h2>Sending your file&hellip;</h2>
-        <p class="muted small">Please keep this page open.</p>
-        <div class="bar"><i id="bar"></i></div>
-        <p class="small muted" id="uploadText">Starting&hellip;</p>
+  <!-- ============================== REVIEW & PAY ============================== -->
+  <section id="s-review" class="hidden">
+    <div class="rv-head">
+      <div>
+        <h1>Review and pay</h1>
+        <p class="sub">Checked by the Xerox center. This is exactly what will be printed.</p>
       </div>
-      <div id="payBox" class="hidden">
-        <h2>Review and pay</h2>
-        <p class="muted small">Your file is checked. This is the final price.</p>
-        <div class="summary" id="summary"></div>
+      <button class="btn ghost" id="editBtn" type="button"><svg><use href="#i-left"/></svg>Change something</button>
+    </div>
+    <div class="review">
+      <div class="rv-docs" id="rvDocs"></div>
+      <aside class="card rv-pay">
+        <h2>Order total</h2>
+        <div class="rv-lines" id="rvLines"></div>
+        <div class="rv-total"><span>Total</span><b id="rvTotal">&ndash;</b></div>
+        <p id="rvNote" class="rv-note"></p>
+        <p id="offlineNote" class="notice hidden"></p>
         <p id="demoNote" class="notice hidden">Test mode: no real money is taken.</p>
         <p id="payError" class="notice stop hidden" role="alert"></p>
-        <button class="btn lg block" id="payBtn" style="margin-top:18px">Pay</button>
-        <div class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure payment by Razorpay &middot; UPI, cards, wallets</div>
-        <div class="change"><button class="linkish" id="cancelBtn">Cancel this order</button></div>
-      </div>
+        <button class="btn lg block" id="payBtn" type="button">Pay</button>
+        <div class="secure"><svg><use href="#i-lock"/></svg>Secure payment by Razorpay &middot; UPI, cards, wallets</div>
+        <div class="change"><button class="linkish" id="cancelBtn" type="button">Cancel this order</button></div>
+      </aside>
     </div>
   </section>
 
-  <!-- ============================== STEP 4: COLLECT ============================== -->
+  <!-- ============================== COLLECT ============================== -->
   <section id="s-status" class="hidden">
     <div class="ticket">
       <div class="ticket-top">
@@ -518,15 +269,12 @@ body[data-step="1"] .steps { display: none; }
         <div class="state" aria-live="polite"><span class="lamp" id="tLamp"></span><span id="tStage"></span></div>
         <p class="msg" id="tMessage"></p>
         <ul class="track" id="track"></ul>
+        <ul class="t-docs" id="tDocs"></ul>
         <p class="details" id="tDetails"></p>
         <div class="ticket-actions">
-          <button class="btn ghost hidden" id="notifyBtn" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
-            Notify me when ready</button>
-          <button class="btn ghost" id="shareBtn" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
-            Tell a friend</button>
-          <button class="btn block" id="newBtn">Print another file</button>
+          <button class="btn ghost hidden" id="notifyBtn" type="button">Notify me when ready</button>
+          <button class="btn ghost" id="shareBtn" type="button">Tell a friend</button>
+          <button class="btn block" id="newBtn" type="button">Print more files</button>
         </div>
         <p class="notify-note" id="notifyNote"></p>
       </div>
@@ -541,710 +289,13 @@ body[data-step="1"] .steps { display: none; }
   </div>
 </footer>
 
+<div class="drop-overlay hidden" id="dropOverlay" aria-hidden="true">
+  <div><svg><use href="#i-upload"/></svg><b>Drop to add</b><span>PDF, JPG and PNG files</span></div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
 <script src="config.js"></script>
-<script>
-"use strict";
-const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
-const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
-const PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";
-const RAZORPAY_JS = "https://checkout.razorpay.com/v1/checkout.js";
-const MAX_PREVIEW_PAGES = 12;          // enough to check the file; keeps phones fast
-const FINAL = ["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"];
-
-const $ = (id) => document.getElementById(id);
-const state = {
-  shop: null, file: null, fileType: null, color: false, copies: 1, order: null, poll: null,
-  pdf: null,            // the open PDF (PDF.js), for drawing the preview
-  filePages: 0,         // pages in the file
-  pages: 0,             // pages that will print (per copy)
-  pageRanges: [],       // chosen pages as [from, to] pairs, 1-based
-  pageSpec: "",         // chosen pages as sent to the server, "" = all
-  pageError: null,      // why the page choice cannot be used, or null
-  ready: false,         // file opened and checked
-  renderToken: 0, redraw: null
-};
-
-/* ---------------- helpers ---------------- */
-function rupees(paise) {
-  if (paise == null) return "\u2013";
-  return "\u20B9" + (paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2));
-}
-function showError(msg) {
-  const box = $("globalError");
-  if (!msg) { box.classList.add("hidden"); return; }
-  box.textContent = msg;
-  box.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-function show(section, step) {
-  ["s-choose", "s-setup", "s-pay", "s-status"].forEach(s => $(s).classList.toggle("hidden", s !== section));
-  for (let i = 1; i <= 4; i++) $("st" + i).classList.toggle("on", i === step);
-  document.body.dataset.step = String(step);
-  window.scrollTo({ top: 0 });
-}
-async function api(method, path, body, key) {
-  const headers = {};
-  if (body !== undefined && body !== null) headers["Content-Type"] = "application/json";
-  if (key) headers["X-Order-Key"] = key;
-  let res;
-  try {
-    res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body) });
-  } catch (e) {
-    throw new Error("Cannot reach the print service. Check your internet connection and try again.");
-  }
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
-  if (!res.ok) {
-    const err = new Error((data && data.message) || ("Something went wrong (" + res.status + ")."));
-    err.code = data && data.error;
-    err.status = res.status;
-    throw err;
-  }
-  return data;
-}
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector('script[src="' + src + '"]')) return resolve();
-    const s = document.createElement("script");
-    s.src = src; s.onload = resolve;
-    s.onerror = () => reject(new Error("Could not load the payment screen. Check your internet."));
-    document.head.appendChild(s);
-  });
-}
-
-/* ---------------- orders remembered on this device ---------------- */
-const STORE = "campusprint.orders";
-function recent() {
-  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); } catch (e) { return []; }
-}
-function forget(orderId) {
-  localStorage.setItem(STORE, JSON.stringify(recent().filter(x => x.orderId !== orderId)));
-}
-function remember(o) {
-  const list = recent().filter(x => x.orderId !== o.orderId);
-  list.unshift(o);
-  localStorage.setItem(STORE, JSON.stringify(list.slice(0, 15)));
-}
-async function renderRecent() {
-  const list = recent();
-  $("recentBox").classList.toggle("hidden", list.length === 0);
-  const box = $("recentList");
-  box.innerHTML = "";
-  for (const o of list) {
-    const b = document.createElement("button");
-    b.className = "recent-item";
-    b.innerHTML = '<span class="lamp"></span><span class="code"></span><span class="grow"><span class="file"></span>' +
-                  '<span class="small muted stage">...</span></span>';
-    b.querySelector(".code").textContent = o.code;
-    b.querySelector(".file").textContent = o.fileName;
-    b.onclick = () => openStatus(o);
-    box.appendChild(b);
-    api("GET", "/api/v1/orders/" + o.orderId, null, o.key).then(v => {
-      b.querySelector(".stage").textContent = " \u00B7 " + v.stage;
-      b.querySelector(".lamp").className = "lamp " + lampFor(v);
-    }).catch(err => {
-      if (err.status === 404) { forget(o.orderId); b.remove(); }   // order no longer exists
-    });
-  }
-}
-
-/* ---------------- shop info ---------------- */
-async function loadShop() {
-  try {
-    const s = await api("GET", "/api/v1/shop");
-    state.shop = s;
-    $("centerName").textContent = s.centerName;
-    document.querySelectorAll("[data-center]").forEach(e => { e.textContent = s.centerName; });
-    $("priceBw").textContent = rupees(s.priceBwPaise);
-    $("priceColor").textContent = rupees(s.priceColorPaise);
-    $("maxMb").textContent = Math.round(s.maxFileSizeBytes / 1048576);
-    const online = s.bwOnline || s.colorOnline;
-    $("printerChip").innerHTML = '<span class="lamp ' + (online ? "ready" : "stop") + '"></span><span class="pill-text">' +
-      (online ? "Printers online" : "Printers offline") +
-      (s.ordersWaiting ? " \u00B7 " + s.ordersWaiting + " in queue" : "") + "</span>";
-  } catch (e) {
-    $("printerChip").innerHTML = '<span class="lamp stop"></span><span class="pill-text">Service unreachable</span>';
-    showError(e.message);
-  }
-}
-
-/* ---------------- step 1: choose ---------------- */
-async function detectType(file) {
-  const b = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
-  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "PNG";
-  if (b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "JPEG";
-  for (let i = 0; i + 4 < b.length; i++) {
-    if (b[i] === 0x25 && b[i + 1] === 0x50 && b[i + 2] === 0x44 && b[i + 3] === 0x46 && b[i + 4] === 0x2D) return "PDF";
-  }
-  return null;
-}
-
-async function chooseFile(file) {
-  showError(null);
-  if (!file) return;
-  if (!state.shop) await loadShop();
-  if (!state.shop) return;
-  if (file.size > state.shop.maxFileSizeBytes) {
-    return showError("This file is too big. The limit is " + Math.round(state.shop.maxFileSizeBytes / 1048576) + " MB.");
-  }
-  const type = await detectType(file);
-  if (!type) return showError("Only PDF, PNG and JPG files can be printed.");
-
-  if (state.pdf) { state.pdf.destroy(); state.pdf = null; }
-  state.file = file; state.fileType = type; state.copies = 1; state.color = false; state.ready = false;
-  state.filePages = 0; state.pages = 0; state.pageRanges = []; state.pageSpec = ""; state.pageError = null;
-  $("modeBw").checked = true;
-  $("pagesAll").checked = true;
-  $("pagesInput").value = "";
-  $("pagesBox").classList.add("hidden");
-  $("fileName").textContent = file.name;
-  $("fileInfo").textContent = "Opening...";
-  $("preview").innerHTML = "";
-  $("previewNote").textContent = "";
-  $("continueBtn").disabled = true;
-  applyAvailability();
-  show("s-setup", 2);
-
-  try {
-    if (type === "PDF") await previewPdf(file);
-    else await previewImage(file);
-    state.ready = true;
-  } catch (e) {
-    show("s-choose", 1);
-    showError(e.message);
-  }
-  updateBill();
-}
-
-async function previewPdf(file) {
-  const pdfjs = await import(PDFJS);
-  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-  let doc;
-  try {
-    doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  } catch (e) {
-    if (e && e.name === "PasswordException") {
-      throw new Error("This PDF is locked with a password. Save a copy without the password, then choose it again.");
-    }
-    throw new Error("This PDF cannot be opened. It may be damaged.");
-  }
-  if (state.file !== file) { doc.destroy(); return; }   // student picked another file meanwhile
-  const maxFilePages = state.shop.maxFilePages || state.shop.maxPages;
-  if (doc.numPages > maxFilePages) {
-    doc.destroy();
-    throw new Error("This PDF has " + doc.numPages + " pages. Files can have up to " + maxFilePages + " pages.");
-  }
-  state.pdf = doc;
-  state.filePages = doc.numPages;
-  state.pageRanges = [[1, doc.numPages]];   // the preview starts with the first pages of the file
-  $("fileInfo").textContent = doc.numPages + (doc.numPages === 1 ? " page" : " pages") +
-    " \u00B7 " + (file.size / 1048576).toFixed(1) + " MB";
-  $("pagesBox").classList.toggle("hidden", doc.numPages < 2);
-  $("pagesAllN").textContent = doc.numPages + " pages";
-  if (doc.numPages > state.shop.maxPages) {
-    $("pagesSome").checked = true;       // too many to print all: the student must choose
-  }
-  applyPages(false);
-  await renderPdfPreview();
-}
-
-/* ---------------- step 2: which pages ---------------- */
-/**
- * Same rules as the server (PageRanges.java): "102", "333-390", "1-5, 8",
- * "333-" (to the end). Pages print in order, each once.
- */
-function parsePages(text, total) {
-  const t = text.trim().replace(/[\u2013\u2014]/g, "-").replace(/;/g, ",");
-  if (t.length > 200) throw new Error("The page list is too long. Use ranges like 10-50.");
-  const parts = [];
-  for (const raw of t.split(",")) {
-    const p = raw.trim();
-    if (!p) continue;
-    const m = p.match(/^(\d{1,6})(?:\s*-\s*(\d{1,6})?)?$/);
-    if (!m) throw new Error("\u201C" + p + "\u201D is not a page number. Write pages like 5, 10-20 or 1-3, 8.");
-    let from = Number(m[1]);
-    let to = !p.includes("-") ? from : (m[2] === undefined ? total : Number(m[2]));
-    if (to < from) [from, to] = [to, from];
-    if (from < 1) throw new Error("Pages start at 1.");
-    if (to > total) throw new Error("Page " + to + " does not exist: this PDF has " + total + (total === 1 ? " page." : " pages."));
-    parts.push([from, to]);
-  }
-  if (!parts.length) throw new Error("Write the pages you want, like 5 or 10-20.");
-  parts.sort((a, b) => a[0] - b[0]);
-  const merged = [];
-  for (const r of parts) {
-    const last = merged[merged.length - 1];
-    if (last && r[0] <= last[1] + 1) last[1] = Math.max(last[1], r[1]);
-    else merged.push(r.slice());
-  }
-  const count = merged.reduce((n, r) => n + r[1] - r[0] + 1, 0);
-  const spec = merged.map(r => r[0] === r[1] ? String(r[0]) : r[0] + "-" + r[1]).join(",");
-  return { ranges: merged, count, spec: count === total ? "" : spec };
-}
-
-/** Reads the Pages choice, updates the price, and (after a short pause) the preview. */
-function applyPages(redraw) {
-  const total = state.filePages;
-  const some = $("pagesSome").checked;
-  $("pagesPick").classList.toggle("hidden", !some);
-  let ranges = [[1, total]], spec = "", count = total, msg = "", bad = false;
-  if (some) {
-    const text = $("pagesInput").value;
-    if (!text.trim()) {
-      bad = true; msg = "Type the pages you need, for example 102 or 333-390.";
-    } else {
-      try {
-        const r = parsePages(text, total);
-        ranges = r.ranges; spec = r.spec; count = r.count;
-        msg = count + (count === 1 ? " page" : " pages") + " selected" +
-              (spec ? ": " + spec.replace(/,/g, ", ") : " (every page)");
-      } catch (e) {
-        bad = true; msg = e.message;
-      }
-    }
-  }
-  if (!bad && count > state.shop.maxPages) {
-    bad = true;
-    msg = (some ? "You chose " + count + " pages. " : "This file has " + count + " pages. ") +
-          "Up to " + state.shop.maxPages + " pages can be printed per order" + (some ? "." : ": choose the pages you need.");
-  }
-  state.pageError = bad ? msg : null;
-  if (!bad) {
-    const changed = spec !== state.pageSpec || count !== state.pages;
-    state.pageRanges = ranges; state.pageSpec = spec; state.pages = count;
-    if (redraw && changed) { clearTimeout(state.redraw); state.redraw = setTimeout(renderPdfPreview, 350); }
-  }
-  $("pagesInput").classList.toggle("bad", some && bad && $("pagesInput").value.trim() !== "");
-  $("pagesMsg").textContent = some || bad ? msg : "";
-  $("pagesMsg").classList.toggle("bad", bad);
-  updateBill();
-}
-
-/** Draws the first pages of the student's choice, so they can check it is the right part. */
-async function renderPdfPreview() {
-  const doc = state.pdf, file = state.file;
-  if (!doc) return;
-  const token = ++state.renderToken;
-  const wanted = [];
-  for (const [a, b] of state.pageRanges) {
-    for (let n = a; n <= b && wanted.length < MAX_PREVIEW_PAGES; n++) wanted.push(n);
-  }
-  const box = $("preview");
-  const width = Math.min(box.clientWidth - 28, 760) || 600;
-  let first = true;
-  for (const n of wanted) {
-    const page = await doc.getPage(n);
-    const base = page.getViewport({ scale: 1 });
-    const scale = width / base.width;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    const vp = page.getViewport({ scale: scale * dpr });
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-    canvas.style.width = Math.round(vp.width / dpr) + "px";
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
-    if (token !== state.renderToken || state.file !== file) return;    // the choice changed meanwhile
-    if (first) { box.innerHTML = ""; box.scrollTop = 0; first = false; }
-    box.appendChild(canvas);
-    const label = document.createElement("div");
-    label.className = "pnum"; label.textContent = "Page " + n;
-    box.appendChild(label);
-  }
-  // Until a valid choice is typed, the preview shows the start of the file.
-  const shown = state.pageRanges.reduce((n, r) => n + r[1] - r[0] + 1, 0);
-  const wholeFile = shown === state.filePages;
-  let note = "";
-  if (wholeFile) {
-    if (wanted.length < shown) {
-      note = "Showing the first " + wanted.length + " of " + shown + " pages." +
-             (!state.pageSpec && !state.pageError && !$("pagesSome").checked ? " All pages will be printed." : "");
-    }
-  } else {
-    note = wanted.length < shown ? "Showing the first " + wanted.length + " of the " + shown + " pages you chose."
-                                 : "Showing the " + (shown === 1 ? "page" : shown + " pages") + " you chose.";
-  }
-  $("previewNote").textContent = note;
-}
-
-function previewImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.alt = "Your picture";
-    img.onload = () => {
-      state.filePages = 1; state.pages = 1; state.pageRanges = [[1, 1]]; state.pageSpec = "";
-      $("fileInfo").textContent = "Picture \u00B7 " + img.naturalWidth + " \u00D7 " + img.naturalHeight +
-        " \u00B7 printed on one A4 page";
-      $("preview").appendChild(img);
-      resolve();
-    };
-    img.onerror = () => reject(new Error("This picture cannot be opened. It may be damaged."));
-    img.src = URL.createObjectURL(file);
-  });
-}
-
-/* ---------------- step 2: options + price ---------------- */
-function applyAvailability() {
-  const s = state.shop;
-  $("segBw").textContent = rupees(s.priceBwPaise) + " / page";
-  $("segColor").textContent = rupees(s.priceColorPaise) + " / page";
-  $("modeColor").disabled = !s.colorAvailable;
-  $("modeBw").disabled = !s.bwAvailable;
-  if (!s.bwAvailable && s.colorAvailable) { $("modeColor").checked = true; state.color = true; }
-  $("colorNote").textContent = s.colorAvailable ? "" : "Colour printing is not available right now.";
-  const online = state.color ? s.colorOnline : s.bwOnline;
-  $("offlineNote").textContent = "The printers are offline at the moment. You can still order: it prints as soon as they are back.";
-  $("offlineNote").classList.toggle("hidden", online);
-}
-
-function updateBill() {
-  const s = state.shop;
-  if (!s) return;
-  const per = state.color ? s.priceColorPaise : s.priceBwPaise;
-  $("preview").classList.toggle("bw", !state.color);
-  $("copies").textContent = state.copies;
-  $("minus").disabled = state.copies <= 1;
-  $("plus").disabled = state.copies >= s.maxCopies;
-  const blocked = !state.pages || !!state.pageError;
-  $("continueBtn").disabled = !state.ready || blocked;
-  if (blocked) {
-    $("billLine").textContent = state.pageError ? "Choose the pages to print" : "Counting pages...";
-    $("billTotal").textContent = "\u2013";
-    $("billNote").textContent = "";
-    $("continueBtn").textContent = "Continue to payment";
-    return;
-  }
-  let total = state.pages * state.copies * per;
-  let note = "";
-  if (s.paymentMode === "razorpay" && total > 0 && total < 100) { total = 100; note = "Minimum online payment is \u20B91."; }
-  $("billLine").textContent = state.pages + (state.pages === 1 ? " page" : " pages") + " \u00D7 " +
-    state.copies + (state.copies === 1 ? " copy" : " copies") + " \u00D7 " + rupees(per);
-  $("billTotal").textContent = rupees(total);
-  $("billNote").textContent = note;
-  $("continueBtn").textContent = "Continue to payment \u00B7 " + rupees(total);
-  const online = state.color ? s.colorOnline : s.bwOnline;
-  $("offlineNote").classList.toggle("hidden", online);
-}
-
-/* ---------------- step 3: upload + pay ---------------- */
-function upload(url, file, contentType) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", contentType);
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round(e.loaded / e.total * 100);
-        $("bar").style.width = pct + "%";
-        $("uploadText").textContent = pct + "% sent. Please keep this page open.";
-      }
-    };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-      ? resolve() : reject(new Error("The file could not be sent (" + xhr.status + "). Please try again."));
-    xhr.onerror = () => reject(new Error("The file could not be sent. Check your internet and try again."));
-    xhr.send(file);
-  });
-}
-
-async function continueToPayment() {
-  showError(null);
-  $("continueBtn").disabled = true;
-  $("uploadBox").classList.remove("hidden");
-  $("payBox").classList.add("hidden");
-  $("bar").style.width = "0";
-  show("s-pay", 3);
-  try {
-    const created = await api("POST", "/api/v1/orders", {
-      fileName: state.file.name, fileType: state.fileType, fileSizeBytes: state.file.size,
-      color: state.color, copies: state.copies, pages: state.pageSpec || null
-    });
-    state.order = { orderId: created.orderId, key: created.accessKey, code: created.pickupCode,
-                    fileName: state.file.name, at: Date.now() };
-    remember(state.order);
-    await upload(created.uploadUrl, state.file, created.uploadContentType);
-    $("uploadText").textContent = "Checking the file...";
-    const view = await api("POST", "/api/v1/orders/" + created.orderId + "/uploaded", null, created.accessKey);
-    if (view.status !== "AWAITING_PAYMENT") return openStatus(state.order, view, true);
-    showPayBox(view);
-  } catch (e) {
-    if (state.order) { forget(state.order.orderId); state.order = null; }
-    show("s-setup", 2);
-    $("continueBtn").disabled = false;
-    showError(e.message);
-  }
-}
-
-/** "58 pages (333-390 of 1000)", or "12 pages" for a whole file. */
-function pagesText(v) {
-  const n = v.printPages || v.pageCount;
-  if (!n) return "? pages";
-  if (!v.pages) return n + (n === 1 ? " page" : " pages");
-  return n + (n === 1 ? " page" : " pages") + " (" + v.pages.replace(/,/g, ", ") + " of " + v.pageCount + ")";
-}
-
-function showPayBox(v) {
-  $("uploadBox").classList.add("hidden");
-  $("payBox").classList.remove("hidden");
-  $("payError").classList.add("hidden");
-  const rows = [
-    ["File", v.fileName],
-    ["Pages", pagesText(v)],
-    ["Copies", String(v.copies)],
-    ["Print", v.color ? "Colour" : "Black & white"],
-    ["Total", rupees(v.amountPaise)]
-  ];
-  const box = $("summary");
-  box.innerHTML = "";
-  for (const [k, val] of rows) {
-    const line = document.createElement("div");
-    line.className = "line";
-    const a = document.createElement("span"); a.textContent = k;
-    const b = document.createElement("span"); b.textContent = val;
-    line.append(a, b);
-    box.appendChild(line);
-  }
-  const demo = state.shop && state.shop.paymentMode === "demo";
-  $("demoNote").classList.toggle("hidden", !demo);
-  $("payBtn").textContent = (demo ? "Pay (test) " : "Pay ") + rupees(v.amountPaise);
-  $("payBtn").disabled = false;
-}
-
-function payError(msg) {
-  $("payError").textContent = msg;
-  $("payError").classList.remove("hidden");
-  $("payBtn").disabled = false;
-}
-
-async function pay() {
-  const o = state.order;
-  $("payBtn").disabled = true;
-  $("payError").classList.add("hidden");
-  try {
-    const c = await api("POST", "/api/v1/orders/" + o.orderId + "/payment", null, o.key);
-    if (c.provider === "demo") {
-      const v = await api("POST", "/api/v1/orders/" + o.orderId + "/payment/demo", null, o.key);
-      return openStatus(o, v, true);
-    }
-    await loadScript(RAZORPAY_JS);
-    const rzp = new window.Razorpay({
-      key: c.keyId,
-      amount: c.amountPaise,
-      currency: c.currency,
-      name: state.shop ? state.shop.centerName : "Campus Print",
-      description: c.description,
-      order_id: c.gatewayOrderId,
-      theme: { color: "#14263B" },
-      handler: async (r) => {
-        try {
-          const v = await api("POST", "/api/v1/orders/" + o.orderId + "/payment/confirm",
-            { paymentId: r.razorpay_payment_id, signature: r.razorpay_signature }, o.key);
-          openStatus(o, v, true);
-        } catch (e) {
-          // Money may have been taken: never show the Pay button again here.
-          // The backend re-checks with Razorpay by itself.
-          openStatus(o, null, true);
-          showError(e.message);
-        }
-      },
-      modal: { ondismiss: () => { $("payBtn").disabled = false; } }
-    });
-    rzp.on("payment.failed", (resp) => {
-      payError("Payment failed: " + ((resp && resp.error && resp.error.description) || "please try again") +
-               ". No money was taken for this attempt.");
-    });
-    rzp.open();
-  } catch (e) {
-    payError(e.message);
-  }
-}
-
-async function cancelOrder() {
-  const o = state.order;
-  if (!o || !confirm("Cancel this order?")) return;
-  try { await api("POST", "/api/v1/orders/" + o.orderId + "/cancel", null, o.key); } catch (e) { /* ignore */ }
-  resetToStart();
-}
-
-/* ---------------- step 4: status + pickup code ---------------- */
-function lampFor(v) {
-  if (v.status === "COMPLETED") return "ready";
-  if (v.status === "FAILED" || v.status === "EXPIRED" || v.status === "CANCELLED") return "stop";
-  return "work";
-}
-
-function renderStatus(v) {
-  watchReady(v);
-  $("tStage").dataset.status = v.status;
-  $("tCode").textContent = v.pickupCode;
-  $("tLamp").className = "lamp " + lampFor(v);
-  $("tStage").textContent = v.stage;
-  $("tMessage").textContent = v.message || "";
-  const paid = !!v.paidAt;
-  const steps = [
-    ["Paid", paid],
-    ["Waiting for a printer", ["CLAIMED", "DOWNLOADING", "SUBMITTED", "COMPLETED"].includes(v.status)],
-    ["Printing" + (v.printerName ? " on " + v.printerName : ""), v.status === "COMPLETED"],
-    ["Ready at the counter", v.status === "COMPLETED"]
-  ];
-  const nowIndex = steps.findIndex(s => !s[1]);
-  const ul = $("track");
-  ul.innerHTML = "";
-  if (paid && v.status !== "FAILED" && v.status !== "CANCELLED") {
-    steps.forEach((s, i) => {
-      const li = document.createElement("li");
-      li.className = s[1] ? "done" : (i === nowIndex ? "now" : "");
-      li.innerHTML = '<span class="lamp ' + (s[1] ? "ready" : (i === nowIndex ? "work" : "")) + '"></span><span></span>';
-      li.lastChild.textContent = s[0];
-      ul.appendChild(li);
-    });
-  }
-  $("tDetails").textContent = v.fileName + " \u00B7 " + pagesText(v) + " \u00D7 " + v.copies +
-    " \u00B7 " + (v.color ? "colour" : "B/W") + (v.amountPaise != null ? " \u00B7 " + rupees(v.amountPaise) : "");
-}
-
-/**
- * afterPayment = true: the student has just paid (or tried to). Never offer the
- * Pay button again from here; the backend confirms the payment by itself.
- */
-async function openStatus(o, first, afterPayment) {
-  state.order = o;
-  clearInterval(state.poll);
-  show("s-status", 4);
-  location.hash = "order=" + o.orderId;
-  let firstTick = true;
-  const tick = async () => {
-    try {
-      const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
-      if (v.status === "AWAITING_PAYMENT" && firstTick && !afterPayment) {
-        // Opened from "Your orders" without having paid: offer payment.
-        clearInterval(state.poll);
-        show("s-pay", 3);
-        showPayBox(v);
-        return;
-      }
-      firstTick = false;
-      renderStatus(v);
-      if (v.status === "AWAITING_PAYMENT") {
-        $("tMessage").textContent = "Checking your payment with the bank. This can take a minute.";
-      }
-      if (FINAL.includes(v.status)) clearInterval(state.poll);
-    } catch (e) {
-      if (e.status === 404) { clearInterval(state.poll); forget(o.orderId); showError("This order no longer exists."); }
-    }
-  };
-  if (first) renderStatus(first);
-  else $("tCode").textContent = o.code;
-  await tick();
-  if (!FINAL.includes(($("tStage").dataset.status || ""))) state.poll = setInterval(tick, 3000);
-}
-
-function resetToStart() {
-  clearInterval(state.poll);
-  document.title = BASE_TITLE;
-  $("notifyNote").textContent = "";
-  state.file = null; state.order = null;
-  $("fileInput").value = "";
-  history.replaceState(null, "", location.pathname);
-  show("s-choose", 1);
-  renderRecent();
-  loadShop();
-}
-
-/* ---------------- wiring ---------------- */
-$("fileInput").addEventListener("change", (e) => chooseFile(e.target.files[0]));
-const drop = $("drop");
-["dragenter", "dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
-["dragleave", "drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", (e) => chooseFile(e.dataTransfer.files[0]));
-document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", () => {
-  state.color = $("modeColor").checked; updateBill();
-}));
-document.querySelectorAll('input[name="pmode"]').forEach(r => r.addEventListener("change", () => {
-  applyPages(true);
-  if ($("pagesSome").checked) $("pagesInput").focus();
-}));
-$("pagesInput").addEventListener("input", () => applyPages(true));
-$("minus").onclick = () => { if (state.copies > 1) { state.copies--; updateBill(); } };
-$("plus").onclick = () => { if (state.copies < state.shop.maxCopies) { state.copies++; updateBill(); } };
-$("changeFile").onclick = resetToStart;
-$("continueBtn").onclick = continueToPayment;
-$("payBtn").onclick = pay;
-$("cancelBtn").onclick = cancelOrder;
-$("newBtn").onclick = resetToStart;
-
-/* ---------------- ready alerts: wait anywhere, not in the queue ---------------- */
-const BASE_TITLE = document.title;
-const alerts = { on: false, last: {} };
-function watchReady(v) {
-  const before = alerts.last[v.orderId];
-  alerts.last[v.orderId] = v.status;
-  const ready = v.status === "COMPLETED" && !v.collected;
-  document.title = ready ? "\u2705 Ready \u00B7 " + v.pickupCode + " \u2014 Campus Print" : BASE_TITLE;
-  const canAsk = "Notification" in window && !FINAL.includes(v.status) && Notification.permission !== "denied";
-  $("notifyBtn").classList.toggle("hidden", !canAsk || alerts.on);
-  if (ready && before && before !== "COMPLETED") {
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    if (alerts.on) notifyReady(v);
-  }
-}
-function notifyReady(v) {
-  const title = "Your prints are ready";
-  const opts = { body: "Show code " + v.pickupCode + " at the counter.", icon: "icon-192.png", tag: v.orderId };
-  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.ready.then(r => r.showNotification(title, opts)).catch(() => {});
-  } else {
-    try { new Notification(title, opts); } catch (e) { /* not allowed here */ }
-  }
-}
-$("notifyBtn").onclick = async () => {
-  let p = "denied";
-  try { p = await Notification.requestPermission(); } catch (e) { /* old browser */ }
-  alerts.on = p === "granted";
-  $("notifyBtn").classList.add("hidden");
-  $("notifyNote").textContent = alerts.on
-    ? "Done. This device will alert you when your prints are ready (keep this page open in the background)."
-    : "Notifications are off for this site. Keep this page open to see when it is ready.";
-};
-
-/* ---------------- tell a friend (WhatsApp etc.) ---------------- */
-$("shareBtn").onclick = async () => {
-  const url = location.origin + location.pathname.replace(/index\.html$/, "");
-  const data = { title: "Campus Print", text: "Print from your phone and skip the Xerox queue:", url };
-  try {
-    if (navigator.share) { await navigator.share(data); return; }
-    await navigator.clipboard.writeText(url);
-    const b = $("shareBtn"), old = b.innerHTML;
-    b.textContent = "Link copied";
-    setTimeout(() => { b.innerHTML = old; }, 2000);
-  } catch (e) { /* closed the share sheet */ }
-};
-
-/* ---------------- install as an app ---------------- */
-let installPrompt = null;
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  installPrompt = e;
-  $("installBtn").classList.remove("hidden");
-});
-$("installBtn").onclick = async () => {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  try { await installPrompt.userChoice; } catch (e) { /* ignore */ }
-  installPrompt = null;
-  $("installBtn").classList.add("hidden");
-};
-window.addEventListener("appinstalled", () => $("installBtn").classList.add("hidden"));
-if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
-  navigator.serviceWorker.register("sw.js").catch(() => { /* works without it */ });
-}
-$("year").textContent = new Date().getFullYear();
-
-(async function start() {
-  if (!API) { showError("config.js has no apiBase. Open config.js and set it."); return; }
-  await loadShop();
-  const m = location.hash.match(/order=([0-9a-f-]{36})/);
-  const saved = m && recent().find(o => o.orderId === m[1]);
-  if (saved) openStatus(saved); else renderRecent();
-})();
-</script>
+<script src="js/print-core.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

@@ -18,10 +18,33 @@ public final class TestPage {
     }
 
     public static void write(Path file) throws Exception {
+        write(file, 1);
+    }
+
+    /** sides = 2: a second page saying "Side 2", to check two-sided printing. */
+    public static void write(Path file, int sides) throws Exception {
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.A4);
             doc.addPage(page);
+            if (sides > 1) {
+                PDPage back = new PDPage(PDRectangle.A4);
+                doc.addPage(back);
+                try (PDPageContentStream cs = new PDPageContentStream(doc, back)) {
+                    cs.beginText();
+                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 40);
+                    cs.newLineAtOffset(60, 700);
+                    cs.showText("Side 2 (back)");
+                    cs.endText();
+                }
+            }
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                if (sides > 1) {
+                    cs.beginText();
+                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 40);
+                    cs.newLineAtOffset(60, 450);
+                    cs.showText("Side 1 (front)");
+                    cs.endText();
+                }
                 cs.beginText();
                 cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 28);
                 cs.newLineAtOffset(60, 760);

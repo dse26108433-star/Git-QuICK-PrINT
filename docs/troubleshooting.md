@@ -16,6 +16,21 @@ Find your problem, try the fix, then do the step again.
 | Need the log | Settings → Log files → Open folder (`%LOCALAPPDATA%\CampusPrint\logs\agent.log`). |
 | Moving to a new PC | Old PC: Settings → Disconnect this PC. New PC: install and run the setup again. |
 
+## Printer options (what students can choose)
+
+| What you see | What to do |
+|---|---|
+| Students do not see two-sided / A3 / stapling although the printer has it | Station → Printers: the printer's labels show what Windows reported ("Two-sided", "Paper: …", "Finishing: …"). If it is there, open "What students can choose on this printer", tick it, **Save**. If it is not there, the driver does not describe it: install the full Canon driver (UFR II / PS, not the basic one), set the options in Windows (Printer properties → Device Settings: duplex unit, finisher installed), then **Scan again**. |
+| A paper size is offered but the printer has no such paper | Untick it under "What students can choose on this printer" → **Save**. Students see the change within a minute. |
+| Paper types (glossy, thick…) do not appear on the website | On purpose: they appear only when staff tick them (paper you keep in stock). |
+| "Windows did not describe this printer" | The driver gives no capabilities. Students get plain A4 one-sided on it. Tick only the sizes it really has; better, install the manufacturer's full driver. |
+| Counter: red banner "N paid files wait for a printer that can print it" | A file needs something no printer offers now (a printer was switched off or unticked an option). Switch the printer back on, or **Cancel** the file on the counter (the student is refunded that file's price in the Razorpay dashboard). |
+| A file goes back with "The printer's driver would not do: …" | The driver did not accept a setting (usually stapling / punching / binding on a driver that lists it but has no finisher installed). Fix the driver's Device Settings, or untick that option for the printer. Nothing was printed. |
+| Stapled / punched in the wrong place | Each Canon driver names positions differently. Print one test order per option and check; untick positions that come out wrong. `PrinterSmokeTest "<printer>" test.pdf --staple top-left` prints one by hand. |
+| Colour file came out grey (or B/W in colour) | Printer properties → the driver must follow the application's colour choice (not forced to B/W / colour). Then **Test B/W** and **Test colour** in the Station. |
+| Printout smaller than the preview | Driver defaults "Fit to paper" / "Scale" must be off (100 %). The Station prints at 100 % from the paper corner. |
+| A Station older than 4.0 prints only some files | Old Stations only get plain A4 one-sided files. Install `CampusPrintStation-Setup-4.0.0.exe` (it updates in place). |
+
 ## Xerox PC / printing (details)
 
 | What you see | What to do |
@@ -50,11 +65,18 @@ Find your problem, try the fix, then do the step again.
 
 | What you see | What to do |
 |---|---|
+| "Only PDF, JPG and PNG files can be printed." on a file | The file is something else with a .pdf name, or broken. Open it and "Print to PDF" / export as PDF, then add that. |
+| A file shows "Change to one-sided" (or similar) | The printers changed while the student was setting up (e.g. the two-sided printer was switched off). One tap makes the smallest change that can be printed. |
+| "Review order" stays grey | The bar says why ("Wait until every file is uploaded", "One file needs a change"): tap the words to open that file. |
+| "Choose at least one page to print." | All pages were un-ticked: tick some pages, or press **All**. |
+| The page reloads and the files are still there | On purpose: the unfinished order is kept in the browser until it is paid or cancelled. |
 | "Page 1200 does not exist: this PDF has 1000 pages" | The student typed a page after the end of the file. Page numbers are the PDF's own (1 = first page), check the preview. |
 | The wrong pages printed (e.g. the chapter starts 12 pages later) | A book's printed page numbers often differ from the PDF's own numbering (cover, contents in Roman numbers). Tell students to check the preview: it shows the chosen pages with their PDF page number. |
-| "Up to 300 pages can be printed per order" | Split the job into two orders, or raise `max-pages` in `application.yml` and restart the backend. |
+| "Up to 300 pages can be printed from one document" | Choose the pages needed, add the file twice with different pages, or raise `max-pages` in `application.yml` and restart the backend. |
+| "One order can have up to 25 files" | Make a second order, or raise `max-documents` in `application.yml`. |
 | "Files can have up to 2000 pages" / "smaller than 50 MB" | Limits in `application.yml` (`max-file-pages`, `max-file-size-bytes`). 50 MB is the most a free Supabase project accepts. |
-| Error `column "page_ranges" does not exist` in the backend log | Run the latest `db/setup.sql` in the Supabase SQL editor (safe to run again), then restart the backend. |
+| Error `column "page_ranges" does not exist`, `relation "order_documents" does not exist` or `function claim_next_job does not exist` in the backend log | Run the latest `db/setup.sql` in the Supabase SQL editor (safe to run again), then restart the backend. |
+| Error `function claim_next_order(...) does not exist` in the backend log | The database is new (version 4) but the backend is old: deploy the new backend. |
 | "Cannot reach the print service" | Is the backend running? Is `apiBase` in `web/config.js` right? |
 | Browser console says **CORS** | Put the exact address you open the page from (e.g. `http://localhost:3000`) in `WEB_ORIGINS` in `.env`, restart the backend. |
 | PDF preview stays blank | The page loads PDF.js from the internet (jsdelivr). Check the internet connection. |
@@ -70,12 +92,21 @@ Find your problem, try the fix, then do the step again.
 -- Is the PC online? (last_seen_at within the last minute)
 select name, host_name, agent_version, last_seen_at from agents;
 
--- What the PC sees for each printer
-select name, windows_printer_name, enabled, status, status_detail, status_at from printers;
+-- What the PC sees for each printer, and what students may choose on it
+select name, windows_printer_name, enabled, status, status_detail, status_at,
+       effective, capabilities_at from printers;
 
--- Last 20 orders
-select pickup_code, status, file_name, copies, color, amount_paise, error_message, created_at
-  from orders order by created_at desc limit 20;
+-- Last 20 orders with their files
+select o.pickup_code, o.status, o.amount_paise, o.created_at,
+       d.position, d.file_name, d.status as file_status, d.print_pages, d.sheets, d.error_message
+  from orders o left join order_documents d on d.order_id = o.id
+ order by o.created_at desc, d.position limit 60;
+
+-- Paid files waiting, and whether any printer can do them
+select o.pickup_code, d.file_name, d.requirements,
+       exists (select 1 from printers p where p.enabled
+               and printer_can_do(p.effective, p.supports_color, p.accepts_bw, d.requirements)) as a_printer_can
+  from order_documents d join orders o on o.id = d.order_id where d.status = 'QUEUED';
 
 -- History of one order
 select e.* from order_events e join orders o on o.id = e.order_id

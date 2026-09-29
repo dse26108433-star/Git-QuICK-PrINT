@@ -57,12 +57,13 @@ public class SupabaseStorage {
     }
 
     /**
-     * A one-shot upload URL for exactly this object path. The student's browser
-     * or phone PUTs the PDF straight to storage with it.
+     * An upload URL for exactly this object path. The student's browser or
+     * phone PUTs the file straight to storage with it. "Upsert" lets a failed
+     * or cancelled upload be tried again on the same path.
      */
     public SignedUpload createSignedUpload(String objectPath) {
         JsonNode body = postJson(base + "/object/upload/sign/" + props.bucket() + "/" + objectPath, "{}",
-                "Could not prepare the upload");
+                "Could not prepare the upload", "x-upsert", "true");
         // Storage answers {"url": "/object/upload/sign/<bucket>/<path>?token=..."}
         String relative = body.path("url").asText("");
         if (relative.isEmpty()) {
@@ -79,7 +80,10 @@ public class SupabaseStorage {
         return new SignedUpload(base + relative, token, objectPath);
     }
 
-    /** A short-lived read URL, minted only for the agent currently holding the job. */
+    /**
+     * A short-lived read URL: for the Xerox PC holding the document, or for
+     * the student's own device (to show a draft again after a page reload).
+     */
     public String createSignedDownload(String objectPath) {
         String payload = "{\"expiresIn\":" + props.downloadUrlTtlSeconds() + "}";
         JsonNode body = postJson(base + "/object/sign/" + props.bucket() + "/" + objectPath, payload,
@@ -180,13 +184,16 @@ public class SupabaseStorage {
         return b;
     }
 
-    private JsonNode postJson(String url, String payload, String failureMessage) {
+    private JsonNode postJson(String url, String payload, String failureMessage, String... extraHeaders) {
         try {
-            HttpRequest req = authorised(HttpRequest.newBuilder(URI.create(url)))
+            HttpRequest.Builder b = authorised(HttpRequest.newBuilder(URI.create(url)))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(20))
-                    .POST(HttpRequest.BodyPublishers.ofString(payload))
-                    .build();
+                    .POST(HttpRequest.BodyPublishers.ofString(payload));
+            for (int i = 0; i + 1 < extraHeaders.length; i += 2) {
+                b.header(extraHeaders[i], extraHeaders[i + 1]);
+            }
+            HttpRequest req = b.build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() / 100 != 2) {
                 log.error("Supabase storage {} -> {} {}", url, res.statusCode(), res.body());

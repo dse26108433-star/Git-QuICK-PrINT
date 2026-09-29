@@ -1,0 +1,29 @@
+{
+  "about": "Can this printer print a document with these requirements? Checked by backend PrinterRules.java, db printer_can_do() and web/js/print-core.js. features null = never looked at: A4, one-sided, nothing else.",
+  "printers": {
+    "bw-plain":     { "color": false, "bw": true,  "features": null },
+    "bw-duplex-a3": { "color": false, "bw": true,  "features": { "paperSizes": ["A4", "A3", "LEGAL"], "duplex": true, "finishing": ["STAPLE_TOP_LEFT", "STAPLE_DUAL_LEFT", "PUNCH_LEFT"], "mediaTypes": [], "borderless": false, "highQuality": false } },
+    "colour-photo": { "color": true,  "bw": true,  "features": { "paperSizes": ["A4", "PHOTO_4X6"], "duplex": false, "finishing": [], "mediaTypes": ["psk:PhotographicHighGloss"], "borderless": true, "highQuality": true } },
+    "colour-only":  { "color": true,  "bw": false, "features": { "paperSizes": ["A4"], "duplex": true } }
+  },
+  "cases": [
+    { "printer": "bw-plain",     "req": { "color": false, "paperSize": "A4", "duplex": "ONE_SIDED", "finishing": [] }, "can": true },
+    { "printer": "bw-plain",     "req": { "color": true,  "paperSize": "A4" }, "can": false },
+    { "printer": "bw-plain",     "req": { "color": false, "paperSize": "A3" }, "can": false },
+    { "printer": "bw-plain",     "req": { "color": false, "paperSize": "A4", "duplex": "LONG_EDGE" }, "can": false },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A3", "duplex": "LONG_EDGE" }, "can": true },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A4", "duplex": "SHORT_EDGE", "finishing": ["STAPLE_TOP_LEFT", "PUNCH_LEFT"] }, "can": true },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A4", "finishing": ["STAPLE_TOP_RIGHT"] }, "can": false },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A5" }, "can": false },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A4", "mediaType": "psk:PhotographicHighGloss" }, "can": false },
+    { "printer": "colour-photo", "req": { "color": true,  "paperSize": "PHOTO_4X6", "borderless": true, "quality": "HIGH", "mediaType": "psk:PhotographicHighGloss" }, "can": true },
+    { "printer": "colour-photo", "req": { "color": false, "paperSize": "A4", "quality": "STANDARD" }, "can": true },
+    { "printer": "colour-photo", "req": { "color": true,  "paperSize": "A4", "duplex": "LONG_EDGE" }, "can": false },
+    { "printer": "colour-photo", "req": { "color": true,  "paperSize": "A4", "borderless": false, "quality": "HIGH" }, "can": true },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A4", "borderless": true }, "can": false },
+    { "printer": "bw-duplex-a3", "req": { "color": false, "paperSize": "A4", "quality": "HIGH" }, "can": false },
+    { "printer": "colour-only",  "req": { "color": false, "paperSize": "A4" }, "can": false },
+    { "printer": "colour-only",  "req": { "color": true,  "paperSize": "A4", "duplex": "LONG_EDGE" }, "can": true },
+    { "printer": "colour-only",  "req": { "color": true,  "paperSize": "A4", "finishing": ["PUNCH_LEFT"] }, "can": false }
+  ]
+}

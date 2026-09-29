@@ -1,0 +1,36 @@
+{
+  "about": "Sides, sheets and price of one document. Checked by backend Pricing/PrintPlan and web/js/print-core.js. Missing settings = defaults (1 copy, B/W, A4, one-sided, 1 page per sheet).",
+  "priceBwPaise": 200,
+  "priceColorPaise": 1000,
+  "rules": {
+    "paperSizePercent": { "A3": 200, "LEGAL": 125 },
+    "mediaTypePercent": { "psk:PhotographicHighGloss": 350 },
+    "finishingPaise": { "STAPLE": 100, "PUNCH": 50, "BIND": 2500 }
+  },
+  "cases": [
+    { "name": "B/W A4, 10 pages",           "printPages": 10, "settings": {},
+      "sides": 10, "sheets": 10, "perSide": 200, "amount": 2000 },
+    { "name": "colour, 2 copies",           "printPages": 3,  "settings": { "color": true, "copies": 2 },
+      "sides": 3, "sheets": 3, "perSide": 1000, "amount": 6000 },
+    { "name": "two-sided, odd pages",       "printPages": 5,  "settings": { "duplex": "LONG_EDGE" },
+      "sides": 5, "sheets": 3, "perSide": 200, "amount": 1000 },
+    { "name": "4 per sheet, two-sided",     "printPages": 10, "settings": { "pagesPerSheet": 4, "duplex": "SHORT_EDGE" },
+      "sides": 3, "sheets": 2, "perSide": 200, "amount": 600 },
+    { "name": "A3 costs double",            "printPages": 2,  "settings": { "paperSize": "A3" },
+      "sides": 2, "sheets": 2, "perSide": 400, "amount": 800 },
+    { "name": "Legal 125 % rounds to paise","printPages": 1,  "settings": { "paperSize": "LEGAL", "color": true },
+      "sides": 1, "sheets": 1, "perSide": 1250, "amount": 1250 },
+    { "name": "odd base price rounds half up", "printPages": 1, "priceBwPaise": 150, "settings": { "paperSize": "LEGAL" },
+      "sides": 1, "sheets": 1, "perSide": 188, "amount": 188 },
+    { "name": "glossy colour A3",           "printPages": 1,  "settings": { "color": true, "paperSize": "A3", "mediaType": "psk:PhotographicHighGloss" },
+      "sides": 1, "sheets": 1, "perSide": 7000, "amount": 7000 },
+    { "name": "staple + punch per copy",    "printPages": 6,  "settings": { "copies": 3, "staple": "TOP_LEFT", "punch": "LEFT" },
+      "sides": 6, "sheets": 6, "perSide": 200, "amount": 4050 },
+    { "name": "bind per copy",              "printPages": 40, "settings": { "bind": "LEFT", "duplex": "LONG_EDGE" },
+      "sides": 40, "sheets": 20, "perSide": 200, "amount": 10500 },
+    { "name": "16 per sheet",               "printPages": 33, "settings": { "pagesPerSheet": 16 },
+      "sides": 3, "sheets": 3, "perSide": 200, "amount": 600 },
+    { "name": "free shop",                  "printPages": 7,  "priceBwPaise": 0, "settings": {},
+      "sides": 7, "sheets": 7, "perSide": 0, "amount": 0 }
+  ]
+}

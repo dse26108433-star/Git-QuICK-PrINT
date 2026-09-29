@@ -74,8 +74,8 @@
         <div class="card-head">
           <div>
             <h1>Choose the printers</h1>
-            <p class="lead" style="margin:6px 0 0">We found these printers on this PC. Tick the ones Campus Print may use,
-              give each a short name, and say if it prints in colour.</p>
+            <p class="lead" style="margin:6px 0 0">We found these printers on this PC and read what each can do (paper sizes,
+              two-sided, stapling...). Tick the ones Campus Print may use, give each a short name, and say if it prints in colour.</p>
           </div>
           <button class="btn ghost sm" data-scan>Scan again</button>
         </div>
@@ -94,7 +94,8 @@
       <h1>This PC is ready</h1>
       <p class="lead" style="margin-top:6px">Paid orders from the student website now print here automatically.</p>
       <ul class="checklist">
-        <li>Each order's first page shows its pickup code in the corner (no cover sheets, no wasted paper).</li>
+        <li>Each file's first page shows its pickup code in the corner (no cover sheets, no wasted paper).</li>
+        <li>Students only see the paper sizes and options your printers can really do.</li>
         <li id="suAutostartLine">Campus Print starts together with Windows and keeps printing when this window is closed.</li>
         <li>The printer icon next to the clock opens this screen again.</li>
       </ul>
@@ -151,6 +152,7 @@
         <div class="find-result" id="findResult" aria-live="polite"></div>
       </div>
 
+      <div id="noPrinterBanner" class="notice stop hidden" style="margin-bottom:14px" role="alert"></div>
       <div class="printer-strip" id="printerStrip"></div>
 
       <div class="tabs" role="tablist">
@@ -167,7 +169,8 @@
       <div class="page-head">
         <div>
           <h1>Printers</h1>
-          <p class="sub">Printers installed on this PC. Ticked printers take orders from the student website.</p>
+          <p class="sub">Printers installed on this PC, and what each can do (read from Windows). Ticked printers take
+            orders from the student website; students only see the options you leave ticked.</p>
         </div>
         <button class="btn ghost" data-scan>Scan again</button>
       </div>
@@ -189,13 +192,21 @@
           <div class="form">
             <label class="field"><span>Center name</span><input class="input" id="setName" maxlength="80"></label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <label class="field"><span>Black &amp; white, per page</span>
+              <label class="field"><span>Black &amp; white, per printed side</span>
                 <div class="prefix"><b>&#8377;</b><input class="input" id="setBw" type="number" min="0" step="0.5"></div></label>
-              <label class="field"><span>Colour, per page</span>
+              <label class="field"><span>Colour, per printed side</span>
                 <div class="prefix"><b>&#8377;</b><input class="input" id="setColor" type="number" min="0" step="0.5"></div></label>
             </div>
           </div>
           <div class="page-actions"><span class="small muted" id="shopSaved"></span><button class="btn" id="saveShop">Save</button></div>
+        </div>
+
+        <div class="card">
+          <h2>Paper sizes, paper types and finishing</h2>
+          <p class="small muted" style="margin-bottom:14px">Extra prices for the choices your printers offer. A two-sided
+            sheet is two printed sides.</p>
+          <div id="pricingRules" class="pricing-grid"></div>
+          <div class="page-actions"><span class="small muted" id="pricingSaved"></span><button class="btn" id="savePricing">Save</button></div>
         </div>
 
         <div class="card">

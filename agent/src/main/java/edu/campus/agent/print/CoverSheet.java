@@ -26,11 +26,11 @@ public final class CoverSheet {
     private CoverSheet() {
     }
 
-    public static void print(PrintService service, PrintStrategy.Settings s, int pages) throws Exception {
+    public static void print(PrintService service, PrintJob s, int sheets) throws Exception {
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setPrintService(service);
         job.setJobName(s.jobName() + "-cover");
-        job.setPrintable(new Sheet(s, pages));
+        job.setPrintable(new Sheet(s, sheets));
 
         PrintRequestAttributeSet attrs = new HashPrintRequestAttributeSet();
         attrs.add(new JobName(s.jobName() + "-cover", null));
@@ -40,7 +40,7 @@ public final class CoverSheet {
         job.print(attrs);
     }
 
-    private record Sheet(PrintStrategy.Settings s, int pages) implements Printable {
+    private record Sheet(PrintJob s, int pages) implements Printable {
 
         @Override
         public int print(Graphics g0, PageFormat pf, int index) {
@@ -65,14 +65,16 @@ public final class CoverSheet {
 
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
             y += 40;
-            g.drawString("File:    " + shorten(s.fileName(), 60), x, y);
+            g.drawString("File:    " + shorten(s.fileName(), 60)
+                    + (s.documentCount() > 1 ? "   (file " + s.documentNumber() + " of " + s.documentCount() + ")" : ""),
+                    x, y);
             y += 26;
             g.drawString("Print:   " + (s.color() ? "COLOUR" : "Black & white") + "   x " + s.copies()
-                    + (s.copies() == 1 ? " copy" : " copies") + "   (" + pages + (pages == 1 ? " page" : " pages")
-                    + " each)", x, y);
+                    + (s.copies() == 1 ? " copy" : " copies") + "   (" + pages + (pages == 1 ? " sheet" : " sheets")
+                    + " each, " + s.paper().id() + (s.settings().twoSided() ? ", two-sided" : "") + ")", x, y);
             if (!s.allPages()) {
                 y += 26;
-                g.drawString("Pages:   " + shorten(s.pages(), 60) + "  (of the file)", x, y);
+                g.drawString("Pages:   " + shorten(s.settings().pages(), 60) + "  (of the file)", x, y);
             }
             y += 26;
             g.drawString("Time:    " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm")),

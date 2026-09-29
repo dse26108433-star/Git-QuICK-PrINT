@@ -14,6 +14,8 @@ public interface PrinterRepository extends JpaRepository<Printer, UUID> {
 
     List<Printer> findAllByOrderByName();
 
+    List<Printer> findByEnabledTrueOrderByName();
+
     /** Printers this PC drives: its own, plus any not tied to a particular PC. */
     @Query("select p from Printer p where p.agentId is null or p.agentId = :agentId order by p.name")
     List<Printer> findForAgent(@Param("agentId") UUID agentId);

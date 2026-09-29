@@ -70,9 +70,11 @@ campus:
 
   shop:
     max-file-size-bytes: 52428800   # 50 MB (the most a free Supabase project accepts)
-    max-pages: 300                  # most pages PRINTED per copy
+    max-pages: 300                  # most pages PRINTED per copy of one document
     max-file-pages: 2000            # most pages a PDF may have; students choose the pages they need
     max-copies: 50
+    max-documents: 25               # most documents (files) in one order
+    max-parallel-checks: 3          # uploaded files checked at once; each is read into memory (up to 50 MB)
 
   ratelimit:
     orders-per-minute: 60

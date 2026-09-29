@@ -2,7 +2,7 @@ package edu.campus.agent.station;
 
 import edu.campus.agent.AgentMain;
 import edu.campus.agent.config.AgentConfig;
-import edu.campus.agent.core.OrderProcessor;
+import edu.campus.agent.core.JobProcessor;
 import edu.campus.agent.core.Supervisor;
 import edu.campus.agent.net.Messages.PrinterConfig;
 import edu.campus.agent.print.PrinterDiscovery;
@@ -24,7 +24,7 @@ public class AgentRunner {
     private static final Logger log = LoggerFactory.getLogger(AgentRunner.class);
 
     private Supervisor supervisor;
-    private OrderProcessor processor;
+    private JobProcessor processor;
     private Thread thread;
     private volatile String startProblem;
 
@@ -79,6 +79,11 @@ public class AgentRunner {
         if (supervisor != null) supervisor.wakeUp();
     }
 
+    /** Staff pressed "Scan again": read the printers' features from Windows and tell the server. */
+    public synchronized void rescanNow() {
+        if (supervisor != null) supervisor.lookAgainAtAllPrinters();
+    }
+
     public synchronized boolean isRunning() {
         return supervisor != null;
     }
@@ -100,6 +105,8 @@ public class AgentRunner {
                 pm.put("name", p.name());
                 pm.put("windowsPrinterName", p.windowsPrinterName());
                 pm.put("found", PrinterDiscovery.find(p.windowsPrinterName()).isPresent());
+                supervisor.capabilities().get(p.windowsPrinterName())
+                        .ifPresent(d -> pm.put("capabilities", d.capabilities()));
                 list.add(pm);
             }
         }

@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import edu.campus.agent.net.AgentVersion;
+import edu.campus.agent.net.Messages;
+import edu.campus.agent.print.CapabilityCache;
 import edu.campus.agent.print.PdfBoxPrintStrategy;
+import edu.campus.agent.print.PrintTicket;
 import edu.campus.agent.print.PrintEngine;
-import edu.campus.agent.print.PrintStrategy;
+import edu.campus.agent.print.PrintJob;
 import edu.campus.agent.print.PrinterDiscovery;
 import edu.campus.agent.print.TestPage;
 import org.slf4j.Logger;
@@ -175,6 +178,10 @@ public class LocalServer {
                 runner.refreshNow();
                 json(ex, 200, Map.of("ok", true));
             }
+            case "POST /local/rescan" -> {
+                runner.rescanNow();
+                json(ex, 200, Map.of("ok", true));
+            }
             case "POST /local/disconnect" -> json(ex, 200, disconnect());
             case "POST /local/open-logs" -> {
                 DesktopShell.openFolder(StationConfig.dir().resolve("logs"));
@@ -267,21 +274,35 @@ public class LocalServer {
         return state();
     }
 
-    /** "Test print" button: the Step 1 test page, with the label TEST1, on one printer. */
+    /**
+     * "Test print" buttons: the Step 1 test page, with the label TEST1, on one
+     * printer; "two-sided" prints it on both sides of one sheet.
+     */
     private Map<String, Object> testPrint(JsonNode b) throws Exception {
         String printer = b.path("printer").asText("");
         boolean color = b.path("color").asBoolean(false);
+        boolean twoSided = b.path("twoSided").asBoolean(false);
         if (PrinterDiscovery.find(printer).isEmpty()) throw new UserProblem("Windows has no printer called " + printer);
         Path file = Files.createTempFile("campusprint-test", ".pdf");
         try {
-            TestPage.write(file);
-            PrintStrategy.Settings s = new PrintStrategy.Settings(UUID.randomUUID().toString(), printer, "PDF",
-                    color, 1, "TEST1", "Campus Print test page", null, true);
-            new PrintEngine(new PdfBoxPrintStrategy(), true, 0).print(file, s);
+            TestPage.write(file, twoSided ? 2 : 1);
+            Messages.JobSettings plain = Messages.JobSettings.plain(1, color, null);
+            Messages.JobSettings settings = !twoSided ? plain : new Messages.JobSettings(1, color, null, "LONG_EDGE",
+                    "A4", "AUTO", "FIT", 100, 1, 5, 0, true, true, null, null, null, null, "STANDARD");
+            PrintJob job = new PrintJob(UUID.randomUUID().toString(), printer, "PDF", "TEST1",
+                    "Campus Print test page", 1, 1, settings, new Messages.Paper("A4", 210, 297), null, true);
+            new PrintEngine(new PdfBoxPrintStrategy(), true, 0, new PrintTicket(StationConfig.dir().resolve("work")),
+                    new CapabilityCache()).print(file, job);
+        } catch (PrintEngine.CannotPrint e) {
+            throw new UserProblem(e.getMessage());
         } finally {
             Files.deleteIfExists(file);
         }
-        log.info("Test page sent to \"{}\" ({})", printer, color ? "colour" : "B/W");
+        log.info("Test page sent to \"{}\" ({}{})", printer, color ? "colour" : "B/W", twoSided ? ", two-sided" : "");
+        if (twoSided) {
+            return Map.of("ok", true, "message",
+                    "Sent. Check the paper: ONE sheet, \"Side 1\" on the front and \"Side 2\" on the back.");
+        }
         return Map.of("ok", true, "message", color
                 ? "Sent. Check the paper: the red box must be RED, and \"Pickup TEST1\" in the corner."
                 : "Sent. Check the paper: the red box must be GREY, and \"Pickup TEST1\" in the corner.");
