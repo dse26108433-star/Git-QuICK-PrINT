@@ -36,7 +36,8 @@ public class Journal {
      * outcomeStatus is null until the printer finished (COMPLETED / FAILED).
      */
     public record Entry(String orderId, String claimToken, String pickupCode, Instant at,
-                        String outcomeStatus, String outcomeCode, String outcomeMessage) {}
+                        String outcomeStatus, String outcomeCode, String outcomeMessage,
+                        String printer, String queueName) {}
 
     /** Call immediately before sending to the spooler. Durable when it returns. */
     public void recordSent(String orderId, String claimToken, String pickupCode) throws IOException {
@@ -48,13 +49,21 @@ public class Journal {
         write(orderId, m);
     }
 
+    /** Windows accepted the document: where it waits, so it can be watched again after a restart. */
+    public void recordQueued(Entry e, String printer, String queueName) {
+        Map<String, String> m = base(e);
+        m.put("printer", printer);
+        m.put("queueName", queueName);
+        try {
+            write(e.orderId(), m);
+        } catch (IOException io) {
+            log.warn("Could not record where order {} waits: {}", e.pickupCode(), io.toString());
+        }
+    }
+
     /** The printer finished but the backend could not be told yet: remember the result. */
     public void recordOutcome(Entry e, String status, String code, String message) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("orderId", e.orderId());
-        m.put("claimToken", e.claimToken());
-        m.put("pickupCode", e.pickupCode());
-        m.put("at", e.at().toString());
+        Map<String, String> m = base(e);
         m.put("outcomeStatus", status);
         m.put("outcomeCode", code == null ? "" : code);
         m.put("outcomeMessage", message == null ? "" : message.replace('\n', ' '));
@@ -94,6 +103,17 @@ public class Journal {
         return out;
     }
 
+    private static Map<String, String> base(Entry e) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("orderId", e.orderId());
+        m.put("claimToken", e.claimToken());
+        m.put("pickupCode", e.pickupCode());
+        m.put("at", e.at().toString());
+        if (e.printer() != null) m.put("printer", e.printer());
+        if (e.queueName() != null) m.put("queueName", e.queueName());
+        return m;
+    }
+
     private Entry read(Path p) {
         try {
             Map<String, String> m = new LinkedHashMap<>();
@@ -107,7 +127,8 @@ public class Journal {
             return new Entry(m.get("orderId"), m.get("claimToken"), m.getOrDefault("pickupCode", "?"),
                     at == null ? Instant.EPOCH : Instant.parse(at),
                     outcome == null || outcome.isBlank() ? null : outcome,
-                    m.getOrDefault("outcomeCode", ""), m.getOrDefault("outcomeMessage", ""));
+                    m.getOrDefault("outcomeCode", ""), m.getOrDefault("outcomeMessage", ""),
+                    m.get("printer"), m.get("queueName"));
         } catch (Exception e) {
             log.warn("Unreadable journal file {}: {}", p, e.toString());
             return null;

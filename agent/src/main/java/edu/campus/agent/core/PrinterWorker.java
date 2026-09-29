@@ -71,6 +71,12 @@ public class PrinterWorker implements Runnable {
                     sleep(Duration.ofSeconds(10));        // switched off, or not installed in Windows
                     continue;
                 }
+                if (health.notReady(c.id()) != null) {
+                    // offline, out of paper, jammed...: paid documents stay safe on the server (another
+                    // printer may take them) instead of waiting in this printer's Windows queue
+                    sleep(Duration.ofSeconds(5));
+                    continue;
+                }
                 Optional<ClaimedJob> job = backend.claim(c.id());
                 backoff = poll;
                 if (job.isPresent()) {

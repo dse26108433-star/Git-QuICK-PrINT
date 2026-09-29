@@ -54,14 +54,17 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
 
     /** Files shared from WhatsApp / Files / Drive (one or several), or opened with "Open with". */
     private fun handleShared(intent: Intent?) {
-        if (intent == null) return
-        val uris: List<Uri> = when (intent.action) {
+        if (intent != null) vm.addUris(sharedFiles(intent))
+    }
+
+    companion object {
+        /** The files an intent brings: one or several shared, or one opened. */
+        fun sharedFiles(intent: Intent): List<Uri> = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
             Intent.ACTION_SEND_MULTIPLE -> IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: emptyList()
             Intent.ACTION_VIEW -> listOfNotNull(intent.data)
             else -> emptyList()
         }
-        vm.addUris(uris)
     }
 
     private fun openCheckout(start: PaymentStart) {

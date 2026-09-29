@@ -122,6 +122,22 @@ class OrderSessionTest {
     }
 
     @Test
+    fun movingFilesChangesTheOrderTheyPrintIn() {
+        val st0 = addAndWait(TestFiles.pdf("One.pdf", 1), TestFiles.pdf("Two.pdf", 1), TestFiles.png("Three.png"))
+        val three = st0.docs[2]
+        session.move(three.local, -1)
+        session.move(three.local, -1)
+        session.move(three.local, -1)                                 // already first: nothing happens
+        assertEquals(listOf("Three.png", "One.pdf", "Two.pdf"), session.state.value.docs.map { it.name })
+        assertEquals(listOf("Three.png", "One.pdf", "Two.pdf"), store.load()!!.docs.map { it.name })   // kept on the phone
+        session.review()
+        val st = waitFor("review") { it.step == Step.REVIEW }
+        assertEquals(listOf("Three.png", "One.pdf", "Two.pdf"), backend.lastReview!!.documents.map { d -> st.docs.first { it.id == d.id }.name })
+        assertEquals(listOf(1, 2, 3), st.order!!.live.map { it.position })
+        assertEquals(listOf("Three.png", "One.pdf", "Two.pdf"), st.order!!.live.map { it.fileName })
+    }
+
+    @Test
     fun theServersSettingsAreKeptAfterReview() {
         val st0 = addAndWait(TestFiles.pdf("Chapter.pdf", 12))
         session.setPagesText(st0.docs[0].local, "1-4")

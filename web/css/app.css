@@ -229,6 +229,11 @@ body[data-step="choose"] .steps { display: none; }
 .qremove { width: 30px; height: 30px; border-radius: 8px; border: 0; background: none; color: var(--faint); cursor: pointer; display: grid; place-items: center; }
 .qremove:hover { background: var(--danger-soft); color: var(--danger); }
 .qremove svg { width: 16px; height: 16px; }
+.qmove { display: flex; gap: 2px; margin-top: auto; }
+.qmove button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.qmove button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-2); }
+.qmove button:disabled { opacity: .35; cursor: default; }
+.qmove svg { width: 16px; height: 16px; }
 .queue-add { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px dashed var(--line-2); border-radius: 14px;
              cursor: pointer; color: var(--ink-2); font-weight: 600; font-size: 14.5px; background: var(--surface-2); position: relative; }
 .queue-add:hover { border-color: var(--ink); }
@@ -447,6 +452,7 @@ body[data-step="setup"] .footer { display: none; }
   .queue { position: static; max-height: none; overflow: visible; }
   .queue-list { flex-direction: row; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
   .queue-list .qcard { flex: 0 0 290px; scroll-snap-align: start; }
+  .queue-list .qmove svg { transform: rotate(-90deg); }          /* a row of files: earlier = left */
   .queue { flex-direction: column; }
   .queue-add { align-self: flex-start; }
   .editor-body { grid-template-columns: minmax(0, 1fr) 340px; }
@@ -468,6 +474,7 @@ body[data-step="setup"] .footer { display: none; }
   .ws-head .btn { min-height: 40px; padding: 0 14px; }
   .queue-list { flex-direction: column; overflow: visible; }
   .queue-list .qcard { flex: none; }
+  .queue-list .qmove svg { transform: none; }
   .queue-add { align-self: stretch; }
 
   .editor { position: fixed; inset: 0; z-index: 70; border-radius: 0; border: 0; display: flex; flex-direction: column;

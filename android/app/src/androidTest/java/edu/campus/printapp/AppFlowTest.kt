@@ -1,5 +1,6 @@
 package edu.campus.printapp
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.ui.semantics.Role
@@ -25,6 +26,7 @@ import edu.campus.printapp.flow.DocStatus
 import edu.campus.printapp.flow.Step
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -170,5 +172,42 @@ class AppFlowTest {
         waitUntil("paid", 30_000) { vm.session.state.value.let { it.step == Step.STATUS && it.order?.paidAt != null } }
         shot("a09-status")
         assertTrue(vm.session.state.value.order!!.pickupCode.length == 5)
+    }
+
+    /** Several files shared into the app (WhatsApp, Files...) land in one order; the arrows change the print order. */
+    @Test
+    fun sharedFilesCanBeMovedIntoTheRightOrder() {
+        val shared = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "*/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(asset("Notes.pdf"), asset("Assignment.pdf"), asset("Photo.jpg")))
+        }
+        val uris = MainActivity.sharedFiles(shared)
+        assertEquals(3, uris.size)
+        rule.runOnUiThread { vm.addUris(uris) }
+        waitUntil("3 shared files ready", 90_000) { vm.session.state.value.docs.let { d -> d.size == 3 && d.all { it.status == DocStatus.READY } } }
+        assertEquals(1, vm.session.state.value.docs.map { vm.session.state.value.draft!!.orderId }.distinct().size)
+        // the photo first
+        rule.onNode(hasContentDescription("Print in-Photo.jpg earlier")).tap()
+        rule.onNode(hasContentDescription("Print in-Photo.jpg earlier")).tap()
+        waitUntil("photo first") { vm.session.state.value.docs.first().name.endsWith("Photo.jpg") }
+        shot("b01-shared-moved")
+        assertEquals(listOf("in-Photo.jpg", "in-Notes.pdf", "in-Assignment.pdf"), vm.session.state.value.docs.map { it.name })
+        rule.onNodeWithTag("reviewBtn").tap()
+        waitUntil("review", 30_000) { vm.session.state.value.step == Step.REVIEW }
+        assertEquals(listOf("in-Photo.jpg", "in-Notes.pdf", "in-Assignment.pdf"), vm.session.state.value.order!!.live.map { it.fileName })
+    }
+
+    /** On a tablet (840 dp and wider) the list and one file's settings are side by side, no full-screen editor. */
+    @Test
+    fun onATabletTheListAndSettingsAreSideBySide() {
+        assumeTrue("needs a tablet-size screen", ctx.resources.configuration.screenWidthDp >= 840)
+        rule.runOnUiThread { vm.addUris(listOf(asset("Notes.pdf"), asset("Photo.jpg"))) }
+        waitUntil("2 files ready", 90_000) { vm.session.state.value.docs.let { d -> d.size == 2 && d.all { it.status == DocStatus.READY } } }
+        rule.waitUntil(20_000) { rule.onAllNodes(hasTestTag("editorList")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(rule.onAllNodes(hasTestTag("fileList")).fetchSemanticsNodes().isNotEmpty())
+        rule.onNodeWithTag("file:in-Photo.jpg").tap()
+        waitUntil("photo shown") { vm.session.state.value.selectedDoc?.name?.endsWith("Photo.jpg") == true }
+        assertTrue(rule.onAllNodes(hasTestTag("fileList")).fetchSemanticsNodes().isNotEmpty())   // the list stays
+        shot("c01-tablet")
     }
 }

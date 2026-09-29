@@ -20,6 +20,9 @@ Find your problem, try the fix, then do the step again.
 
 | What you see | What to do |
 |---|---|
+| Printer lamp amber: "Printer is offline", "Out of paper", "Paper jam", "Paused in Windows" | Fix the printer (or Windows: printer queue → Resume). Paid files wait safely and print by themselves once it is ready. If a driver wrongly reports its printer offline while it prints fine, set `checkPrinterStatus: false` in `agent.yml` (service installs). |
+| A file shows "could not confirm it printed: check the tray" | The Windows queue could not be read for 5 minutes. Look in the tray and the Windows queue before pressing **Print again**. |
+| Stapling / punching / binding not offered although the printer has it | On purpose until staff tick it: print one test order with that option, check the paper, then tick it under "What students can choose on this printer" → **Save**. |
 | Students do not see two-sided / A3 / stapling although the printer has it | Station → Printers: the printer's labels show what Windows reported ("Two-sided", "Paper: …", "Finishing: …"). If it is there, open "What students can choose on this printer", tick it, **Save**. If it is not there, the driver does not describe it: install the full Canon driver (UFR II / PS, not the basic one), set the options in Windows (Printer properties → Device Settings: duplex unit, finisher installed), then **Scan again**. |
 | A paper size is offered but the printer has no such paper | Untick it under "What students can choose on this printer" → **Save**. Students see the change within a minute. |
 | Paper types (glossy, thick…) do not appear on the website | On purpose: they appear only when staff tick them (paper you keep in stock). |
@@ -29,7 +32,7 @@ Find your problem, try the fix, then do the step again.
 | Stapled / punched in the wrong place | Each Canon driver names positions differently. Print one test order per option and check; untick positions that come out wrong. `PrinterSmokeTest "<printer>" test.pdf --staple top-left` prints one by hand. |
 | Colour file came out grey (or B/W in colour) | Printer properties → the driver must follow the application's colour choice (not forced to B/W / colour). Then **Test B/W** and **Test colour** in the Station. |
 | Printout smaller than the preview | Driver defaults "Fit to paper" / "Scale" must be off (100 %). The Station prints at 100 % from the paper corner. |
-| A Station older than 4.0 prints only some files | Old Stations only get plain A4 one-sided files. Install `CampusPrintStation-Setup-4.0.0.exe` (it updates in place). |
+| A Station older than 4.0 prints only some files | Old Stations only get plain A4 one-sided files. Install `CampusPrintStation-Setup-4.1.0.exe` (it updates in place). |
 
 ## Xerox PC / printing (details)
 

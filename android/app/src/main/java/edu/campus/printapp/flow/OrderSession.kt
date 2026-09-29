@@ -447,6 +447,19 @@ class OrderSession(
         scope.launch { runCatching { api.removeDocument(o.orderId, o.key, docId) } }   // else the server expires it
     }
 
+    /** Moves a file earlier (-1) or later (+1): the order of the list is the order the files print in. */
+    fun move(local: Long, delta: Int) {
+        _state.update { s ->
+            val i = s.docs.indexOfFirst { it.local == local }
+            val j = i + delta
+            if (i < 0 || j < 0 || j >= s.docs.size) return@update s
+            val docs = s.docs.toMutableList()
+            docs.add(j, docs.removeAt(i))
+            s.copy(docs = docs)
+        }
+        saveDraft()
+    }
+
     // ================================================================== choices for one file
 
     fun select(local: Long?) = _state.update { it.copy(selected = local) }

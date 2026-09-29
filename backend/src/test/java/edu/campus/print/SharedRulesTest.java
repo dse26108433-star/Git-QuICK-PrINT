@@ -168,7 +168,7 @@ class SharedRulesTest {
         PrinterFeatures d = EffectiveFeatures.compute(caps, null);
         assertThat(d.paperSizes()).containsExactly("A4", "A3");
         assertThat(d.duplex()).isTrue();
-        assertThat(d.finishing()).containsExactly("STAPLE_TOP_LEFT", "PUNCH_LEFT");
+        assertThat(d.finishing()).isEmpty();                  // finishing only once staff ticked it (after a test print)
         assertThat(d.mediaTypes()).isEmpty();                 // paper types only when staff offer them
         assertThat(d.minMarginMm()).isEqualTo(5.1);
 
@@ -181,6 +181,11 @@ class SharedRulesTest {
         assertThat(o.mediaTypeNames()).containsEntry("psk:PhotographicHighGloss", "Glossy");
         assertThat(o.borderless()).isFalse();
         assertThat(o.highQuality()).isTrue();
+
+        // Staff tick finishing the driver does not have: only what the printer has counts.
+        assertThat(EffectiveFeatures.compute(caps, new OfferedFeatures(null, null,
+                List.of("STAPLE_TOP_LEFT", "PUNCH_LEFT", "BIND_LEFT"), null, null, null)).finishing())
+                .containsExactly("STAPLE_TOP_LEFT", "PUNCH_LEFT");
 
         // Staff untick every size: never leave the printer with nothing.
         assertThat(EffectiveFeatures.compute(caps, new OfferedFeatures(List.of(), null, null, null, null, null))

@@ -166,18 +166,24 @@ public class JobProcessor {
                 return;
             }
             log.info("{}: sent to \"{}\"", tag, j.windowsPrinterName());
+            Journal.Entry sent = journal.get(id);
+            if (sent != null) journal.recordQueued(sent, j.windowsPrinterName(), queueName);
 
             // 6: wait for the paper to come out.
             SpoolerMonitor.Result r = spooler.awaitCompletion(j.windowsPrinterName(), queueName,
                     detail -> health.setAttention(j.printerId(), detail));
 
-            // 7: report.
-            if (r.outcome() == SpoolerMonitor.Outcome.REMOVED) {
-                reportFinal(j, "FAILED", "REMOVED_FROM_QUEUE",
+            // 7: report what really happened (never "printed" when it is not known).
+            switch (r.outcome()) {
+                case COMPLETED -> {
+                    reportFinal(j, "COMPLETED", "", r.detail());
+                    log.info("{}: done ({})", tag, r.detail());
+                }
+                case REMOVED -> reportFinal(j, "FAILED", "REMOVED_FROM_QUEUE",
                         "The document was removed from the printer queue (" + r.detail() + "). Staff: check the tray.");
-            } else {
-                reportFinal(j, "COMPLETED", "", r.detail());
-                log.info("{}: done ({})", tag, r.detail());
+                case UNCONFIRMED -> reportFinal(j, "FAILED", "UNCONFIRMED", UNCONFIRMED_WORDS);
+                case STOPPED -> log.warn("{}: the Station is closing while the document waits in the Windows queue; "
+                        + "it is watched again when the Station starts", tag);
             }
 
         } catch (RejectedException e) {
@@ -230,13 +236,31 @@ public class JobProcessor {
         }
     }
 
+    static final String UNCONFIRMED_WORDS = "Sent to the printer, but this PC could not read the Windows print queue "
+            + "to confirm it printed. Staff: check the tray and the Windows queue before printing again.";
+
+    private final java.util.concurrent.ExecutorService resumer = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "watch-again");
+        t.setDaemon(true);
+        return t;
+    });
+
     /**
      * Reports results the backend has not heard yet: after a restart, or after
-     * the internet came back. Never prints anything.
+     * the internet came back. Never prints anything. A document that is still
+     * waiting in a Windows queue (the printer was off while the Station
+     * restarted) is watched again until it really prints.
      */
     public void flushJournal() {
         for (Journal.Entry e : journal.all()) {
             if (inFlight.contains(e.orderId())) continue;
+            if (e.outcomeStatus() == null && e.printer() != null && e.queueName() != null) {
+                Boolean waiting = spooler.stillQueued(e.printer(), e.queueName());
+                if (waiting == null || waiting) {
+                    watchAgain(e);
+                    continue;
+                }
+            }
             String status = e.outcomeStatus() != null ? e.outcomeStatus() : "COMPLETED";
             String message = e.outcomeStatus() != null ? e.outcomeMessage()
                     : "Sent to the printer before the PC restarted; not printed again. Staff: check the tray.";
@@ -250,6 +274,47 @@ public class JobProcessor {
             } catch (IOException offline) {
                 return;   // still offline; next heartbeat tries again
             }
+        }
+    }
+
+    /** Watches a document sent before a restart until it leaves the Windows queue, then reports it. */
+    private void watchAgain(Journal.Entry e) {
+        if (!inFlight.add(e.orderId())) return;
+        log.info("Order {}: still in the Windows queue of \"{}\" after a restart; watching it again",
+                e.pickupCode(), e.printer());
+        resumer.execute(() -> {
+            ScheduledFuture<?> renew = leaseTimer.scheduleAtFixedRate(() -> {
+                try {
+                    backend.renewLease(e.orderId(), e.claimToken());
+                } catch (Exception ignored) {
+                    // the backend may have given up on it already; a late COMPLETED is still accepted
+                }
+            }, 0, 30, TimeUnit.SECONDS);
+            try {
+                SpoolerMonitor.Result r = spooler.awaitCompletion(e.printer(), e.queueName(), d -> { });
+                switch (r.outcome()) {
+                    case COMPLETED -> reportLate(e, "COMPLETED", "", r.detail());
+                    case REMOVED -> reportLate(e, "FAILED", "REMOVED_FROM_QUEUE",
+                            "The document was removed from the printer queue (" + r.detail() + "). Staff: check the tray.");
+                    case UNCONFIRMED -> reportLate(e, "FAILED", "UNCONFIRMED", UNCONFIRMED_WORDS);
+                    case STOPPED -> { }
+                }
+            } finally {
+                renew.cancel(false);
+                inFlight.remove(e.orderId());
+            }
+        });
+    }
+
+    private void reportLate(Journal.Entry e, String status, String code, String message) {
+        try {
+            backend.reportStatus(e.orderId(), e.claimToken(), status, code, message);
+            journal.clear(e.orderId());
+            log.info("Order {}: reported {} after the restart", e.pickupCode(), status);
+        } catch (RejectedException r) {
+            journal.clear(e.orderId());
+        } catch (IOException offline) {
+            journal.recordOutcome(e, status, code, message);
         }
     }
 

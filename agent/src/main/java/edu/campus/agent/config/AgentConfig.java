@@ -48,6 +48,13 @@ public class AgentConfig {
     public boolean verifyViaSpooler = true;
     public int spoolerPollSeconds = 3;
 
+    /**
+     * Ask Windows whether each printer is ready (offline, paper out, jam...) and
+     * take no new documents while it is not. Switch off only for a driver that
+     * wrongly reports its printer offline while it prints fine.
+     */
+    public boolean checkPrinterStatus = true;
+
     public static AgentConfig load(Path file) throws Exception {
         AgentConfig cfg = Files.exists(file)
                 ? new ObjectMapper(new YAMLFactory())

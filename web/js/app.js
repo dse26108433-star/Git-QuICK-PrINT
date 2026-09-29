@@ -786,11 +786,45 @@
     rm.appendChild(icon("x"));
     rm.onclick = (e) => { e.stopPropagation(); removeDoc(d); };
     side.append(rm);
+    // the order of the list is the order the files print in
+    if (state.docs.length > 1) {
+      const mv = el("div", "qmove");
+      [["up", -1, "earlier"], ["down", 1, "later"]].forEach(([name, delta, words]) => {
+        const b = el("button");
+        b.type = "button";
+        b.setAttribute("aria-label", "Print " + d.name + " " + words);
+        b.title = "Move " + (delta < 0 ? "up" : "down");
+        b.disabled = delta < 0 ? i === 0 : i === state.docs.length - 1;
+        b.appendChild(icon(name));
+        b.onclick = (e) => { e.stopPropagation(); moveDoc(d, delta); };
+        mv.append(b);
+      });
+      side.append(mv);
+    }
     c.append(th, main, side);
     const open = () => select(d, true);
     c.onclick = open;
-    c.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+    c.onkeydown = (e) => {
+      if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); moveDoc(d, e.key === "ArrowUp" ? -1 : 1, true); return; }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    };
     return c;
+  }
+
+  /** Moves a file earlier or later in the order (the order the files print in). */
+  function moveDoc(d, delta, keepFocus) {
+    const i = state.docs.indexOf(d), j = i + delta;
+    if (i < 0 || j < 0 || j >= state.docs.length) return;
+    state.docs.splice(i, 1);
+    state.docs.splice(j, 0, d);
+    saveDraft();
+    renderQueue();
+    if (state.selected) renderEditor();
+    renderCheckout();
+    if (keepFocus) {
+      const c = document.querySelector('.qcard[data-local="' + d.local + '"]');
+      if (c) c.focus();
+    }
   }
 
   /** Progress only (cheap: runs on every upload progress event). */
@@ -2252,7 +2286,10 @@
     }
     state.draft = { orderId: saved.orderId, key: saved.key, code: saved.code };
     state.docs = [];
-    for (const sd of v.documents) {
+    // in the student's order (they may have moved files since the server last heard)
+    const rank = (id) => { const k = (saved.docs || []).findIndex(x => x.id === id); return k < 0 ? 1e6 : k; };
+    const docs = v.documents.slice().sort((a, b) => rank(a.id) - rank(b.id) || a.position - b.position);
+    for (const sd of docs) {
       const mine = (saved.docs || []).find(x => x.id === sd.id);
       const d = newDoc(new File([], sd.fileName));
       d.file = null;

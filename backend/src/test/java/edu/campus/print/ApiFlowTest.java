@@ -125,7 +125,7 @@ class ApiFlowTest {
         assertThat(bw.path("duplex").asBoolean()).isTrue();
         // Default offer: the common sizes the printer has (Letter is not offered by default).
         assertThat(texts(bw.path("paperSizes"))).containsExactly("A4", "A3", "A5");
-        assertThat(texts(bw.path("finishing"))).containsExactly("STAPLE_TOP_LEFT", "PUNCH_LEFT");
+        assertThat(texts(bw.path("finishing"))).isEmpty();          // not until staff tick it after a test print
         JsonNode colour = find(printers, "name", "Printer 2 (Colour)");
         assertThat(colour.path("duplex").asBoolean()).isFalse();
         assertThat(colour.path("borderless").asBoolean()).isTrue();
@@ -133,6 +133,11 @@ class ApiFlowTest {
         assertThat(shop.path("printing").path("mediaTypes").path("psk:PhotographicHighGloss").asText())
                 .isEqualTo("Glossy photo");
         assertThat(texts(shop.path("printing").path("paperSizes"), "id")).containsExactly("A4", "A3", "A5", "PHOTO_4X6");
+
+        // Staff tick the hole punch after a test print: students can choose it at once.
+        counter(put("/api/v1/counter/printers/" + bwPrinter).content("{\"offered\":{\"finishing\":[\"PUNCH_LEFT\"]}}"));
+        assertThat(texts(find(json(mvc.perform(get("/api/v1/shop")).andReturn()).path("printing").path("printers"),
+                "name", "Printer 1 (B/W)").path("finishing"))).containsExactly("PUNCH_LEFT");
 
         // Staff stop offering two-sided on Printer 1: the website stops offering it at once.
         counter(put("/api/v1/counter/printers/" + bwPrinter).content("{\"offered\":{\"duplex\":false}}"));

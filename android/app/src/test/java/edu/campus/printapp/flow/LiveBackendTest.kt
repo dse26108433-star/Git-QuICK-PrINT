@@ -181,6 +181,22 @@ class LiveBackendTest {
         assertEquals(listOf(1, 2, 3), jobs.sortedBy { it.documentNumber }.map { it.documentNumber })
     }
 
+    /** The student moved a file up: the Xerox PC gets the files in the new order (file 1 of 2 first). */
+    @Test
+    fun movedFilesPrintInTheNewOrder() {
+        val shop = runBlocking { session.loadShop() }!!
+        session.addFiles(listOf(TestFiles.pdf("First.pdf", 2), TestFiles.pdf("Second.pdf", 3)).map { TestFiles.incoming(it) })
+        var st = waitFor("2 files ready") { s -> s.docs.size == 2 && s.docs.all { it.status == DocStatus.READY } }
+        session.move(st.docs[1].local, -1)
+        session.review()
+        st = waitFor("review") { it.step == Step.REVIEW }
+        assertEquals(listOf("Second.pdf", "First.pdf"), st.order!!.live.map { it.fileName })
+        session.pay()
+        st = waitFor("paid") { it.step == Step.STATUS && it.order?.paidAt != null }
+        val jobs = StationForTests(base!!).claimAll(shop.printing!!.printers.map { it.id }).filter { it.orderId == st.order!!.orderId }
+        assertEquals(listOf("Second.pdf", "First.pdf"), jobs.sortedBy { it.documentNumber }.map { it.fileName })
+    }
+
     @Test
     fun theServerRefusesWithTheSameWordsTheAppUses() {
         val shop = runBlocking { session.loadShop() }!!

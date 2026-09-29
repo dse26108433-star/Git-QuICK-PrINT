@@ -1,17 +1,17 @@
-CAMPUS PRINT STATION 4.0.0 - INSTALLING AT A XEROX CENTER
+CAMPUS PRINT STATION 4.1.0 - INSTALLING AT A XEROX CENTER
 ==========================================================
 
 You need: this installer on a pen drive, the Campus Print server address,
 and the counter password. Nothing else (no Java, no other programs).
 
 Which installer?
-- CampusPrintStation-Setup-4.0.0-GitQuickPrint.exe : for Git QuICK PrINT.
+- CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe : for Git QuICK PrINT.
   The server address (https://campus-print-backend.onrender.com) is already
   filled in.
-- CampusPrintStation-Setup-4.0.0.exe : any other college; you type the
+- CampusPrintStation-Setup-4.1.0.exe : any other college; you type the
   server address in step 3a.
 
-Important: Station 4.0.0 needs the version 4 server. Deploy the new backend
+Important: Station 4.1.0 needs the version 4 server. Deploy the new backend
 first (START-HERE.md, section "Version 4"), then install this.
 
 1. Make sure the printers are installed in Windows with the FULL Canon
@@ -33,8 +33,9 @@ first (START-HERE.md, section "Version 4"), then install this.
       choose "Black & white only" / "Colour and black & white" / "Colour only".
       Under each printer, labels show what Windows says it can do (paper
       sizes, two-sided, finishing). Open "What students can choose on this
-      printer" and untick paper sizes you do not keep and options you do
-      not want to offer. Press "Test B/W" / "Test colour" on each one.
+      printer" and untick paper sizes you do not keep. Stapling, punching
+      and binding stay off until you tick them: tick one only after a
+      test order with it came out right. Press "Test B/W" / "Test colour" on each one.
       Check the paper: B/W test = red box GREY, colour test = red box RED,
       and the label "Pickup TEST1" readable in the bottom-right corner.
       Printers that can print two-sided also have "Test two-sided": one

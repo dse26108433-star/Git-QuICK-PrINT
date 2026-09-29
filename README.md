@@ -12,7 +12,7 @@ No accounts, no login.
 
 1. Opens the website and adds **all their files at once**: PDFs, JPGs and PNGs, dragged in, picked, or pasted
    (up to 25 files, 50 MB each). Each file uploads with its own progress bar and can be cancelled, tried
-   again or removed; more can be added at any time.
+   again, removed or moved up and down (the list order is the print order); more can be added at any time.
 2. Sets up **each file on its own**, with a live **print preview** of every sheet:
    - **pages** (typed like `3, 7, 10-12`, or tapped on the page pictures), shown as
      *"Selected: 3, 7, 10–12 · Total pages to print: 5"*
@@ -32,12 +32,15 @@ preview and settings side by side).
 ## What happens in the Xerox center
 
 - One Windows PC is connected to the 3–4 Canon printers. It runs **Campus Print Station**: one installer
-  (`installer/CampusPrintStation-Setup-4.0.0.exe`, about 37 MB) with its own Java inside, so nothing else is
+  (`installer/CampusPrintStation-Setup-4.1.0.exe`, about 37 MB) with its own Java inside, so nothing else is
   installed. A setup wizard connects the PC to the server and **scans the printers**; after that the Station
   shows the counter and **prints paid files by itself**, starts with Windows and keeps printing from the tray.
 - The Station **reads what each printer can do** (paper sizes, two-sided, colour, stapling, hole punching…) and
   keeps the server up to date; staff tick what they want to offer on each printer. The website offers exactly
   that, and nothing a printer cannot do.
+- **A printer that is offline, out of paper or jammed takes no new files.** Paid files wait safely on the
+  server (another printer that can do them may take them) and print once the printer is ready again. A file
+  already waiting in a Windows queue when the Station restarts is watched again, never printed twice.
 - **Every file is its own print job.** A free printer takes the next paid file it can do completely: colour
   files go to colour printers, A3 two-sided to the printer that has both, and so on. One order's files stay
   on one printer when possible. All printers work at the same time.
@@ -90,7 +93,7 @@ preview and settings side by side).
    `web/netlify.toml` keeps the staff counter off the public site.
 3. **Install Campus Print Station on the Xerox PC** (`installer/HOW-TO-INSTALL.txt`). For a college, build an
    installer with the address built in: `build-installer.ps1 -BackendUrl "https://..."`
-   (`installer/CampusPrintStation-Setup-4.0.0-GitQuickPrint.exe` is already built for
+   (`installer/CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe` is already built for
    `https://campus-print-backend.onrender.com`).
 4. **Razorpay live mode:** finish KYC, generate live keys (`rzp_live_...`), set them in `.env`, restart.
    Refunds for problem orders are done in the Razorpay dashboard (the counter screen shows the payment id).
@@ -103,7 +106,7 @@ preview and settings side by side).
 `db/setup.sql` upgrades the database in place: every old order becomes an order with one file, nothing is lost.
 **The backend, the website and the Station must then be updated together**: the old backend cannot claim
 work from the new database. Order: run `setup.sql` → deploy the new backend → deploy the website → install
-Station 4.0.0 on the Xerox PC (it updates the old one in place). A Station older than 4.0 still prints plain
+Station 4.1.0 on the Xerox PC (it updates the old one in place). A Station older than 4.0 still prints plain
 A4 one-sided files, but everything else waits for 4.0.
 
 ## Honest note

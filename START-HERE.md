@@ -26,7 +26,7 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 | ★ "Pickup code on pages" on/off switch | ✅ Done and tested (Station counter + counter.html) |
 | ★ Student website on Netlify + backend online | ⏳ Files ready · needs your Render + Netlify accounts (see ★ Going online) |
 | ★ New student website design + phone app + QR poster | ✅ Done and tested (desktop + phone) · 🪧 print the poster |
-| ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ⏳ deploy backend + website · 🖨️ install Station 4.0.0 (see ★★ below) |
+| ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ✅ backend live on Render · ⏳ website on Netlify · 🖨️ install Station 4.1.0 (see ★★ below) |
 
 ---
 
@@ -167,7 +167,7 @@ The log also shows a big **"DEMO mode"** warning — that is expected for now.
 
 ## STEP 4 — Connect the Xerox PC
 
-> ★ **Now:** double-click `installer/CampusPrintStation-Setup-4.0.0.exe` on the Xerox PC and follow its wizard
+> ★ **Now:** double-click `installer/CampusPrintStation-Setup-4.1.0.exe` on the Xerox PC and follow its wizard
 > (`installer/HOW-TO-INSTALL.txt`). No `agent.yml`, no SQL, no service scripts. The manual way below still works.
 
 The backend must be reachable from the Xerox PC.
@@ -323,7 +323,7 @@ e.g. `Pickup K7M4X · 3 pages × 2`. No extra sheet.
 
 ## ★ Campus Print Station — the Xerox center software  (new)
 
-**What it is:** one installer, `installer/CampusPrintStation-Setup-4.0.0.exe` (37 MB; version 3.0.0 until ★★). Like big companies' apps, it
+**What it is:** one installer, `installer/CampusPrintStation-Setup-4.1.0.exe` (37 MB; version 3.0.0 until ★★). Like big companies' apps, it
 carries its **own private Java inside**, so the Xerox PC needs **nothing else installed**. No admin password needed.
 
 **At the college:** double-click the installer → Next → Install → Finish ("Open Campus Print Station now" is ticked).
@@ -404,7 +404,7 @@ The project was checked: no passwords or keys will be uploaded (`backend/.env` s
 **E. Xerox center PC**
 - [ ] Build the installer with the address inside:
       `agent\packaging\build-installer.ps1 -BackendUrl "https://<your-service>.onrender.com"`
-      (already built for `https://campus-print-backend.onrender.com`: `installer/CampusPrintStation-Setup-4.0.0-GitQuickPrint.exe`)
+      (already built for `https://campus-print-backend.onrender.com`: `installer/CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe`)
 - [ ] Install it on the Xerox PC → connect (counter password) → tick the Canons → **Test print** each one
 - [ ] In the Station: Printers page → remove the old example rows "Printer 1–4 (Canon iR…)" if they are still listed
 
@@ -460,7 +460,7 @@ with a print preview of every sheet:
 - Phone: list → tap a file → full-screen settings with preview and page picker. Laptop: list, preview and
   settings side by side. A reload keeps the unfinished order.
 
-**What the Xerox center gets** (Station 4.0.0): the Station reads what each printer can do and keeps the
+**What the Xerox center gets** (Station 4.1.0): the Station reads what each printer can do and keeps the
 server up to date; staff choose what to offer per printer ("What students can choose on this printer");
 prices per printed side with extra % for A3 / special paper and prices for finishing; every file of an order is
 its own print job, sent to a printer that can do all of it; the counter shows each file with its printer,
@@ -480,6 +480,10 @@ Tested:
       Photo.jpg colour A4) → ₹20 + ₹40 + ₹10 = ₹70, as expected
 - [x] Real Station code against the demo backend: discovered the laptop's printers, printed an order of two files
       on two printers in 12 s; the printed PDFs match the website preview (A3 two pages per sheet; photo filling A4)
+- [x] Station 4.1.0 reliability, tested on a real Windows printer: a paid order arriving while the printer is
+      offline waits on the server and prints once when it is back; a Station killed while a file waits in a paused
+      printer's queue watches it again after the restart and reports it printed exactly once
+- [x] Files can be moved up and down (website and app); the list order is the print order, kept after a reload
 - [x] Live Supabase upgraded: backup first (`D:\Downloads\files (6)\supabase-backup-before-v4-2026-09-29`), rehearsed on a
       copy, then run in one transaction; all old orders kept (each became an order with one file)
 
@@ -488,12 +492,13 @@ To do, in this order:
       online backend is the old one and **cannot print** with the upgraded database. Check afterwards:
       `https://campus-print-backend.onrender.com/api/v1/shop` shows `"maxDocuments":25` and a `"printing"` part.
 - [ ] 2. **Deploy the website** (Netlify builds it from the same push). Open it on a phone: add two files.
-- [ ] 3. 🖨️ **Install Station 4.0.0** on the Xerox PC: `installer/CampusPrintStation-Setup-4.0.0-GitQuickPrint.exe`
+- [ ] 3. 🖨️ **Install Station 4.1.0** on the Xerox PC: `installer/CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe`
       (server address built in) — it updates the old Station in place. Then Station → Printers: check each Canon's
       labels (paper sizes, two-sided, finishing), untick what you do not want to offer, **Save**.
 - [ ] 4. 🖨️ In the Station, remove the old example rows "Printer 1–4 (Canon iR…)" if they are still listed.
-- [ ] 5. 🖨️ One test order per option on the real Canons: two-sided (long and short edge), A3, 2 per sheet, and
-      **each** staple / punch / binding position the Station lists. Untick any that come out wrong.
+- [ ] 5. 🖨️ One test order per option on the real Canons: two-sided (long and short edge), A3, 2 per sheet.
+      Stapling, punching and binding are hidden until you tick them: print one test per position, and tick
+      only those that came out right.
 - [ ] 6. Station → Settings: prices per printed side; extra % for A3 (200 % preset) and special paper; finishing prices.
 - [ ] 📱 Android 3.0.0 (many files per order, same settings as the website): install it on your phone and try one order.
 

@@ -13,8 +13,8 @@ android {
         applicationId = "edu.campus.printapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0.0"
+        versionCode = 4
+        versionName = "3.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Where the print service runs: the live one, unless built with -PapiBase=http://... (see AppConfig.kt)

@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -220,6 +222,18 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
             Text(if (p != null) rupees(p.amount) else "", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CP.Ink)
             IconButton(onClick = { vm.removeDoc(d.local) }, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Close, "Remove ${d.name}", tint = CP.Faint)
+            }
+            // the order of the list is the order the files print in
+            val i = st.docs.indexOf(d)
+            if (st.docs.size > 1) {
+                Row {
+                    IconButton(onClick = { session.move(d.local, -1) }, enabled = i > 0, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowUp, "Print ${d.name} earlier", tint = if (i > 0) CP.Muted else CP.Line2)
+                    }
+                    IconButton(onClick = { session.move(d.local, 1) }, enabled = i < st.docs.size - 1, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowDown, "Print ${d.name} later", tint = if (i < st.docs.size - 1) CP.Muted else CP.Line2)
+                    }
+                }
             }
         }
     }

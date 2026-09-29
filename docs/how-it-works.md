@@ -82,7 +82,9 @@ The website only offers what the connected printers can really do. Nothing is ha
    printer's `capabilities` in the database, with a hash so only real changes are sent.
 2. **Staff choose what to offer** on each printer (Station → Printers → "What students can choose on this
    printer"): which paper sizes they keep in stock, two-sided on/off, which finishing, which paper types.
-   This is `offered`. By default: A4, A3, A5, Legal, Folio if the printer takes them; no special paper types.
+   This is `offered`. By default: A4, A3, A5, Legal, Folio if the printer takes them, two-sided if it has it;
+   **no finishing** (staff tick each staple / punch / binding option after a test print with it came out
+   right: drivers often list a finisher that is not fitted) and no special paper types.
 3. **What students get** is capabilities ∩ offered = `effective`, worked out by the server
    (`EffectiveFeatures`). A printer switched off at the counter ("Taking orders" off) offers nothing. A printer
    that is only offline for a while (paper jam, PC restarting) keeps its options: its files wait for it, and
@@ -209,6 +211,7 @@ print jobs the PC receives are identical. Older app versions (one file per order
 
 On the PC, for each file:
 
+0. only when Windows says the printer is ready (else the file stays on the server)
 1. tell the backend `DOWNLOADING`
 2. download, check size + type + SHA-256, and lay out the sheets — a problem here gives the file back (nothing printed)
 3. tell the backend `SUBMITTED` — **if this fails, do not print**
@@ -239,6 +242,14 @@ so the PC needs nothing else. It installs per user (no administrator), adds shor
   what is offered; **Test B/W** / **Test colour** / **Test two-sided** print a test page.
 - **Printing**: one worker per printer, each asks for the next file it can do. It keeps printing when the window
   is closed (tray icon), and starts with Windows.
+- **Printer offline**: every heartbeat the Station asks Windows whether each printer is ready (offline, out of
+  paper, jam, door open, paused...). A printer that is not ready takes no new files: paid files wait on the
+  server, where another printer that can do them may take them, and the counter shows why. A file that was
+  already in a Windows queue keeps waiting there and prints when the printer is fixed.
+- **Restart safety**: the journal also records which printer and Windows queue entry a file went to. If the
+  Station restarts while a file still waits in a Windows queue, it watches that entry again and reports it
+  only when it really leaves the queue; it never sends the file a second time. If the queue cannot be read
+  for 5 minutes the file is reported as "could not confirm: check the tray", never as printed.
 - **Counter**: orders with their files; per file: printer, sheets, **Print again**, **Cancel**; a red banner when a
   paid file waits that no printer can do.
 - **Screens** are served on `127.0.0.1:47800` and shown in a Microsoft Edge app window; each call needs the random

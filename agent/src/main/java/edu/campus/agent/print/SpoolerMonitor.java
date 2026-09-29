@@ -18,16 +18,22 @@ import java.util.function.Consumer;
  * a second print, and then the student gets two copies.
  *
  * The order is FAILED only if the document leaves the queue after an error
- * or while being deleted (staff removed it).
+ * or while being deleted (staff removed it). When the queue cannot be read
+ * for a long time the result is UNCONFIRMED: never reported as printed.
  */
 public class SpoolerMonitor {
 
     private static final Logger log = LoggerFactory.getLogger(SpoolerMonitor.class);
 
-    /** How long the queue may stay unreadable before we stop watching. */
-    private static final Duration QUEUE_UNREADABLE_LIMIT = Duration.ofSeconds(60);
+    /** How long the queue may stay unreadable before we stop watching (and say we could not confirm). */
+    private static final Duration QUEUE_UNREADABLE_LIMIT = Duration.ofMinutes(5);
 
-    public enum Outcome { COMPLETED, REMOVED, UNKNOWN }
+    /**
+     * COMPLETED: left the queue normally (or watching is switched off);
+     * REMOVED: deleted or errored out of the queue; UNCONFIRMED: the queue could not be read;
+     * STOPPED: the Station is closing while the document still waits (it is watched again after a restart).
+     */
+    public enum Outcome { COMPLETED, REMOVED, UNCONFIRMED, STOPPED }
 
     public record Result(Outcome outcome, String detail) {}
 
@@ -47,7 +53,7 @@ public class SpoolerMonitor {
      */
     public Result awaitCompletion(String printer, String jobName, Consumer<String> attention) {
         if (!enabled || !isWindows()) {
-            return new Result(Outcome.UNKNOWN, "queue watching is switched off");
+            return new Result(Outcome.COMPLETED, "sent (queue watching is switched off)");
         }
         String last = null;
         boolean sawTrouble = false;
@@ -68,11 +74,11 @@ public class SpoolerMonitor {
                     failingSince = now;
                     log.warn("Cannot read the Windows queue for \"{}\", trying again: {}", printer, e.getMessage());
                 } else if (now - failingSince >= QUEUE_UNREADABLE_LIMIT.toMillis()) {
-                    log.warn("Windows queue for \"{}\" unreadable for {}s: {}", printer,
-                            QUEUE_UNREADABLE_LIMIT.toSeconds(), e.getMessage());
-                    return new Result(Outcome.UNKNOWN, "Windows queue could not be read");
+                    log.warn("Windows queue for \"{}\" unreadable for {} min: {}", printer,
+                            QUEUE_UNREADABLE_LIMIT.toMinutes(), e.getMessage());
+                    return new Result(Outcome.UNCONFIRMED, "the Windows print queue could not be read");
                 }
-                if (!pause()) return new Result(Outcome.UNKNOWN, "stopped while waiting");
+                if (!pause()) return new Result(Outcome.STOPPED, "the Station closed while waiting");
                 continue;
             }
             if (status == null) {
@@ -101,7 +107,20 @@ public class SpoolerMonitor {
             } else if (sawTrouble) {
                 attention.accept(null);
             }
-            if (!pause()) return new Result(Outcome.UNKNOWN, "stopped while waiting");
+            if (!pause()) return new Result(Outcome.STOPPED, "the Station closed while waiting");
+        }
+    }
+
+    /**
+     * Is the document still in the Windows queue? True / false, or null when
+     * the queue cannot be read (after a restart: watch it again, or report it).
+     */
+    public Boolean stillQueued(String printer, String jobName) {
+        if (!enabled || !isWindows()) return false;
+        try {
+            return queryStatus(printer, jobName) != null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

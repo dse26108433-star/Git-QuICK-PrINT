@@ -607,9 +607,10 @@ function offerEditor(r) {
   if (fin.length) {
     const g = el("div", "offer-group");
     g.append(el("b", null, "Finishing"));
+    g.append(el("small", "muted", "Tick an option only after a test print with it came out right: drivers often list a stapler or puncher that is not fitted."));
     const list = el("div", "offer-list");
     for (const id of fin) {
-      const [l, c] = checkbox(finishingLabel(id), !(offered && offered.finishing) || offered.finishing.includes(id));
+      const [l, c] = checkbox(finishingLabel(id), !!(offered && offered.finishing && offered.finishing.includes(id)));
       list.append(l); ed.finishing.push([id, c]);
     }
     g.append(list);

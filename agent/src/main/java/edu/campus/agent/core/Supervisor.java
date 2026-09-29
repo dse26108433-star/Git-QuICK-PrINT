@@ -117,15 +117,37 @@ public class Supervisor {
 
     private void beat() {
         List<PrinterReport> reports = new ArrayList<>();
+        // Windows' own view of each printer: one that is offline or out of paper takes no new documents
+        Map<String, String> ready = null;
+        if (cfg.checkPrinterStatus && !printers.isEmpty()) {
+            try {
+                ready = edu.campus.agent.print.PrinterStatus.read(printers.stream().map(PrinterConfig::windowsPrinterName).toList());
+            } catch (Exception e) {
+                log.debug("Printer status not readable this time ({}); keeping the last answer", e.toString());
+            }
+        }
         for (PrinterConfig p : printers) {
             boolean present = PrinterDiscovery.find(p.windowsPrinterName()).isPresent();
             health.setPresent(p.id(), present);
+            if (ready != null) {
+                String why = ready.get(p.windowsPrinterName());
+                String before = health.notReady(p.id());
+                if (why != null && !why.equals(before)) {
+                    log.warn("Printer {}: {} - it takes no new documents until this is fixed", p.name(), why);
+                } else if (why == null && before != null) {
+                    log.info("Printer {}: ready again", p.name());
+                }
+                health.setNotReady(p.id(), why);
+            }
             String attention = health.attention(p.id());
+            String notReady = health.notReady(p.id());
             if (!present) {
                 reports.add(new PrinterReport(p.id(), "MISSING",
                         "Windows has no printer called \"" + p.windowsPrinterName() + "\""));
             } else if (attention != null) {
                 reports.add(new PrinterReport(p.id(), "ERROR", attention));
+            } else if (notReady != null) {
+                reports.add(new PrinterReport(p.id(), "ERROR", notReady));
             } else {
                 reports.add(new PrinterReport(p.id(), "READY", ""));
             }

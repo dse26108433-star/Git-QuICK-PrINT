@@ -16,7 +16,8 @@ import java.util.Set;
  *
  * Defaults when staff have not chosen:
  *   paper sizes  the common ones the printer has (A4, A3, A5, Legal, Folio)
- *   two-sided, finishing, borderless, high quality: everything the printer has
+ *   two-sided, borderless, high quality: everything the printer has
+ *   finishing    none (staff tick each option after a test print with it)
  *   paper types  none (students get the paper that is loaded)
  *
  * A printer whose features could not be read counts as A4 one-sided, unless
@@ -57,8 +58,9 @@ public final class EffectiveFeatures {
         for (JsonNode f : caps.path("finishing")) {
             if (Finishing.known(f.asText())) finishingCan.add(f.asText());
         }
+        // finishing only once staff ticked it (after a test print): drivers often list a finisher that is not fitted
         List<String> finishing = sorted(offered != null && offered.finishing() != null
-                ? intersect(finishingCan, offered.finishing()) : finishingCan, Finishing::rank);
+                ? intersect(finishingCan, offered.finishing()) : List.of(), Finishing::rank);
 
         Map<String, String> mediaNames = new LinkedHashMap<>();
         for (JsonNode m : caps.path("mediaTypes")) {
