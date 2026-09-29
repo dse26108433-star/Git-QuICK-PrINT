@@ -41,6 +41,8 @@
     <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h2v2h-2zM18.5 18.5h2v2h-2zM14.5 20.5h2M20.5 14.5v2"/></symbol>
   </defs>
 </svg>
 
@@ -252,9 +254,59 @@
         <p id="demoNote" class="notice hidden">Test mode: no real money is taken.</p>
         <p id="payError" class="notice stop hidden" role="alert"></p>
         <button class="btn lg block" id="payBtn" type="button">Pay</button>
-        <div class="secure"><svg><use href="#i-lock"/></svg>Secure payment by Razorpay &middot; UPI, cards, wallets</div>
+        <div class="secure"><svg><use href="#i-lock"/></svg><span id="secureText">Secure payment by Razorpay &middot; UPI, cards, wallets</span></div>
         <div class="change"><button class="linkish" id="cancelBtn" type="button">Cancel this order</button></div>
       </aside>
+    </div>
+  </section>
+
+  <!-- ============================== PAY WITH UPI (CampusPay) ============================== -->
+  <section id="s-pay" class="hidden">
+    <div class="pay">
+      <div class="pay-card">
+        <div class="pay-top">
+          <div class="label">Pay with UPI</div>
+          <div class="pay-amount" id="upAmount">&ndash;</div>
+          <div class="pay-to">to <b id="upName">&ndash;</b></div>
+          <button class="vpa" id="upVpaBtn" type="button" title="Copy the UPI ID"><span id="upVpa">&ndash;</span><svg><use href="#i-copy"/></svg></button>
+          <p class="pay-tag" id="upTag"></p>
+        </div>
+        <div class="pay-body">
+          <div class="pay-apps" id="upAppsBox">
+            <a class="btn lg block" id="upOpen" href="#"><svg><use href="#i-phone"/></svg><span id="upOpenText">Pay with a UPI app</span></a>
+            <p class="pay-hint" id="upOpenHint">Your phone shows the UPI apps on it. Pick one: the amount is filled in.</p>
+            <div class="app-row" id="upApps"></div>
+          </div>
+          <div class="pay-qr" id="upQrBox">
+            <div class="qr" id="upQr" role="img" aria-label="UPI QR code for this payment"></div>
+            <p class="qr-note">Scan with any UPI app: Google Pay, PhonePe, Paytm, BHIM or your bank's app.</p>
+          </div>
+          <button class="linkish qr-toggle" id="upQrToggle" type="button"><svg><use href="#i-qr"/></svg>Pay from another phone (QR code)</button>
+
+          <div class="pay-wait" id="upWait" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <div><b id="upWaitTitle">Waiting for your payment</b><span id="upWaitText"></span></div>
+          </div>
+          <div class="pay-success hidden" id="upSuccess" role="status">
+            <span class="tick"><svg><use href="#i-check"/></svg></span>
+            <b>Payment successful</b>
+            <span>Your files are going to the printer…</span>
+          </div>
+          <button class="linkish hidden help-link" id="upHelpLink" type="button">Paid, but nothing happens?</button>
+          <div class="pay-done hidden" id="upDone">
+            <h3 id="upDoneTitle">After paying</h3>
+            <label class="field-label" for="upRef">UPI reference number <span class="opt" id="upRefOpt">(optional)</span></label>
+            <input class="ref-input" id="upRef" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="e.g. 6273 1234 5678">
+            <p class="field-hint">On your UPI app's receipt, called UTR, UPI Ref No. or UPI transaction ID.</p>
+            <p id="upError" class="notice stop hidden" role="alert"></p>
+            <button class="btn lg block go" id="upPaid" type="button">I have paid</button>
+          </div>
+        </div>
+      </div>
+      <div class="pay-foot">
+        <div class="secure"><svg><use href="#i-lock"/></svg>CampusPay &middot; straight to the Xerox center's account</div>
+        <button class="linkish" id="upBack" type="button">Back to the summary</button>
+      </div>
     </div>
   </section>
 
@@ -274,6 +326,7 @@
         <ul class="t-docs" id="tDocs"></ul>
         <p class="details" id="tDetails"></p>
         <div class="ticket-actions">
+          <button class="btn block hidden" id="tPayBtn" type="button">Show payment details</button>
           <button class="btn ghost hidden" id="notifyBtn" type="button">Notify me when ready</button>
           <button class="btn ghost" id="shareBtn" type="button">Tell a friend</button>
           <button class="btn block" id="newBtn" type="button">Print more files</button>
@@ -298,6 +351,7 @@
 
 <script src="config.js"></script>
 <script src="js/print-core.js"></script>
+<script src="js/upi-pay.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

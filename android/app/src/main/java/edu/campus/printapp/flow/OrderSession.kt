@@ -19,6 +19,7 @@ import edu.campus.printapp.core.quickFix
 import edu.campus.printapp.core.specFromPages
 import edu.campus.printapp.net.AddDocumentRequest
 import edu.campus.printapp.net.ApiException
+import edu.campus.printapp.net.ClaimPayment
 import edu.campus.printapp.net.ConfirmPayment
 import edu.campus.printapp.net.DocumentChoice
 import edu.campus.printapp.net.DocumentView
@@ -27,6 +28,7 @@ import edu.campus.printapp.net.PaymentStart
 import edu.campus.printapp.net.PrintApi
 import edu.campus.printapp.net.ReviewRequest
 import edu.campus.printapp.net.ShopView
+import edu.campus.printapp.net.UpiCheckout
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +82,7 @@ data class Doc(
     val imageInfo get() = image ?: localImage
 }
 
-enum class Step { HOME, SETUP, REVIEW, STATUS }
+enum class Step { HOME, SETUP, REVIEW, PAY, STATUS }
 
 data class OrderRef(val orderId: String, val key: String, val code: String)
 
@@ -108,7 +110,15 @@ data class SessionState(
     val paymentStarted: Boolean = false,  // the order cannot be changed any more
     val payError: String? = null,
     val recent: List<Pair<SavedOrder, OrderView?>> = emptyList(),
-    val restoring: Boolean = false
+    val restoring: Boolean = false,
+    // CampusPay (direct UPI), on PAY:
+    val upi: UpiCheckout? = null,
+    val upiRef: String = "",              // the UPI reference number field
+    val upiError: String? = null,
+    val claiming: Boolean = false,
+    val upiConfirming: Boolean = false,   // back from the UPI app: waiting for the bank's message
+    val upiHelpOffered: Boolean = false,  // "Paid, but nothing happens?" (after a while)
+    val upiHelp: Boolean = false          // the reference number form is open
 ) {
     fun doc(local: Long?): Doc? = docs.find { it.local == local }
     val selectedDoc: Doc? get() = doc(selected)
@@ -613,6 +623,8 @@ class OrderSession(
                     val v = api.demoPay(ref.orderId, ref.key)
                     clearDraft(deleteFiles = true)
                     openStatus(ref, v, afterPayment = true)
+                } else if (c.provider == "upi" && c.upi != null) {
+                    openUpi(ref, c.upi)
                 } else {
                     memory.setPending(ref.orderId)
                     _checkout.tryEmit(c)
@@ -648,6 +660,143 @@ class OrderSession(
         }
     }
 
+    // ================================================================== CampusPay: pay the Xerox center with any UPI app
+
+    /**
+     * The UPI payment screen: the amount (the price plus a few paise that mark
+     * this payment), the UPI ID, and the UPI apps on this phone. The order is
+     * paid when the bank's message or the counter confirms the money arrived;
+     * this screen watches for that and moves on by itself.
+     */
+    private fun openUpi(ref: SavedOrder, c: UpiCheckout) {
+        memory.setPending(ref.orderId)
+        _state.update {
+            it.copy(step = Step.PAY, current = ref, upi = c, upiRef = "", upiError = null, claiming = false,
+                upiConfirming = false, upiHelpOffered = false, upiHelp = !c.autoConfirm)
+        }
+        pollJob?.cancel()
+        pollJob = scope.launch {
+            while (isActive && _state.value.step == Step.PAY && _state.value.current?.orderId == ref.orderId) {
+                delay(if (_state.value.upiConfirming) 2000 else 4000)
+                checkUpi(ref)
+            }
+        }
+        offerHelpLater(180_000)
+    }
+
+    private var helpJob: Job? = null
+
+    /** If the bank's message has not come after a while, offer to look the payment up by its reference number. */
+    private fun offerHelpLater(ms: Long) {
+        helpJob?.cancel()
+        helpJob = scope.launch {
+            delay(ms)
+            _state.update { if (it.step == Step.PAY) it.copy(upiHelpOffered = true) else it }
+        }
+    }
+
+    fun showUpiHelp() = _state.update { it.copy(upiHelp = true) }
+
+    /** Is it paid yet? (Also at once when the student comes back from the UPI app.) */
+    fun checkUpi(ref: SavedOrder? = _state.value.current) {
+        if (ref == null || _state.value.step != Step.PAY) return
+        scope.launch {
+            try {
+                val v = api.order(ref.orderId, ref.key)
+                if (_state.value.step != Step.PAY) return@launch
+                if (v.paidAt != null || v.status != "AWAITING_PAYMENT" || v.payment?.claimedAt != null) {
+                    if (v.paidAt != null) notice("Payment received. Thank you!")
+                    memory.setPending(null)
+                    clearDraft(deleteFiles = true)
+                    openStatus(ref, v, afterPayment = true)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // offline for a moment: the next check tries again
+            }
+        }
+    }
+
+    fun setUpiRef(text: String) = _state.update { it.copy(upiRef = text.take(16), upiError = null) }
+
+    /**
+     * The UPI app closed and said how it went. FAILURE: no money went, try
+     * again. Otherwise the bank's message confirms the payment by itself: this
+     * screen shows "Confirming your payment" until it does. (Where the shop has
+     * no automatic confirmation, SUCCESS tells the counter at once instead.)
+     */
+    fun onUpiAnswer(response: String?) {
+        val st = _state.value
+        if (st.step != Step.PAY) return
+        val a = UpiAnswer.parse(response)
+        if (a.reference != null) _state.update { it.copy(upiRef = UpiRef.group(a.reference)) }
+        when (a.status) {
+            UpiAnswer.Status.FAILURE -> _state.update {
+                it.copy(upiConfirming = false,
+                    upiError = "The UPI app says the payment did not go through, so no money was taken. Try again, or choose another app.")
+            }
+            UpiAnswer.Status.SUCCESS, UpiAnswer.Status.SUBMITTED -> {
+                _state.update { it.copy(upiConfirming = true, upiError = null) }
+                if (st.upi?.autoConfirm == false) claimUpi() else { checkUpi(); offerHelpLater(60_000) }
+            }
+            UpiAnswer.Status.UNKNOWN -> {
+                _state.update { it.copy(upiConfirming = true) }
+                checkUpi()
+                offerHelpLater(90_000)
+            }
+        }
+    }
+
+    /** "I have paid": the server checks it against the bank's messages; staff check it at the counter otherwise. */
+    fun claimUpi() {
+        val st = _state.value
+        val ref = st.current ?: memory.pending() ?: return
+        if (st.claiming) return
+        if (!UpiRef.ok(st.upiRef)) {
+            _state.update { it.copy(upiError = "A UPI reference number has 12 digits. Check it on your UPI app's receipt, or leave it empty.") }
+            return
+        }
+        val typed = UpiRef.clean(st.upiRef).ifEmpty { null }
+        _state.update { it.copy(claiming = true, upiError = null) }
+        scope.launch {
+            try {
+                val v = api.claimPayment(ref.orderId, ref.key, ClaimPayment(typed))
+                memory.setPending(null)
+                clearDraft(deleteFiles = true)
+                openStatus(ref, v, afterPayment = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(upiError = friendly(e)) }
+            } finally {
+                _state.update { it.copy(claiming = false) }
+            }
+        }
+    }
+
+    /** From the pickup-code screen: the UPI details again (send the reference again, or pay). */
+    fun resumeUpi(ref: SavedOrder? = _state.value.current) {
+        if (ref == null) return
+        scope.launch {
+            try {
+                val c = api.startPayment(ref.orderId, ref.key)
+                if (c.provider == "upi" && c.upi != null) openUpi(ref, c.upi)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notice(friendly(e), NoticeKind.BAD)
+            }
+        }
+    }
+
+    /** "Back to the summary" from the UPI screen: the price is fixed now, so no editing. */
+    fun backFromPay() {
+        pollJob?.cancel()
+        helpJob?.cancel()
+        _state.update { it.copy(step = Step.REVIEW, paymentStarted = true, upiConfirming = false) }
+    }
+
     fun onPaymentError(message: String) {
         memory.setPending(null)
         _state.update { it.copy(payError = message, paying = false) }
@@ -674,7 +823,13 @@ class OrderSession(
             while (isActive && _state.value.step == Step.STATUS && _state.value.current?.orderId == ref.orderId) {
                 try {
                     val v = api.order(ref.orderId, ref.key)
-                    if (firstTick && !afterPayment && v.status == "AWAITING_PAYMENT") {
+                    val upiWaiting = v.upiOpen && (v.payment?.claimedAt != null || v.payment?.note != null)
+                    if (firstTick && !afterPayment && v.status == "AWAITING_PAYMENT" && !upiWaiting) {
+                        if (v.upiOpen) {                       // the UPI payment screen was open: show it again
+                            _state.update { it.copy(order = v) }
+                            resumeUpi(ref)
+                            return@launch
+                        }
                         // opened from the list without having paid: show "Review and pay"
                         _state.update { it.copy(step = Step.REVIEW, order = v, current = ref, paymentStarted = !v.editable) }
                         return@launch
@@ -749,7 +904,8 @@ class OrderSession(
         jobs.clear()
         _state.update {
             it.copy(step = Step.HOME, docs = emptyList(), selected = null, draft = null, order = null, current = null,
-                paying = false, payError = null, paymentStarted = false, reviewing = false)
+                paying = false, payError = null, paymentStarted = false, reviewing = false, upi = null, upiRef = "",
+                upiError = null, claiming = false)
         }
         refreshRecent()
     }

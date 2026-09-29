@@ -3,6 +3,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- CampusPay: see which UPI apps (Google Pay, PhonePe, Paytm, BHIM...) are on the phone (Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+    </queries>
+
     <application
         android:name=".PrintApplication"
         android:allowBackup="false"

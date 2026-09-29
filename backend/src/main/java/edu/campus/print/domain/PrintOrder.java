@@ -46,6 +46,14 @@ public class PrintOrder implements Persistable<UUID> {
     @Column(name = "paid_at")            private Instant paidAt;
     @Column(name = "payment_checked_at") private Instant paymentCheckedAt;
 
+    // CampusPay (direct UPI). Written only by the upi_* functions in db/setup.sql.
+    @Column(name = "payment_started_at", insertable = false, updatable = false)  private Instant paymentStartedAt;
+    @Column(name = "upi_tag_paise", insertable = false, updatable = false)       private Integer upiTagPaise;
+    @Column(name = "payment_claim_ref", insertable = false, updatable = false)   private String paymentClaimRef;
+    @Column(name = "payment_claimed_at", insertable = false, updatable = false)  private Instant paymentClaimedAt;
+    @Column(name = "payment_note", insertable = false, updatable = false)        private String paymentNote;
+    @Column(name = "payment_verified_by", insertable = false, updatable = false) private String paymentVerifiedBy;
+
     @Column(name = "completed_at") private Instant completedAt;
     @Column(name = "failed_at")    private Instant failedAt;
     @Column(name = "collected_at") private Instant collectedAt;
@@ -89,6 +97,14 @@ public class PrintOrder implements Persistable<UUID> {
     public String getGatewayPaymentId() { return gatewayPaymentId; }
     public Instant getPaidAt() { return paidAt; }
     public Instant getPaymentCheckedAt() { return paymentCheckedAt; }
+    public Instant getPaymentStartedAt() { return paymentStartedAt; }
+    public Integer getUpiTagPaise() { return upiTagPaise; }
+    public String getPaymentClaimRef() { return paymentClaimRef; }
+    public Instant getPaymentClaimedAt() { return paymentClaimedAt; }
+    public String getPaymentNote() { return paymentNote; }
+    public String getPaymentVerifiedBy() { return paymentVerifiedBy; }
+    /** The student opened the CampusPay (UPI) payment screen for this order. */
+    public boolean isUpiStarted() { return "upi".equals(paymentProvider) && paymentStartedAt != null; }
     public Instant getCompletedAt() { return completedAt; }
     public Instant getFailedAt() { return failedAt; }
     public Instant getCollectedAt() { return collectedAt; }

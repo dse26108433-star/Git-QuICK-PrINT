@@ -2,6 +2,20 @@
 
 Find your problem, try the fix, then do the step again.
 
+## CampusPay (UPI payments)
+
+| What you see | What to do |
+|---|---|
+| Server log: "PAYMENT_MODE is upi but UPI_ID is not a UPI ID" | Set `UPI_ID` to your UPI ID (`name@bank`) or paste the whole text of your shop's UPI QR (`upi://pay?pa=…`). |
+| Google Pay / PhonePe says the payment "cannot be completed" or "exceeded bank limit" | Many UPI apps refuse *links* to personal UPI IDs. Use a business UPI ID (PhonePe Business, Paytm for Business, Google Pay for Business, BharatPe). Scanning the QR code works meanwhile. |
+| Students see "I have paid" instead of an automatic confirmation | The server has not heard from the Verifier phone for 3 hours, or `UPI_ALERT_TOKEN` is empty. Open CampusPay Verifier on the shop phone: it must say "Working". |
+| Verifier says "The server refused the token" | Copy `UPI_ALERT_TOKEN` from the server settings again (it is case-sensitive) → Save and connect. |
+| Verifier: "Restricted setting" when allowing SMS or notifications | Android 13+ for apps not from the Play Store: App info → ⋮ (top right) → Allow restricted settings → try again. |
+| Verifier works, then stops after some hours | Battery saver or the phone's cleaner stopped it: Verifier → "Never paused by battery saver" → Allow; on Xiaomi / Oppo / Vivo / Realme also switch on Autostart. Keep the phone charging and online. |
+| A payment arrived but the order did not confirm | Counter → UPI payments → Bank messages: find it. "no order" usually means the student paid a different amount (not the exact ₹xx.xx). Use **Money received** on the order, or refund. |
+| A student paid twice | The second payment shows as a bank message with "no order". Refund it by UPI from the shop's app. |
+| Payment confirmations are slow | The bank SMS is being used (can take minutes). Make sure "UPI app notifications" is allowed in the Verifier and the business UPI app is signed in on that phone with notifications on. |
+
 ## Campus Print Station (Xerox PC app)
 
 | What you see | What to do |

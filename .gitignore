@@ -8,6 +8,7 @@ android/.gradle/
 android/.kotlin/
 android/build/
 android/app/build/
+android/verifier/build/
 android/local.properties
 .idea/
 *.iml

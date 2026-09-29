@@ -18,6 +18,8 @@ import java.util.UUID;
  *   POST /orders/{id}/documents/{doc}/uploaded        -> checked: pages counted (or refused)
  *   POST /orders/{id}/review                          -> every document's settings checked and priced
  *   POST /orders/{id}/payment ... /payment/confirm    -> paid, printing
+ *   CampusPay (direct UPI): POST /orders/{id}/payment -> UPI link + amount;
+ *                           POST /orders/{id}/payment/claim -> "I have paid" (checked against the bank)
  *
  * One-file apps: POST /orders with the file, PUT, POST /orders/{id}/uploaded, pay.
  */
@@ -112,6 +114,16 @@ public class OrderController {
     public OrderView confirmPayment(@PathVariable UUID id, @RequestHeader(KEY) String key,
                                     @RequestBody ConfirmPaymentRequest body) {
         return service.confirmPayment(id, key, body);
+    }
+
+    /**
+     * CampusPay (PAYMENT_MODE=upi): "I have paid", with the UPI reference number if known.
+     * The order is paid once a bank message or staff confirm the money arrived.
+     */
+    @PostMapping("/orders/{id}/payment/claim")
+    public OrderView claimPayment(@PathVariable UUID id, @RequestHeader(KEY) String key,
+                                  @Valid @RequestBody(required = false) ClaimPaymentRequest body) {
+        return service.claimPayment(id, key, body);
     }
 
     /** Test mode only (PAYMENT_MODE=demo): marks the order paid without money. */

@@ -11,6 +11,9 @@ import edu.campus.printapp.core.normalize
 import edu.campus.printapp.core.price
 import edu.campus.printapp.flow.FileTypes
 import edu.campus.printapp.net.AddDocumentRequest
+import edu.campus.printapp.net.ClaimPayment
+import edu.campus.printapp.net.PaymentInfo
+import edu.campus.printapp.net.UpiCheckout
 import edu.campus.printapp.net.CreateOrderResponse
 import edu.campus.printapp.net.DocumentView
 import edu.campus.printapp.net.FileUrl
@@ -54,6 +57,10 @@ class FakeBackend : Dispatcher() {
             borderless = true, highQuality = true)
     )
     var maxDocuments = 25
+    /** "demo", or "upi" (CampusPay: the student pays in a UPI app, the bank's message confirms it) */
+    var paymentMode = "demo"
+    /** CampusPay: the Xerox center's Verifier phone is on, so payments confirm by themselves */
+    var autoConfirm = true
     var uploadDelayMs = 0L
     /** file name -> why the server refuses its settings on review */
     val refuse = mutableMapOf<String, String>()
@@ -63,7 +70,7 @@ class FakeBackend : Dispatcher() {
     private val papers = listOf(Paper("A4", "A4", 210.0, 297.0), Paper("A3", "A3", 297.0, 420.0), Paper("PHOTO_4X6", "Photo 4 × 6 in", 101.6, 152.4))
     private val rules = PricingRules(paperSizePercent = mapOf("A3" to 200))
 
-    fun shop() = ShopView("Main Xerox Center", 200, 1000, "INR", 50L shl 20, 300, 2000, 50, maxDocuments, "demo",
+    fun shop() = ShopView("Main Xerox Center", 200, 1000, "INR", 50L shl 20, 300, 2000, 50, maxDocuments, paymentMode,
         bwAvailable = true, colorAvailable = true, bwOnline = true, colorOnline = true, ordersWaiting = 0,
         printing = Printing(printers, papers, mapOf("STAPLE_TOP_LEFT" to "Staple: top left"), emptyMap(), rules, PrintSettings()))
 
@@ -88,6 +95,9 @@ class FakeBackend : Dispatcher() {
         var amount: Int? = null
         var paymentStarted = false
         var paidAt: String? = null
+        var upi = false
+        var claimRef: String? = null
+        var claimedAt: String? = null
         var ticks = 0
     }
 
@@ -166,8 +176,23 @@ class FakeBackend : Dispatcher() {
                 view(o)
             }
             m == "POST" && rest == listOf("payment") -> {
-                o.paymentStarted = true
-                json(PaymentStart.serializer(), PaymentStart("demo", amountPaise = o.amount ?: 0))
+                if (paymentMode == "upi") {
+                    if (!o.upi) { o.upi = true; o.amount = (o.amount ?: 0) + 1 }      // + 1 paisa: this payment's own amount
+                    o.paymentStarted = true
+                    val text = "%d.%02d".format(o.amount!! / 100, o.amount!! % 100)
+                    json(PaymentStart.serializer(), PaymentStart("upi", gatewayOrderId = "CP" + o.code, amountPaise = o.amount!!,
+                        upi = UpiCheckout("upi://pay?pa=xeroxshop@okaxis&pn=Main%20Xerox%20Center&am=$text&cu=INR", "xeroxshop@okaxis",
+                            "Main Xerox Center", amountPaise = o.amount!!, amountText = text, tagPaise = 1, autoConfirm = autoConfirm)))
+                } else {
+                    o.paymentStarted = true
+                    json(PaymentStart.serializer(), PaymentStart("demo", amountPaise = o.amount ?: 0))
+                }
+            }
+            m == "POST" && rest == listOf("payment", "claim") -> {
+                val req = PrintApi.JSON.decodeFromString(ClaimPayment.serializer(), request.body.readUtf8())
+                o.claimRef = req.reference
+                o.claimedAt = "2026-09-29T10:00:00Z"
+                view(o)
             }
             m == "POST" && rest == listOf("payment", "demo") -> {
                 o.status = "QUEUED"; o.paidAt = "2026-09-29T10:00:00Z"
@@ -235,8 +260,17 @@ class FakeBackend : Dispatcher() {
         o.id, o.code, o.status, stage = o.status.lowercase(), fileName = o.docs.firstOrNull()?.name, amountPaise = o.amount,
         paidAt = o.paidAt, documents = o.docs.sortedBy { it.position }.map { dv(it) },
         editable = o.status == "AWAITING_UPLOAD" || (o.status == "AWAITING_PAYMENT" && !o.paymentStarted),
-        documentsDone = o.docs.count { it.status == "COMPLETED" }, totalSheets = o.docs.sumOf { (it.sheets ?: 0) * (it.settings?.copies ?: 1) }
+        documentsDone = o.docs.count { it.status == "COMPLETED" }, totalSheets = o.docs.sumOf { (it.sheets ?: 0) * (it.settings?.copies ?: 1) },
+        payment = if (o.upi) PaymentInfo("upi", o.paidAt != null, 1, "CP" + o.code, o.claimRef, o.claimedAt,
+            verifiedBy = if (o.paidAt != null) "bank-alert" else null) else null
     ))
+
+    /** CampusPay: the bank's message arrived (the Verifier phone passed it on): the order is paid. */
+    fun bankConfirms(orderId: String) = synchronized(this) {
+        val o = orders.getValue(orderId)
+        o.status = "QUEUED"; o.paidAt = "2026-09-29T10:00:05Z"
+        o.docs.forEach { it.status = "QUEUED" }
+    }
 
     private fun <T> json(s: KSerializer<T>, v: T) =
         MockResponse().setBody(PrintApi.JSON.encodeToString(s, v)).setHeader("Content-Type", "application/json")

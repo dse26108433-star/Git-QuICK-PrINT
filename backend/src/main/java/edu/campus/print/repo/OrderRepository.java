@@ -134,17 +134,51 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
     /**
      * Drafts nobody touched for 2 hours, and priced orders not paid within
      * 24 hours. Their documents are cancelled by the caller, then cleaned up.
+     * A CampusPay order whose student said "I have paid" waits 7 days for
+     * staff to check it: the money may really be in the bank.
      */
     @Query(value = """
             with expired as (
                 update orders
                    set status = 'EXPIRED', error_code = 'EXPIRED', error_message = 'Not paid in time'
                  where (status = 'AWAITING_UPLOAD'  and updated_at < now() - interval '2 hours')
-                    or (status = 'AWAITING_PAYMENT' and created_at < now() - interval '24 hours')
+                    or (status = 'AWAITING_PAYMENT' and created_at < now() - interval '24 hours'
+                        and payment_claimed_at is null)
+                    or (status = 'AWAITING_PAYMENT' and payment_claimed_at < now() - interval '7 days')
                 returning id
             )
             select id from expired
             """, nativeQuery = true)
     @Transactional
     List<UUID> expireUnpaid();
+
+    // ------------------------------------------------------------ CampusPay (direct UPI) at the counter
+
+    /** The student said "I have paid" and no bank message proved it yet: staff check these, oldest first. */
+    @Query(value = """
+            select * from orders
+             where status = 'AWAITING_PAYMENT' and payment_provider = 'upi' and payment_claimed_at is not null
+             order by payment_claimed_at
+             limit 100
+            """, nativeQuery = true)
+    List<PrintOrder> findUpiToCheck();
+
+    /** The UPI payment screen is open (or was, recently) and nobody said "paid" yet. */
+    @Query(value = """
+            select * from orders
+             where status = 'AWAITING_PAYMENT' and payment_provider = 'upi' and payment_claimed_at is null
+               and payment_started_at > now() - interval '3 hours'
+             order by payment_started_at desc
+             limit 50
+            """, nativeQuery = true)
+    List<PrintOrder> findUpiWaiting();
+
+    /** Paid through CampusPay today (bank message or staff), newest first. */
+    @Query(value = """
+            select * from orders
+             where payment_provider = 'upi' and paid_at > now() - interval '24 hours'
+             order by paid_at desc
+             limit 50
+            """, nativeQuery = true)
+    List<PrintOrder> findUpiPaidRecently();
 }

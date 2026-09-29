@@ -5,6 +5,8 @@ import edu.campus.print.common.ApiException;
 import edu.campus.print.config.AgentProperties;
 import edu.campus.print.domain.*;
 import edu.campus.print.payment.PaymentGateway;
+import edu.campus.print.payment.UpiGateway;
+import edu.campus.print.payment.UpiLedger;
 import edu.campus.print.printing.Finishing;
 import edu.campus.print.printing.OfferedFeatures;
 import edu.campus.print.printing.PaperSize;
@@ -34,6 +36,7 @@ import java.util.*;
  * hand over, and what went wrong; lets staff switch printers on/off, choose what
  * students may pick on each printer, set prices, and switch the pickup-code
  * label on/off. The Station app also uses it to register its PC and printers.
+ * With CampusPay (direct UPI) staff also confirm payments no bank message proved.
  */
 @RestController
 @RequestMapping("/api/v1/counter")
@@ -48,12 +51,13 @@ public class CounterController {
     private final ShopSettingsRepository settings;
     private final SupabaseStorage storage;
     private final PaymentGateway gateway;
+    private final UpiLedger upi;
     private final AgentProperties agentProps;
     private final JdbcTemplate jdbc;
 
     public CounterController(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
                              AgentRepository agents, ShopSettingsRepository settings, SupabaseStorage storage,
-                             PaymentGateway gateway, AgentProperties agentProps, JdbcTemplate jdbc) {
+                             PaymentGateway gateway, UpiLedger upi, AgentProperties agentProps, JdbcTemplate jdbc) {
         this.orders = orders;
         this.documents = documents;
         this.printers = printers;
@@ -61,6 +65,7 @@ public class CounterController {
         this.settings = settings;
         this.storage = storage;
         this.gateway = gateway;
+        this.upi = upi;
         this.agentProps = agentProps;
         this.jdbc = jdbc;
     }
@@ -79,7 +84,10 @@ public class CounterController {
                                // The first document, for older counter screens:
                                String fileName, String fileType, Integer pageCount, String pages,
                                Integer printPages, int copies, boolean color, String printerName,
-                               int attempts, boolean fileKept) {}
+                               int attempts, boolean fileKept,
+                               // CampusPay (direct UPI):
+                               Instant paymentStartedAt, Integer upiTagPaise, String paymentClaimRef,
+                               Instant paymentClaimedAt, String paymentNote, String paymentVerifiedBy) {}
 
     public record SettingsForm(String centerName, Integer priceBwPaise, Integer priceColorPaise, Boolean stampCode,
                                PricingRules pricing) {}
@@ -142,6 +150,8 @@ public class CounterController {
         out.put("priceColorPaise", s.getPriceColorPaise());
         out.put("pricing", s.getPricing());
         out.put("paymentMode", gateway.name());
+        out.put("upi", upiInfo());
+        out.put("paymentsToCheck", gateway instanceof UpiGateway ? upi.toCheckCount() : 0);
         out.put("stampCode", s.isStampCode());
         out.put("printers", printerList);
         out.put("pcs", pcs);
@@ -219,9 +229,136 @@ public class CounterController {
                     first == null ? 1 : first.copies(), first != null && first.color(),
                     first == null ? null : first.printerName(),
                     docs.stream().mapToInt(CounterDocument::attempts).max().orElse(0),
-                    docs.stream().anyMatch(CounterDocument::fileKept)));
+                    docs.stream().anyMatch(CounterDocument::fileKept),
+                    o.getPaymentStartedAt(), o.getUpiTagPaise(), o.getPaymentClaimRef(), o.getPaymentClaimedAt(),
+                    o.getPaymentNote(), o.getPaymentVerifiedBy()));
         }
         return out;
+    }
+
+    // ------------------------------------------------------------ CampusPay (direct UPI)
+
+    public record ApproveForm(String reference) {}
+
+    public record RejectForm(String reason) {}
+
+    public record AlertForm(String text) {}
+
+    /** Where students pay, and whether bank messages confirm payments by themselves. Null unless PAYMENT_MODE=upi. */
+    private Map<String, Object> upiInfo() {
+        if (!(gateway instanceof UpiGateway g)) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("payeeVpa", g.payee().vpa());
+        m.put("payeeName", g.payee().displayName(settings.current().getCenterName()));
+        m.put("merchant", g.payee().merchant());
+        m.put("alertsConfigured", g.alertsOn());
+        m.put("autoConfirm", g.autoConfirm());
+        m.put("matchMinutes", g.windowMinutes());
+        m.put("verifiers", upi.verifiers());
+        return m;
+    }
+
+    /**
+     * Everything about CampusPay payments: students who said "I have paid"
+     * (staff check these), open payment screens, today's confirmed payments,
+     * and the bank messages that came in (with the order each one paid).
+     */
+    @GetMapping("/payments")
+    public Map<String, Object> payments() {
+        requireUpi();
+        List<PrintOrder> toCheck = orders.findUpiToCheck();
+        Map<String, Object> hints = new LinkedHashMap<>();
+        for (PrintOrder o : toCheck) {
+            if (o.getAmountPaise() == null || o.getPaymentStartedAt() == null) continue;
+            List<UpiLedger.Alert> same = upi.unmatchedFor(o.getAmountPaise(), o.getPaymentStartedAt());
+            if (!same.isEmpty()) hints.put(o.getId().toString(), same);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("upi", upiInfo());
+        out.put("today", upi.todayTotals());
+        out.put("toCheck", describe(toCheck));
+        out.put("hints", hints);
+        out.put("waiting", describe(orders.findUpiWaiting()));
+        out.put("paid", describe(orders.findUpiPaidRecently()));
+        out.put("alerts", upi.recentAlerts(50));
+        return out;
+    }
+
+    /**
+     * Staff saw the money in the bank or UPI app (or the student paid at the
+     * counter): the order is paid and prints. reference: the 12-digit UPI
+     * reference number, if staff have it (it links the bank message, and the
+     * same number can never pay a second order).
+     */
+    @PostMapping("/orders/{id}/payment/approve")
+    public Map<String, Object> approvePayment(@PathVariable UUID id, @RequestBody(required = false) ApproveForm f) {
+        requireUpi();
+        PrintOrder o = orders.findById(id).orElseThrow(() -> ApiException.notFound("That order"));
+        String ref = f == null || f.reference() == null ? null : f.reference().replaceAll("[\\s-]", "");
+        if (ref != null && ref.isEmpty()) ref = null;
+        if (ref != null && !ref.matches("[0-9]{12}")) {
+            throw ApiException.badRequest("BAD_REFERENCE",
+                    "A UPI reference number has 12 digits. Leave it empty if you do not have it.");
+        }
+        String result = upi.approve(id, ref);
+        switch (result) {
+            case "OK" -> log.warn("Counter confirmed UPI payment of {} paise for order {} (ref {})",
+                    o.getAmountPaise(), o.getPickupCode(), ref == null ? o.getPaymentClaimRef() : ref);
+            case "REF_USED" -> throw ApiException.conflict("REFERENCE_USED",
+                    "This UPI reference number already paid another order. Check it in the bank app.");
+            default -> throw ApiException.conflict("NOT_AWAITING_PAYMENT",
+                    o.getStatus().isPaid() ? "This order is already paid." : "This order cannot be paid now.");
+        }
+        return Map.of("ok", true);
+    }
+
+    /** Staff could not find the money: the student is told, and can send the reference again or pay. */
+    @PostMapping("/orders/{id}/payment/reject")
+    public Map<String, Object> rejectPayment(@PathVariable UUID id, @RequestBody(required = false) RejectForm f) {
+        requireUpi();
+        PrintOrder o = orders.findById(id).orElseThrow(() -> ApiException.notFound("That order"));
+        String reason = f == null || f.reason() == null || f.reason().isBlank() ? null : f.reason().trim();
+        if (reason != null && reason.length() > 200) reason = reason.substring(0, 200);
+        String note = "The Xerox center could not find your payment of " + rupees(o.getAmountPaise())
+                + (reason == null ? "" : " (" + reason + ")")
+                + ". Check the UPI reference number in your UPI app and send it again. If no money was taken, pay again.";
+        if (!upi.reject(id, note)) {
+            throw ApiException.conflict("NOT_AWAITING_PAYMENT",
+                    o.getStatus().isPaid() ? "This order is already paid." : "This order is not waiting for a UPI payment.");
+        }
+        log.warn("Counter could not find UPI payment for order {}", o.getPickupCode());
+        return Map.of("ok", true);
+    }
+
+    /** Staff paste a bank SMS by hand: read and matched exactly like a forwarded one. */
+    @PostMapping("/payments/alerts")
+    public Map<String, Object> pasteAlert(@RequestBody(required = false) AlertForm f) {
+        requireUpi();
+        if (f == null || f.text() == null || f.text().isBlank()) {
+            throw ApiException.badRequest("BAD_ALERT", "Paste the bank's message first.");
+        }
+        UpiLedger.Received r = upi.receive(f.text(), "counter", "counter", "",
+                ((UpiGateway) gateway).windowMinutes());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("kind", r.parsed().kind().name());
+        out.put("amountPaise", r.parsed().amountPaise());
+        out.put("references", r.parsed().refs());
+        out.put("stored", r.stored());
+        out.put("duplicate", r.duplicate());
+        out.put("paidOrder", r.alert() == null ? null : r.alert().pickupCode());
+        return out;
+    }
+
+    private void requireUpi() {
+        if (!(gateway instanceof UpiGateway)) {
+            throw ApiException.conflict("NOT_UPI",
+                    "CampusPay is off: this shop uses PAYMENT_MODE=" + gateway.name() + ".");
+        }
+    }
+
+    private static String rupees(Integer paise) {
+        if (paise == null) return "the order";
+        return "₹" + (paise % 100 == 0 ? String.valueOf(paise / 100) : String.format("%.2f", paise / 100.0));
     }
 
     /** Handed to the student (or refunded, for a problem order). */

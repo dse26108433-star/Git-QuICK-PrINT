@@ -8,7 +8,7 @@
 ; and opens the app on the last page so the setup wizard can start.
 ; ---------------------------------------------------------------------------
 #ifndef AppVersion
-  #define AppVersion "4.1.0"
+  #define AppVersion "4.2.0"
 #endif
 #define AppName "Campus Print Station"
 #define AppExe  "Campus Print Station.exe"

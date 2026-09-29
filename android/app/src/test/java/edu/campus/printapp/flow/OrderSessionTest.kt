@@ -273,4 +273,82 @@ class OrderSessionTest {
         session.continueOrder()
         assertEquals(Step.REVIEW, session.state.value.step)
     }
+
+    // ================================================================== CampusPay: pay with a UPI app, confirmed by itself
+
+    private fun toUpiScreen(): SessionState {
+        backend.paymentMode = "upi"
+        addAndWait(TestFiles.pdf("Notes.pdf", 2))
+        session.review()
+        waitFor("review") { it.step == Step.REVIEW }
+        session.pay()
+        return waitFor("the UPI payment screen") { it.step == Step.PAY && it.upi != null }
+    }
+
+    @Test
+    fun aUpiPaymentConfirmsByItselfAndTheCodeOpens() {
+        val st = toUpiScreen()
+        assertEquals("4.01", st.upi!!.amountText)                    // Rs 4 + 1 paisa: this payment's own amount
+        assertTrue(st.upi!!.uri.startsWith("upi://pay?pa=xeroxshop@okaxis"))
+        assertFalse(st.upiHelp)                                      // nothing to type, nothing to press
+        // back from the UPI app: "Confirming your payment"
+        session.onUpiAnswer("txnId=ICI123&responseCode=00&Status=SUCCESS&txnRef=CPK7M4X&ApprovalRefNo=627312345678")
+        val confirming = waitFor("confirming") { it.upiConfirming }
+        assertEquals("6273 1234 5678", confirming.upiRef)            // kept, in case it is ever needed
+        assertFalse(backend.requests.any { it.endsWith("/payment/claim") })   // automatic: no claim, the bank decides
+        // the Xerox center's Verifier phone passes on the bank's message
+        backend.bankConfirms(backend.orders.keys.first())
+        val paid = waitFor("paid: the pickup code", 20_000) { it.step == Step.STATUS && it.order?.paidAt != null }
+        assertEquals("K7M4X", paid.order!!.pickupCode)
+        waitNotice("payment received") { it.startsWith("Payment received") }
+        assertNull(store.load())
+    }
+
+    @Test
+    fun aFailedUpiPaymentSaysNoMoneyWasTaken() {
+        toUpiScreen()
+        session.onUpiAnswer("Status=FAILURE&responseCode=ZD")
+        val st = waitFor("the failure") { it.upiError != null }
+        assertTrue(st.upiError!!.contains("no money was taken"))
+        assertEquals(Step.PAY, st.step)
+        assertFalse(st.upiConfirming)
+    }
+
+    @Test
+    fun paidButNothingHappensTheReferenceFindsIt() {
+        toUpiScreen()
+        session.showUpiHelp()
+        session.setUpiRef("1234")
+        session.claimUpi()
+        assertTrue(waitFor("refused") { it.upiError != null }.upiError!!.contains("12 digits"))
+        session.setUpiRef("6273 1234-5678")
+        session.claimUpi()
+        waitFor("sent to the counter") { it.step == Step.STATUS }
+        assertEquals("627312345678", backend.orders.values.first().claimRef)
+        // the status screen offers the payment details again while it is being checked
+        assertTrue(session.state.value.order!!.upiOpen)
+    }
+
+    @Test
+    fun withoutAutomaticConfirmationSuccessTellsTheCounterAtOnce() {
+        backend.autoConfirm = false
+        val st = toUpiScreen()
+        assertTrue(st.upiHelp)                                       // "I have paid" is shown straight away
+        session.onUpiAnswer("Status=SUCCESS&ApprovalRefNo=627312345679")
+        waitFor("sent to the counter") { it.step == Step.STATUS }
+        assertEquals("627312345679", backend.orders.values.first().claimRef)
+    }
+
+    @Test
+    fun whatUpiAppsAnswer() {
+        assertEquals(UpiAnswer(UpiAnswer.Status.SUCCESS, "627312345678"),
+            UpiAnswer.parse("txnId=ICI123&responseCode=00&Status=SUCCESS&txnRef=CPK7M4X&ApprovalRefNo=627312345678"))
+        assertEquals(UpiAnswer.Status.FAILURE, UpiAnswer.parse("Status=FAILURE").status)
+        assertEquals(UpiAnswer.Status.SUBMITTED, UpiAnswer.parse("status=Submitted&txnId=X").status)
+        assertEquals(UpiAnswer(UpiAnswer.Status.UNKNOWN, null), UpiAnswer.parse(null))
+        // the reference found elsewhere when ApprovalRefNo is empty; our own txnRef is never taken for it
+        assertEquals("627312345670", UpiAnswer.parse("Status=SUCCESS&ApprovalRefNo=&txnId=627312345670&txnRef=999999999999").reference)
+        assertTrue(UpiRef.ok("") && UpiRef.ok("6273 1234 5678") && !UpiRef.ok("12345"))
+        assertEquals("6273 1234 5678", UpiRef.group("627312345678"))
+    }
 }

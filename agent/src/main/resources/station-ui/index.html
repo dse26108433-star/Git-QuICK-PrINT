@@ -128,7 +128,7 @@
   </aside>
 
   <main class="main">
-    <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to Razorpay before real use.</div>
+    <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to CampusPay (PAYMENT_MODE=upi) or Razorpay before real use.</div>
     <div id="appError" class="notice stop hidden" style="margin-bottom:16px" role="alert"></div>
 
     <!-- ------------------------------ COUNTER ------------------------------ -->
@@ -153,12 +153,14 @@
       </div>
 
       <div id="noPrinterBanner" class="notice stop hidden" style="margin-bottom:14px" role="alert"></div>
+      <div id="verifierBanner" class="notice stop hidden" style="margin-bottom:14px" role="alert"></div>
       <div class="printer-strip" id="printerStrip"></div>
 
       <div class="tabs" role="tablist">
         <button class="tab on" data-list="active">Printing &amp; waiting <span class="n" id="nActive">0</span></button>
         <button class="tab" data-list="ready">Ready to hand over <span class="n" id="nReady">0</span></button>
         <button class="tab" data-list="problems" id="tabProblems">Problems <span class="n" id="nProblems">0</span></button>
+        <button class="tab hidden" data-list="payments" id="tabPayments">UPI payments <span class="n" id="nPay">0</span></button>
         <button class="tab" data-list="all">All recent</button>
       </div>
       <div class="orders" id="orderList"></div>

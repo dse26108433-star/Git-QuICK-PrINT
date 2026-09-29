@@ -59,10 +59,33 @@ details.settings { margin-top: 26px; }
 details.settings summary { cursor: pointer; font-weight: 600; }
 .form { display: grid; gap: 10px; max-width: 420px; margin-top: 12px; }
 .form input { min-height: 44px; padding: 0 10px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 100%; }
+
+/* CampusPay (direct UPI) */
+.tab.hidden { display: none; }
+.pay-info { font-size: 14px; color: var(--ink-soft); background: var(--sheet); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 12px; }
+.pay-info b { color: var(--ink); }
+.pay-h { font-size: 16px; margin: 18px 0 8px; }
+.pay-order { display: grid; grid-template-columns: 110px 1fr auto; gap: 14px; align-items: center; background: var(--sheet);
+             border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 8px; border-left: 4px solid var(--lamp-work); }
+.pay-order .code { font-size: 28px; font-weight: 700; letter-spacing: .1em; }
+.pay-order .amount { font-size: 22px; font-weight: 700; }
+.pay-order .meta { font-size: 14px; color: var(--ink-soft); }
+.pay-order .ref { font-family: ui-monospace, Consolas, monospace; font-weight: 700; color: var(--ink); letter-spacing: .04em; }
+.pay-order .hintline { font-size: 13px; margin-top: 4px; color: var(--ink); background: #FBF6EE; border-radius: 8px; padding: 4px 8px; }
+.pay-order .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .pay-order { grid-template-columns: 1fr; } .pay-order .actions { justify-content: flex-start; } }
+.paste { display: grid; gap: 8px; background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 10px; }
+.paste textarea { width: 100%; min-height: 70px; padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(--radius); font: inherit; }
+.paste .btn { justify-self: start; }
+.alerts { width: 100%; border-collapse: collapse; background: var(--sheet); border-radius: var(--radius); overflow: hidden; font-size: 14px; }
+.alerts td, .alerts th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.alerts th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+.alerts .msg { color: var(--ink-soft); font-size: 13px; word-break: break-word; }
+.small-list { font-size: 14px; color: var(--ink-soft); }
 </style>
 </head>
 <body>
-<div id="demoBanner" class="demo-banner hidden">DEMO PAYMENT MODE - orders print without real money. Set PAYMENT_MODE=razorpay for real use.</div>
+<div id="demoBanner" class="demo-banner hidden">DEMO PAYMENT MODE - orders print without real money. Set PAYMENT_MODE=upi (CampusPay) or razorpay for real use.</div>
 <header class="top">
   <div class="brand"><img class="brand-logo" src="icon.svg" alt=""><div>Counter <small id="centerName">Campus Print</small></div></div>
   <div class="small" id="pcStatus"></div>
@@ -70,6 +93,7 @@ details.settings summary { cursor: pointer; font-weight: 600; }
 
 <main class="wrap">
   <div id="error" class="notice stop hidden" role="alert"></div>
+  <div id="verifierBanner" class="notice stop hidden" role="alert" style="margin-bottom:12px"></div>
 
   <!-- Login -->
   <section id="loginBox" class="sheet login hidden">
@@ -92,6 +116,7 @@ details.settings summary { cursor: pointer; font-weight: 600; }
       <button class="tab on" data-view="active">Printing &amp; waiting <span class="n" id="nActive">0</span></button>
       <button class="tab" data-view="ready">Ready to hand over <span class="n" id="nReady">0</span></button>
       <button class="tab" data-view="problems" id="tabProblems">Problems <span class="n" id="nProblems">0</span></button>
+      <button class="tab hidden" data-view="payments" id="tabPayments">UPI payments <span class="n" id="nPay">0</span></button>
       <button class="tab" data-view="all">All recent</button>
       <input class="search" id="search" placeholder="Code" maxlength="5" aria-label="Search pickup code">
     </div>
@@ -125,7 +150,7 @@ details.settings summary { cursor: pointer; font-weight: 600; }
 const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
 const $ = (id) => document.getElementById(id);
 const PW_KEY = "campusprint.counter";
-const state = { view: "active", code: "", timer: null, settingsLoaded: false };
+const state = { view: "active", code: "", timer: null, settingsLoaded: false, mode: "", pasteResult: "" };
 
 function rupees(paise) {
   if (paise == null) return "-";
@@ -184,9 +209,20 @@ function signOut(msg) {
 
 /* ---------------- screen ---------------- */
 async function refresh() {
+  if (state.view === "payments" && !state.code) {
+    const [summary, payments] = await Promise.all([api("GET", "/api/v1/counter/summary"), api("GET", "/api/v1/counter/payments")]);
+    renderSummary(summary);
+    // Do not redraw while staff type a bank message.
+    if (!(document.activeElement && document.activeElement.tagName === "TEXTAREA" && document.activeElement.value)) {
+      renderPayments(payments);
+    }
+    showError(null);
+    return;
+  }
   const [summary, orders] = await Promise.all([
     api("GET", "/api/v1/counter/summary"),
-    api("GET", "/api/v1/counter/orders?view=" + state.view + (state.code ? "&code=" + encodeURIComponent(state.code) : ""))
+    api("GET", "/api/v1/counter/orders?view=" + (state.view === "payments" ? "all" : state.view) +
+      (state.code ? "&code=" + encodeURIComponent(state.code) : ""))
   ]);
   renderSummary(summary);
   renderOrders(orders);
@@ -200,6 +236,13 @@ function renderSummary(s) {
   $("nReady").textContent = s.ready;
   $("nProblems").textContent = s.problems;
   $("tabProblems").classList.toggle("alert", s.problems > 0);
+  state.mode = s.paymentMode;
+  $("tabPayments").classList.toggle("hidden", s.paymentMode !== "upi");
+  const [vk, vt] = s.paymentMode === "upi" ? verifierLine(s.upi) : ["ok", ""];
+  $("verifierBanner").classList.toggle("hidden", !(s.paymentMode === "upi" && vk === "stop"));
+  $("verifierBanner").textContent = vt;
+  $("nPay").textContent = s.paymentsToCheck || 0;
+  $("tabPayments").classList.toggle("alert", (s.paymentsToCheck || 0) > 0);
   setStampUi(s.stampCode !== false);
 
   const pcOnline = s.pcs.some(p => p.online);
@@ -310,7 +353,7 @@ function renderOrders(list) {
       }
       if ((d.status === "QUEUED" && d.noPrinter) || (d.status === "FAILED" && o.paidAt && !o.collectedAt)) {
         add("Cancel this file", () => {
-          if (!confirm("Cancel \"" + d.fileName + "\"? Refund " + rupees(d.amountPaise) + " in Razorpay.")) return Promise.resolve();
+          if (!confirm("Cancel \"" + d.fileName + "\"? Refund " + rupees(d.amountPaise) + " " + refundWhere() + ".")) return Promise.resolve();
           return api("POST", "/api/v1/counter/documents/" + d.id + "/cancel");
         });
       }
@@ -343,17 +386,169 @@ function renderOrders(list) {
     }
     if ((o.status === "FAILED" || failed.length || o.refundDuePaise) && o.paidAt && !o.collectedAt) {
       add("Refunded / done", "ghost", () => {
-        if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand or refunded in Razorpay)?")) return Promise.resolve();
+        if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand or refunded " + refundWhere() + ")?")) return Promise.resolve();
         return api("POST", "/api/v1/counter/orders/" + o.id + "/collected");
       });
     }
+    if (o.status === "AWAITING_PAYMENT" && state.mode === "upi") {
+      for (const a of paymentActions(o)) add(a.label, a.cls, a.run);
+    }
     if (o.status === "QUEUED") {
       add("Cancel", "ghost", () => {
-        if (!confirm("Cancel " + o.pickupCode + "? You must refund the student in the Razorpay dashboard.")) return Promise.resolve();
+        if (!confirm("Cancel " + o.pickupCode + "? You must refund the student " + refundWhere() + ".")) return Promise.resolve();
         return api("POST", "/api/v1/counter/orders/" + o.id + "/cancel");
       });
     }
     box.appendChild(row);
+  }
+}
+
+/* ---------------- CampusPay: UPI payments ---------------- */
+/** The CampusPay Verifier phone: is it online, and what may it read? */
+function verifierLine(u) {
+  const vs = (u && u.verifiers) || [];
+  const live = vs.filter(v => Date.now() - new Date(v.lastSeenAt).getTime() < 3 * 3600 * 1000);
+  const fresh = live.find(v => v.sms || v.notifications) || live[0];
+  if (u && !u.alertsConfigured) return ["work", "Automatic confirmation is off: set UPI_ALERT_TOKEN on the server and install CampusPay Verifier on the shop's phone."];
+  if (fresh) {
+    const reads = [fresh.notifications ? "UPI app notifications" : null, fresh.sms ? "bank SMS" : null].filter(Boolean).join(" + ") || "nothing yet (allow it on the phone)";
+    return [fresh.notifications || fresh.sms ? "ok" : "work", "Verifier phone “" + fresh.device + "” online · checked in " + when(fresh.lastSeenAt) +
+      (fresh.lastAlertAt ? " · last payment message " + when(fresh.lastAlertAt) : "") + " · reads " + reads + "."];
+  }
+  if (vs.length) return ["stop", "Verifier phone “" + vs[0].device + "” not heard from since " + when(vs[0].lastSeenAt) +
+    ". Until it is back, students press “I have paid” and you confirm here. Is it switched on, online and charging?"];
+  return ["work", "No Verifier phone yet: install CampusPay Verifier on the shop's phone for automatic payments."];
+}
+
+function refundWhere() {
+  return state.mode === "upi" ? "by UPI from the shop's account" : "in the Razorpay dashboard";
+}
+
+/** Staff saw the money in the bank / UPI app, or could not find it. */
+function paymentActions(o) {
+  return [
+    { label: "Money received", cls: "", run: () => {
+      let ref = o.paymentClaimRef;
+      if (ref) {
+        if (!confirm("Did " + rupees(o.amountPaise) + " with reference " + groupRef(ref) +
+                     " arrive in the bank or UPI app? The order prints straight away.")) return Promise.resolve();
+      } else {
+        ref = prompt("Did " + rupees(o.amountPaise) + " for " + o.pickupCode + " arrive in the bank or UPI app?\n" +
+                     "Type its 12-digit UPI reference number if you see it (or leave it empty), then OK.", "");
+        if (ref === null) return Promise.resolve();
+      }
+      return api("POST", "/api/v1/counter/orders/" + o.id + "/payment/approve", { reference: ref || null });
+    } },
+    { label: "Not found", cls: "ghost", run: () => {
+      const why = prompt("Tell the student why (optional), for example: no payment of " + rupees(o.amountPaise) + " today", "");
+      if (why === null) return Promise.resolve();
+      return api("POST", "/api/v1/counter/orders/" + o.id + "/payment/reject", { reason: why || null });
+    } }
+  ];
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function groupRef(r) { return /^\d{12}$/.test(r || "") ? r.slice(0, 4) + " " + r.slice(4, 8) + " " + r.slice(8) : (r || ""); }
+function actionButton(label, cls, fn) {
+  const b = el("button", "btn small " + cls, label);
+  b.onclick = async () => {
+    b.disabled = true;
+    try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
+  };
+  return b;
+}
+
+function renderPayments(p) {
+  const box = $("orders");
+  box.innerHTML = "";
+  $("hint").classList.add("hidden");
+  const u = p.upi || {};
+  const info = el("div", "pay-info");
+  info.append("Students pay ", el("b", null, u.payeeVpa || "-"), " (" + (u.payeeName || "") + ") from any UPI app. ",
+    u.autoConfirm ? "Bank messages from the shop's phone confirm payments by themselves; below are only the ones they could not."
+                  : "Check each payment in the bank or UPI app, then press Money received: only then it prints.",
+    " Today: " + (p.today.paidOrders || 0) + " paid, " + rupees(p.today.paidPaise || 0) +
+    (u.autoConfirm ? " (" + (p.today.confirmedByBank || 0) + " confirmed by the bank)" : "") + ".");
+  box.append(info);
+  const [vk, vt] = verifierLine(u);
+  box.append(el("div", "notice" + (vk === "stop" ? " stop" : ""), vt));
+
+  box.append(el("h3", "pay-h", "Students who say they paid (" + p.toCheck.length + ")"));
+  if (!p.toCheck.length) box.append(el("div", "empty", "Nothing to check."));
+  for (const o of p.toCheck) {
+    const row = el("div", "pay-order");
+    const mid = el("div");
+    mid.append(el("div", "amount", rupees(o.amountPaise)));
+    const meta = el("div", "meta");
+    meta.append(o.paymentClaimRef ? "Reference " : "No reference typed",
+      o.paymentClaimRef ? el("span", "ref", groupRef(o.paymentClaimRef)) : "",
+      " · said paid " + when(o.paymentClaimedAt) + " · " + (o.documents || []).length + " file(s), " + (o.totalSheets || 0) + " sheets");
+    mid.append(meta);
+    for (const a of (p.hints[o.id] || [])) {
+      mid.append(el("div", "hintline", "Bank message " + when(a.receivedAt) + ": " + rupees(a.amountPaise) +
+        (a.refs.length ? " · ref " + a.refs.map(groupRef).join(", ") : "") + " (same amount, not matched automatically)"));
+    }
+    const acts = el("div", "actions");
+    for (const a of paymentActions(o)) acts.append(actionButton(a.label, a.cls, a.run));
+    row.append(el("div", "code", o.pickupCode), mid, acts);
+    box.append(row);
+  }
+
+  const paste = el("div", "paste");
+  paste.append(el("b", null, "Paste a bank SMS"),
+    el("span", "small muted", "Copy the bank's \"credited\" message from the shop's phone and paste it here: it pays the order it proves, exactly like a forwarded one."));
+  const ta = document.createElement("textarea");
+  ta.placeholder = "e.g. A/C X1234 credited by Rs.20.01 ... Ref No 627312345678";
+  const res = el("span", "small");
+  const go = el("button", "btn small", "Check this message");
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await api("POST", "/api/v1/counter/payments/alerts", { text: ta.value });
+      state.pasteResult = r.kind !== "CREDIT" ? "Not a money-received message." : r.paidOrder
+        ? "Paid order " + r.paidOrder + " (" + rupees(r.amountPaise) + ")." : r.duplicate ? "Already pasted before."
+        : rupees(r.amountPaise) + " received, but no order waits for exactly this amount.";
+      ta.value = "";
+      await refresh();
+    } catch (e) { showError(e.message); go.disabled = false; }
+  };
+  res.textContent = state.pasteResult || "";
+  paste.append(ta, go, res);
+  box.append(el("h3", "pay-h", "Bank messages"), paste);
+
+  if (p.alerts.length) {
+    const t = el("table", "alerts");
+    const head = el("tr");
+    ["Time", "Amount", "Order", "Message"].forEach(h => head.append(el("th", null, h)));
+    const th = el("thead");
+    th.append(head);
+    const tb = el("tbody");
+    const how = { REFERENCE: "by reference", AMOUNT: "by amount", COUNTER: "by staff" };
+    for (const a of p.alerts) {
+      const tr = el("tr");
+      tr.append(el("td", null, when(a.receivedAt)), el("td", null, rupees(a.amountPaise)),
+        el("td", null, a.pickupCode ? a.pickupCode + " · " + (how[a.matchMethod] || "") : "no order"),
+        el("td", "msg", a.message));
+      tb.append(tr);
+    }
+    t.append(th, tb);
+    box.append(t);
+  }
+
+  if (p.waiting.length) {
+    box.append(el("h3", "pay-h", "Payment screen open, not paid yet (" + p.waiting.length + ")"));
+    box.append(el("div", "small-list", p.waiting.map(o => o.pickupCode + " " + rupees(o.amountPaise) +
+      " (" + when(o.paymentStartedAt) + ")").join(" · ")));
+  }
+  if (p.paid.length) {
+    box.append(el("h3", "pay-h", "Paid by UPI, last 24 hours (" + p.paid.length + ")"));
+    box.append(el("div", "small-list", p.paid.map(o => o.pickupCode + " " + rupees(o.amountPaise) + " " + when(o.paidAt) +
+      (o.paymentVerifiedBy === "counter" ? " (staff)" : " (bank)")).join(" · ")));
   }
 }
 

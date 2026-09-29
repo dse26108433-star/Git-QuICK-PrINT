@@ -9,6 +9,8 @@
 -- =====================================================================
 drop trigger if exists on_auth_user_created on auth.users;
 
+drop table if exists payment_alerts cascade;
+drop table if exists payment_verifiers cascade;
 drop table if exists order_events  cascade;
 drop table if exists order_documents cascade;
 drop table if exists orders        cascade;
@@ -40,6 +42,12 @@ drop function if exists printer_can_do(jsonb, boolean, boolean, jsonb) cascade;
 drop function if exists guard_document_transition() cascade;
 drop function if exists sync_order_status() cascade;
 drop function if exists touch_updated_at() cascade;
+drop function if exists upi_start_payment(uuid, text, int) cascade;
+drop function if exists upi_pay_order(uuid, uuid, text, text, text) cascade;
+drop function if exists upi_match_alert(uuid, int) cascade;
+drop function if exists upi_match_order(uuid) cascade;
+drop function if exists upi_claim_payment(uuid, text) cascade;
+drop function if exists upi_approve_payment(uuid, text) cascade;
 
 drop policy if exists docs_insert_own on storage.objects;
 drop policy if exists docs_read_own   on storage.objects;

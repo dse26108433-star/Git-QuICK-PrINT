@@ -21,7 +21,10 @@ No accounts, no login.
    - pictures: fit, fill, actual size or custom size, turn left / right, borderless — **never stretched**
 3. Only choices the connected printers can really do are shown. The price updates live.
 4. **Review and pay**: the server checks and prices every file; the student sees exactly what will be printed,
-   file by file, and pays once (UPI / card via Razorpay).
+   file by file, and pays once with **CampusPay**, the center's own UPI gateway: the phone shows its UPI apps
+   (Google Pay, PhonePe, Paytm, BHIM…), a laptop a QR code; the money goes straight to the center's bank account and
+   the payment is confirmed automatically in about a second (see [`docs/campuspay-upi.md`](docs/campuspay-upi.md)).
+   Razorpay is still available as another payment mode.
 5. Gets **one pickup code** for everything, e.g. `K7M4X`, and watches each file: *Waiting → Printing on
    Printer 2 → Ready*.
 6. Shows the code at the counter and takes the pages.
@@ -63,14 +66,18 @@ preview and settings side by side).
 | `web/` | The student website for Netlify: `index.html` + `css/` + `js/` (`print-core.js` = the shared rules, `app.js` = the screens), installable as a phone app (`manifest.webmanifest`, `sw.js`); `poster.html` (A4 QR poster), `config.js`, `netlify.toml`; and `counter.html` |
 | `spec/` | Shared test cases (pages, prices, printer rules, layout) checked against the backend, the Station, the database and the website: `node spec/web-core.test.js` |
 | `render.yaml`, `backend/Dockerfile` | Put the backend online with HTTPS (Render or any Docker host) |
-| `android/` | Android app (Kotlin, Jetpack Compose, Razorpay): the same multi-file orders and settings as the website (`core/PrintCore.kt` = the shared rules, checked against `spec/cases`) |
+| `android/` | Android app (Kotlin, Jetpack Compose): the same multi-file orders and settings as the website (`core/PrintCore.kt` = the shared rules, checked against `spec/cases`); pays with CampusPay (lists the UPI apps installed on the phone) or Razorpay |
+| `android/verifier/` | **CampusPay Verifier**: the app for the Xerox center's phone. Passes the UPI business app's "₹X received" notifications (instant) and the bank's "credited" SMS (backup) to the server, which confirms payments by itself |
 | `docs/` | `how-it-works.md`, `troubleshooting.md` |
 
 ## Money and safety, in short
 
 - **The price is always worked out by the backend** from the real uploaded files and the checked settings,
   never from what the phone says. What the student sees on "Review and pay" is exactly what is printed.
-- **Payment is verified on the server** (Razorpay signature + asking Razorpay directly). Only then do the files
+- **CampusPay (PAYMENT_MODE=upi)**: every payment gets its own amount (₹20.**01**) and UPI link; an order is paid
+  only when the bank's message proves the money arrived (forwarded by the CampusPay Verifier phone, matched inside
+  the database under one lock). One UPI payment can never pay two orders, and nothing prints on anyone's word.
+- **Payment is verified on the server** (CampusPay: the bank's message; Razorpay: signature + asking Razorpay directly). Only then do the files
   enter the print queue. If a student closes the page right after paying, the backend finds the payment itself
   within a minute.
 - **A file is never printed twice by accident.** The PC writes "sent" to its own disk before printing,
@@ -95,8 +102,10 @@ preview and settings side by side).
    installer with the address built in: `build-installer.ps1 -BackendUrl "https://..."`
    (`installer/CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe` is already built for
    `https://campus-print-backend.onrender.com`).
-4. **Razorpay live mode:** finish KYC, generate live keys (`rzp_live_...`), set them in `.env`, restart.
-   Refunds for problem orders are done in the Razorpay dashboard (the counter screen shows the payment id).
+4. **Payments.** Either **CampusPay** (your own UPI, no fees): `PAYMENT_MODE=upi`, `UPI_ID`, `UPI_NAME`,
+   `UPI_ALERT_TOKEN`, then install `CampusPay-Verifier-1.0.0.apk` on the shop phone — [`docs/campuspay-upi.md`](docs/campuspay-upi.md).
+   Or **Razorpay live mode:** finish KYC, generate live keys (`rzp_live_...`), set them in `.env`, restart.
+   Refunds for problem orders: by UPI from the shop's app (CampusPay) or in the Razorpay dashboard.
 5. **Android:** the app talks to `https://campus-print-backend.onrender.com` unless built with `-PapiBase=...`;
    build a signed release (Build → Generate Signed Bundle/APK). Version 3.0.0 has the full multi-file order.
 6. Change `COUNTER_PASSWORD` to something strong. Remove `PAYMENT_MODE=demo` — demo mode prints without payment.

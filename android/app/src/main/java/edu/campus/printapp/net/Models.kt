@@ -134,13 +134,34 @@ data class OrderView(
     val editable: Boolean = false,
     val documentsDone: Int = 0,
     val totalSheets: Int? = null,
-    val refundDuePaise: Int? = null
+    val refundDuePaise: Int? = null,
+    val payment: PaymentInfo? = null
 ) {
     /** The files that will be (or were) printed. */
     val live: List<DocumentView> get() = documents.filter { it.status != "CANCELLED" }
+
+    /** CampusPay: a UPI payment was started and is not confirmed yet. */
+    val upiOpen: Boolean get() = status == "AWAITING_PAYMENT" && payment?.provider == "upi"
 }
 
-/** What the payment screen needs. provider = "razorpay" or "demo". */
+/**
+ * How the order is (being) paid. CampusPay ("upi"): tagPaise are the paise
+ * added so the bank's message points to this order; claimRef is the UPI
+ * reference the student typed; note says why the counter could not find it.
+ */
+@Serializable
+data class PaymentInfo(
+    val provider: String,
+    val paid: Boolean = false,
+    val tagPaise: Int? = null,
+    val reference: String? = null,
+    val claimRef: String? = null,
+    val claimedAt: String? = null,
+    val note: String? = null,
+    val verifiedBy: String? = null
+)
+
+/** What the payment screen needs. provider = "upi" (CampusPay), "razorpay" or "demo". */
 @Serializable
 data class PaymentStart(
     val provider: String,
@@ -148,8 +169,32 @@ data class PaymentStart(
     val gatewayOrderId: String = "",
     val amountPaise: Int,
     val currency: String = "INR",
-    val description: String = ""
+    val description: String = "",
+    val upi: UpiCheckout? = null
 )
+
+/**
+ * CampusPay: pay this amount to the Xerox center's UPI ID with any UPI app.
+ * uri is the upi://pay link that opens the UPI app with everything filled in.
+ */
+@Serializable
+data class UpiCheckout(
+    val uri: String,
+    val payeeVpa: String,
+    val payeeName: String,
+    val note: String = "",
+    val reference: String = "",
+    val amountPaise: Int,
+    val amountText: String,
+    val tagPaise: Int = 0,
+    val merchant: Boolean = false,
+    val autoConfirm: Boolean = false,
+    val startedAt: String? = null
+)
+
+/** "I have paid", with the 12-digit UPI reference number (UTR) if known. */
+@Serializable
+data class ClaimPayment(val reference: String?)
 
 @Serializable
 data class ConfirmPayment(val paymentId: String, val signature: String)

@@ -27,6 +27,7 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 | ★ Student website on Netlify + backend online | ⏳ Files ready · needs your Render + Netlify accounts (see ★ Going online) |
 | ★ New student website design + phone app + QR poster | ✅ Done and tested (desktop + phone) · 🪧 print the poster |
 | ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ✅ backend live on Render · ⏳ website on Netlify · 🖨️ install Station 4.1.0 (see ★★ below) |
+| ★★★ CampusPay: your own UPI payment gateway, automatic | ✅ Done and tested (server, website, app 3.2.0, Station 4.2.0, Verifier 1.0.0) · ⏳ your UPI ID + token on the server · 📱 Verifier on the shop phone (see ★★★ below) |
 
 ---
 
@@ -501,6 +502,38 @@ To do, in this order:
       only those that came out right.
 - [ ] 6. Station → Settings: prices per printed side; extra % for A3 (200 % preset) and special paper; finishing prices.
 - [ ] 📱 Android 3.0.0 (many files per order, same settings as the website): install it on your phone and try one order.
+
+---
+
+## ★★★ CampusPay — your own UPI payment gateway  (new)
+
+**What students get:** Pay → the phone shows the UPI apps on it (Google Pay, PhonePe, Paytm, BHIM…; a laptop shows a
+QR code) → they pay → come back → **Payment successful** by itself in about a second → printing → pickup code.
+Nothing to type, nothing to press. The money goes straight into the Xerox center's bank account: no gateway, no fees.
+
+**How it knows:** the business UPI app on the shop's phone gets "₹20.01 received" pushed by its server within seconds;
+the new **CampusPay Verifier** app on that phone passes it to the server, which matches it to exactly one order
+(every payment has its own amount, ₹20.**01**) and releases the print job. The bank's SMS is a backup. Full guide,
+safety rules and a presentation script: [`docs/campuspay-upi.md`](docs/campuspay-upi.md).
+
+- [x] Server: CampusPay API, bank-message reading (SBI, HDFC, ICICI, Axis, Kotak, PNB, PhonePe/Paytm/GPay texts), matching
+      inside the database under one lock · 15 + 9 automatic tests
+- [x] Website: UPI app buttons (Android intent / iPhone links), QR code on laptops, automatic "Confirming… → Payment
+      successful", fallbacks · tested in Edge at phone, iPhone and laptop sizes
+- [x] Android app 3.2.0: lists the UPI apps really installed on the phone, with icons; comes back and confirms by itself
+- [x] CampusPay Verifier 1.0.0 (new app for the shop phone): tested on Android 14 — real SMS → order paid in 0.3 s,
+      real notification → 0.55 s; OTPs and other SMS never leave the phone
+- [x] Station 4.2.0 and web counter: **UPI payments** tab (today's payments, the Verifier phone's status, every bank
+      message and the order it paid, backup "Money received" button, "Paste a bank SMS")
+- [ ] 1. Get a **business UPI ID** for the shop's bank account (PhonePe Business / Paytm for Business / Google Pay for
+      Business / BharatPe — free). Only the UPI ID is needed: never give out the account number or IFSC.
+- [ ] 2. Render → Environment: `PAYMENT_MODE=upi`, `UPI_ID` (or paste your QR's text), `UPI_NAME`, `UPI_ALERT_TOKEN`
+      (Render generates it) → Save. Supabase → run `db/setup.sql` again (adds the CampusPay tables).
+- [ ] 3. Push this folder to GitHub (Render and Netlify update by themselves).
+- [ ] 4. 📱 Shop phone: install `CampusPay-Verifier-1.0.0.apk` → server address + token → Save and connect → Allow
+      notifications, SMS and battery (Android 13+: App info → ⋮ → Allow restricted settings first).
+- [ ] 5. Students' app: install `CampusPrint-Android-3.2.0-debug.apk`. 🖨️ Xerox PC: install `CampusPrintStation-Setup-4.2.0-GitQuickPrint.exe`.
+- [ ] 6. Pay ₹2.01 for a one-page order from your own phone and watch it confirm and print.
 
 ---
 

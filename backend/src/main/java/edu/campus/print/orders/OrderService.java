@@ -16,6 +16,8 @@ import edu.campus.print.domain.ShopSettings;
 import edu.campus.print.orders.OrderDtos.*;
 import edu.campus.print.payment.DemoGateway;
 import edu.campus.print.payment.PaymentGateway;
+import edu.campus.print.payment.UpiGateway;
+import edu.campus.print.payment.UpiLedger;
 import edu.campus.print.printing.Finishing;
 import edu.campus.print.printing.PaperSize;
 import edu.campus.print.printing.PrintSettings;
@@ -48,8 +50,9 @@ import java.util.concurrent.TimeUnit;
  *   documentUploaded()  file arrived: check what it really is, count its pages
  *   review()            the student's settings for every document: checked against the
  *                       real files and the real printers, priced -> AWAITING_PAYMENT
- *   startPayment()      open Razorpay (or demo)
+ *   startPayment()      open the payment screen: CampusPay (direct UPI), Razorpay or demo
  *   confirmPayment()    payment verified -> QUEUED -> the Xerox PC prints each document
+ *   claimPayment()      CampusPay: "I have paid" (+ UPI reference); paid once a bank message or staff confirm it
  *   get()               status + pickup code, polled by the app
  *
  * One-file apps (Android) still send the file and choices with create() and
@@ -73,6 +76,7 @@ public class OrderService {
     private final SupabaseStorage storage;
     private final FileInspector inspector;
     private final PaymentGateway gateway;
+    private final UpiLedger upi;
     private final ShopProperties limits;
     private final AgentProperties agentProps;
     private final TransactionTemplate tx;
@@ -80,7 +84,7 @@ public class OrderService {
 
     public OrderService(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
                         ShopSettingsRepository settings, SupabaseStorage storage, FileInspector inspector,
-                        PaymentGateway gateway, ShopProperties limits, AgentProperties agentProps,
+                        PaymentGateway gateway, UpiLedger upi, ShopProperties limits, AgentProperties agentProps,
                         PlatformTransactionManager txManager) {
         this.orders = orders;
         this.documents = documents;
@@ -89,6 +93,7 @@ public class OrderService {
         this.storage = storage;
         this.inspector = inspector;
         this.gateway = gateway;
+        this.upi = upi;
         this.limits = limits;
         this.agentProps = agentProps;
         this.tx = new TransactionTemplate(txManager);
@@ -496,7 +501,7 @@ public class OrderService {
         String centerName = settings.current().getCenterName();
         boolean hadGatewayOrder = o.getGatewayOrderId() != null;
         PaymentGateway.Checkout checkout = gateway.start(o, centerName);
-        if (!hadGatewayOrder && o.getGatewayOrderId() != null
+        if (!hadGatewayOrder && o.getGatewayOrderId() != null && !gateway.savesCheckout()
                 && orders.setGatewayOrder(o.getId(), o.getGatewayOrderId(), gateway.name()) == 0) {
             // A second click got there first: use the Razorpay order it created.
             checkout = gateway.start(reload(id), centerName);
@@ -523,6 +528,50 @@ public class OrderService {
         return view(reload(id));
     }
 
+    /**
+     * CampusPay: the student says "I have paid", with the 12-digit UPI
+     * reference number from their UPI app if they have it. This proves
+     * nothing by itself: the order is paid when a bank message shows the money
+     * arrived (possibly one that came in already), or when staff confirm it.
+     */
+    public OrderView claimPayment(UUID id, String key, ClaimPaymentRequest req) {
+        PrintOrder o = owned(id, key);
+        if (!(gateway instanceof UpiGateway)) {
+            throw ApiException.conflict("NOT_UPI", "This shop does not take direct UPI payments.");
+        }
+        if (o.getStatus().isPaid()) {
+            return view(o);
+        }
+        String ref = upiReference(req == null ? null : req.reference());
+        String result = upi.claim(id, ref);
+        switch (result) {
+            case "OK" -> { }
+            case "REF_USED" -> throw ApiException.conflict("REFERENCE_USED",
+                    "This UPI reference number was already used for another order. Check the number in your UPI app.");
+            case "NOT_STARTED" -> throw ApiException.conflict("NOT_STARTED", "Open the payment screen first.");
+            default -> {
+                PrintOrder now = reload(id);
+                if (now.getStatus().isPaid()) return view(now);
+                throw ApiException.conflict("NOT_AWAITING_PAYMENT", "This order cannot be paid now.");
+            }
+        }
+        log.info("Order {}: student says paid via UPI{}", o.getPickupCode(), ref == null ? "" : " (ref " + ref + ")");
+        if (ref != null) reconcile(reload(id));
+        return view(reload(id));
+    }
+
+    /** A UPI reference number (UTR) is 12 digits. Spaces and dashes are fine; anything else is refused. */
+    static String upiReference(String typed) {
+        if (typed == null || typed.isBlank()) return null;
+        String digits = typed.replaceAll("[\\s-]", "");
+        if (!digits.matches("[0-9]{12}")) {
+            throw ApiException.badRequest("BAD_REFERENCE",
+                    "The UPI reference number has 12 digits (it may be called UTR, UPI Ref No. or Transaction ID). "
+                            + "You can also leave it empty.");
+        }
+        return digits;
+    }
+
     public OrderView demoPay(UUID id, String key) {
         if (!(gateway instanceof DemoGateway)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "NOT_DEMO", "Demo payment is switched off.");
@@ -542,6 +591,9 @@ public class OrderService {
     public void reconcile(PrintOrder o) {
         if (gateway instanceof DemoGateway || o.getGatewayOrderId() == null) {
             return;
+        }
+        if (gateway instanceof UpiGateway && o.getPaymentClaimRef() == null) {
+            return;       // CampusPay: bank messages pay orders as they arrive; only a typed reference is looked up
         }
         orders.touchPaymentCheck(o.getId());
         try {
@@ -612,7 +664,23 @@ public class OrderService {
         int count = live.size();
         switch (o.getStatus()) {
             case AWAITING_UPLOAD -> stage = "Adding files";
-            case AWAITING_PAYMENT -> stage = "Waiting for payment";
+            case AWAITING_PAYMENT -> {
+                if (o.isUpiStarted() && o.getPaymentClaimedAt() != null) {
+                    stage = "Checking your payment";
+                    message = "We are matching your UPI payment of " + rupees(o.getAmountPaise()) + " with the bank"
+                            + (o.getPaymentClaimRef() == null ? "" : " (reference " + o.getPaymentClaimRef() + ")")
+                            + ". This usually takes a minute. Nothing prints before the money has arrived. "
+                            + "Taking long? Show code " + o.getPickupCode() + " and your UPI app's receipt at the counter.";
+                } else if (o.isUpiStarted() && o.getPaymentNote() != null) {
+                    stage = "Payment not found yet";
+                    message = o.getPaymentNote();
+                } else {
+                    stage = "Waiting for payment";
+                    if (o.isUpiStarted()) {
+                        message = "Pay " + rupees(o.getAmountPaise()) + " with any UPI app. This page updates by itself.";
+                    }
+                }
+            }
             case QUEUED -> {
                 stage = "Paid – waiting for a printer";
                 if (ahead != null && ahead > 0) message = ahead + (ahead == 1 ? " order" : " orders") + " ahead of you.";
@@ -665,7 +733,18 @@ public class OrderService {
                 o.getCreatedAt(), o.getPaidAt(), o.getCompletedAt(),
                 views, o.getStatus() == OrderStatus.AWAITING_UPLOAD
                         || (o.getStatus() == OrderStatus.AWAITING_PAYMENT && o.getGatewayOrderId() == null),
-                done, sheets, refundDue);
+                done, sheets, refundDue, paymentView(o));
+    }
+
+    /** How the order is (being) paid. Null before a payment screen was opened. */
+    private static PaymentView paymentView(PrintOrder o) {
+        if (o.getPaymentProvider() == null) return null;
+        boolean upi = "upi".equals(o.getPaymentProvider());
+        return new PaymentView(o.getPaymentProvider(), o.getPaidAt() != null,
+                upi ? o.getUpiTagPaise() : null, upi ? o.getGatewayOrderId() : null,
+                upi ? o.getPaymentClaimRef() : null, upi ? o.getPaymentClaimedAt() : null,
+                upi && o.getPaidAt() == null ? o.getPaymentNote() : null,
+                o.getPaidAt() == null ? null : o.getPaymentVerifiedBy());
     }
 
     public DocumentView documentView(OrderDocument d, Map<UUID, String> printerNames) {

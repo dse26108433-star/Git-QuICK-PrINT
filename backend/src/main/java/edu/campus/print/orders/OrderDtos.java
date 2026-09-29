@@ -76,6 +76,21 @@ public final class OrderDtos {
 
     public record ConfirmPaymentRequest(String paymentId, String signature) {}
 
+    /** CampusPay: "I have paid". reference: the 12-digit UPI reference number (UTR), if the student has it. */
+    public record ClaimPaymentRequest(@Size(max = 40) String reference) {}
+
+    /**
+     * How the order is (being) paid.
+     * provider    "upi" (CampusPay), "razorpay", "demo" or "free"
+     * tagPaise    CampusPay: the paise added to the price so the payment can be recognised
+     * reference   CampusPay: this order's payment reference
+     * claimRef    the UPI reference number the student typed, while it is being checked
+     * note        why the Xerox center could not find the payment yet
+     * verifiedBy  "bank-alert" (a bank message proved it) or "counter" (staff checked it)
+     */
+    public record PaymentView(String provider, boolean paid, Integer tagPaise, String reference, String claimRef,
+                              Instant claimedAt, String note, String verifiedBy) {}
+
     public record FileUrl(String url) {}
 
     /** One document of an order. */
@@ -126,7 +141,8 @@ public final class OrderDtos {
             boolean editable,        // documents can still be added, removed or changed
             int documentsDone,
             Integer totalSheets,     // all documents, all copies
-            Integer refundDuePaise   // documents cancelled at the counter after payment
+            Integer refundDuePaise,  // documents cancelled at the counter after payment
+            PaymentView payment      // null until a payment screen was opened
     ) {}
 
     /** Everything the website needs to show only what the printers can really do. */
@@ -140,7 +156,7 @@ public final class OrderDtos {
             int maxFilePages,      // most pages a PDF may have (choose fewer to print)
             int maxCopies,
             int maxDocuments,      // most documents in one order
-            String paymentMode,    // "razorpay" or "demo"
+            String paymentMode,    // "upi" (CampusPay), "razorpay" or "demo"
             boolean bwAvailable,
             boolean colorAvailable,
             boolean bwOnline,

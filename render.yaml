@@ -28,8 +28,18 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+      # upi = CampusPay (docs/campuspay-upi.md), razorpay, or demo (tests only)
       - key: PAYMENT_MODE
-        value: razorpay
+        sync: false
+      - key: UPI_ID
+        sync: false
+      - key: UPI_NAME
+        sync: false
+      - key: UPI_MERCHANT_CODE
+        sync: false
+      # The CampusPay Verifier app's password: Render makes a random one; copy it into the app.
+      - key: UPI_ALERT_TOKEN
+        generateValue: true
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

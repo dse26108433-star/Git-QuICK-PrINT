@@ -52,7 +52,8 @@ import edu.campus.printapp.net.PaymentStart
  * wide screens show the list and the settings side by side.
  */
 @Composable
-fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout: (PaymentStart) -> Unit) {
+fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout: (PaymentStart) -> Unit,
+                   upiApps: () -> List<UpiApp> = { emptyList() }, onOpenUpi: (String, String?) -> Unit = { _, _ -> }) {
     val st by vm.session.state.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
     val snack = remember { SnackbarHostState() }
@@ -99,7 +100,7 @@ fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout
                         Header(st)
                         when (st.step) {
                             Step.SETUP -> StepBar(0)
-                            Step.REVIEW -> StepBar(1)
+                            Step.REVIEW, Step.PAY -> StepBar(1)
                             Step.STATUS -> StepBar(2)
                             Step.HOME -> {}
                         }
@@ -129,6 +130,10 @@ fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout
                                 }
                             }
                             Step.REVIEW -> ReviewScreen(vm, st)
+                            Step.PAY -> {
+                                val apps = remember(st.upi?.uri) { upiApps() }
+                                UpiPayScreen(vm, st, apps, onOpenUpi)
+                            }
                             Step.STATUS -> StatusScreen(st, vm.session)
                         }
                     }

@@ -428,6 +428,77 @@ details.group .field { padding: 10px 0 14px 15px; border-bottom: 0; }
 .notify-note { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
 .notify-note:empty { display: none; }
 
+/* ================================================================== pay with UPI (CampusPay) */
+.pay { max-width: 480px; margin: 26px auto 40px; }
+.pay-card { background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; }
+.pay-top { background: var(--ink); color: #fff; text-align: center; padding: 26px 22px 24px;
+           background-image: radial-gradient(420px 180px at 50% -40%, rgba(47, 163, 107, .35), transparent 70%); }
+.pay-top .label { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: #9FB0C3; font-weight: 600; }
+.pay-amount { font-size: clamp(44px, 13vw, 58px); font-weight: 700; letter-spacing: -.03em; line-height: 1.05; margin: 8px 0 4px;
+              font-variant-numeric: tabular-nums; }
+.pay-to { font-size: 15px; color: #C9D3DE; }
+.pay-to b { color: #fff; font-weight: 600; }
+.vpa { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px; border-radius: 999px;
+       border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: #fff; cursor: pointer;
+       font-family: var(--mono); font-size: 13.5px; max-width: 100%; }
+.vpa span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vpa svg { width: 15px; height: 15px; opacity: .8; }
+.vpa:hover { background: rgba(255,255,255,.12); }
+.pay-tag { font-size: 13px; color: #B5C2D0; margin-top: 12px; line-height: 1.45; }
+.pay-tag:empty { display: none; }
+.pay-tag b { color: #fff; }
+.pay-body { padding: 22px 22px 24px; display: grid; gap: 14px; }
+.pay-hint { font-size: 13px; color: var(--muted); text-align: center; margin-top: 8px; }
+.app-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 8px; margin-top: 12px; }
+.app-row:empty { display: none; }
+.app-btn { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border-radius: 14px;
+           border: 1px solid var(--line); background: var(--surface-2); text-decoration: none; color: var(--ink);
+           font-size: 12.5px; font-weight: 600; text-align: center; transition: border-color .15s, background .15s; }
+.app-btn:hover { border-color: var(--ink); background: var(--surface); }
+.app-btn .mark { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: #fff;
+                 font-weight: 750; font-size: 15px; letter-spacing: -.02em; }
+.pay-qr { display: grid; justify-items: center; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 18px;
+          background: var(--surface-2); }
+.pay-qr .qr { width: min(240px, 100%); aspect-ratio: 1; background: #fff; border-radius: 12px; padding: 10px;
+              border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); font-size: 13px; text-align: center; }
+.pay-qr .qr svg { width: 100%; height: 100%; display: block; }
+.qr-note { font-size: 13px; color: var(--muted); text-align: center; }
+.qr-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; justify-self: center; }
+.qr-toggle svg { width: 16px; height: 16px; }
+body[data-platform="desktop"] .pay-apps, body[data-platform="desktop"] .qr-toggle { display: none; }
+body:not([data-platform="desktop"]) .pay-qr:not(.open) { display: none; }
+.pay-done { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 8px; }
+.pay-done h3 { font-size: 16px; font-weight: 650; }
+.pay-done .opt { color: var(--muted); font-weight: 500; }
+.pay-done .field-hint { margin-top: 0; }
+.pay-done .notice { margin: 0; }
+.ref-input { width: 100%; height: 48px; border: 1px solid var(--line-2); border-radius: 12px; padding: 0 14px; font-family: var(--mono);
+             font-size: 17px; letter-spacing: .06em; background: var(--surface); }
+.ref-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px rgba(59, 111, 240, .15); }
+.ref-input.bad { border-color: var(--danger); }
+.btn.go { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 20px -10px rgba(31,138,85,.7); }
+.btn.go:hover:not(:disabled) { background: #1A7648; border-color: #1A7648; }
+.pay-wait { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+.pay-wait b { display: block; font-size: 16px; font-weight: 650; }
+.pay-wait span:not(.spinner) { display: block; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.spinner { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 3px solid var(--line-2); border-top-color: var(--warn);
+           animation: spin 1s linear infinite; }
+.pay-wait.confirming .spinner { border-top-color: var(--accent); animation-duration: .7s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pay-success { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 18px 12px; border-radius: 18px;
+               background: var(--accent-soft); border: 1px solid #BFE0CD; animation: popIn .25s ease-out; }
+.pay-success .tick { width: 54px; height: 54px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center;
+                     margin-bottom: 6px; }
+.pay-success .tick svg { width: 30px; height: 30px; }
+.pay-success b { font-size: 19px; }
+.pay-success span:last-child { font-size: 14px; color: var(--ink-2); }
+@keyframes popIn { from { transform: scale(.96); opacity: 0; } }
+.help-link { justify-self: center; }
+body.upi-paid #upAppsBox, body.upi-paid #upQrToggle, body.upi-paid #upQrBox, body.upi-paid #upBack { display: none; }
+.pay-foot { display: grid; justify-items: center; gap: 6px; margin-top: 14px; }
+.pay-foot .secure { margin-top: 0; }
+
+
 /* ================================================================== toasts + footer */
 .toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar) + 16px); display: grid; gap: 8px; z-index: 95;
           width: min(460px, calc(100% - 32px)); pointer-events: none; }

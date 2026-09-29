@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "CampusPrint"
 include(":app")
+include(":verifier")   // CampusPay Verifier: the Xerox center's phone passes on "money received" messages

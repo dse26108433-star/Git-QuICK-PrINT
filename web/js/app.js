@@ -18,6 +18,8 @@
   const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
   const PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";
   const RAZORPAY_JS = "https://checkout.razorpay.com/v1/checkout.js";
+  const QR_JS = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
+  const UPI = window.UpiPay;
   const FINAL = ["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"];
   const PARALLEL_UPLOADS = 3;
   const PARALLEL_READS = 2;
@@ -35,6 +37,7 @@
     pvTab: "preview",
     order: null,               // the server's view after pricing / payment
     poll: null,
+    upi: null,                 // CampusPay: { ref, checkout, poll } while the UPI payment screen is open
     reviewing: false
   };
   let nextLocal = 1;
@@ -71,10 +74,11 @@
   }
   function show(step) {
     state.step = step;
-    ["choose", "setup", "review", "status"].forEach(s => $("s-" + s).classList.toggle("hidden", s !== step));
+    ["choose", "setup", "review", "pay", "status"].forEach(s => $("s-" + s).classList.toggle("hidden", s !== step));
+    if (step !== "pay") stopUpiPoll();
     const order = ["setup", "review", "status"];
     document.querySelectorAll(".steps li").forEach(li => {
-      const i = order.indexOf(li.dataset.s), me = order.indexOf(step);
+      const i = order.indexOf(li.dataset.s), me = order.indexOf(step === "pay" ? "review" : step);
       li.classList.toggle("on", i === me);
       li.classList.toggle("done", i < me);
     });
@@ -2042,12 +2046,19 @@
     line("Files", String(v.documents.filter(x => x.status !== "CANCELLED").length));
     line("Pages printed", String(pages));
     line("Sheets of paper", String(sheets));
-    if (v.amountPaise > sum) line("Minimum online payment", rupees(v.amountPaise - sum));
+    const tag = (v.payment && v.payment.provider === "upi" && v.payment.tagPaise) || 0;
+    if (v.amountPaise - tag > sum) line("Minimum online payment", rupees(v.amountPaise - tag - sum));
+    if (tag) line("UPI payment tag", "+" + rupees(tag));
     $("rvTotal").textContent = rupees(v.amountPaise);
-    $("rvNote").textContent = v.amountPaise > sum ? "Online payments start at ₹1." : "";
-    const demo = state.shop && state.shop.paymentMode === "demo";
+    $("rvNote").textContent = tag ? "The few paise tell the bank's message which payment is yours."
+      : v.amountPaise > sum ? "Online payments start at ₹1." : "";
+    const mode = state.shop && state.shop.paymentMode;
+    const demo = mode === "demo";
     $("demoNote").classList.toggle("hidden", !demo);
-    $("payBtn").textContent = (demo ? "Pay (test) " : "Pay ") + rupees(v.amountPaise);
+    $("payBtn").textContent = (demo ? "Pay (test) " : "Pay ") + rupees(v.amountPaise) + (mode === "upi" ? " with UPI" : "");
+    $("secureText").textContent = mode === "upi"
+      ? "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app"
+      : "Secure payment by Razorpay · UPI, cards, wallets";
     $("payBtn").disabled = false;
     $("payError").classList.add("hidden");
     $("editBtn").classList.toggle("hidden", !v.editable);
@@ -2100,6 +2111,10 @@
         clearDraft(false);
         return openStatus(o, v, true);
       }
+      if (c.provider === "upi") {
+        $("payBtn").disabled = false;
+        return openUpi(o, c);
+      }
       await loadScript(RAZORPAY_JS);
       const rzp = new window.Razorpay({
         key: c.keyId, amount: c.amountPaise, currency: c.currency,
@@ -2136,6 +2151,209 @@
     forget(o.orderId);
     clearDraft(true);
     resetToStart();
+  }
+
+  // ================================================================== CampusPay: pay the Xerox center with any UPI app
+
+  /**
+   * The UPI payment screen. The server fixed the amount (the price plus a few
+   * paise that mark this payment) and built the upi://pay link. Android shows
+   * the UPI apps on the phone; iPhones get a button per app; laptops show the
+   * link as a QR code. The order is paid only when the bank's message or staff
+   * confirm the money arrived: this page just waits for that.
+   */
+  function openUpi(o, c) {
+    const u = c.upi;
+    if (!u) { payError("The payment details are missing. Try again."); return; }
+    state.upi = { ref: o, checkout: c, poll: null };
+    document.body.classList.remove("upi-paid");
+    show("pay");
+    if (location.hash !== "#order=" + o.orderId) history.replaceState(null, "", "#order=" + o.orderId);
+    const plat = UPI.platform(navigator.userAgent, navigator.maxTouchPoints);
+    document.body.dataset.platform = plat;
+
+    $("upAmount").textContent = "₹" + u.amountText;
+    $("upName").textContent = u.payeeName;
+    $("upVpa").textContent = u.payeeVpa;
+    const tag = $("upTag");
+    tag.textContent = "";
+    if (u.tagPaise) {
+      tag.append("Includes " + UPI.paiseWords(u.tagPaise) + (u.tagPaise === 1 ? " that marks" : " that mark") +
+        " this payment as yours. Pay exactly ",
+        el("b", null, "₹" + u.amountText), ".");
+    }
+
+    $("upOpen").href = u.uri;
+    $("upOpen").onclick = () => { state.upi.leftAt = Date.now(); };
+    $("upOpenText").textContent = "Pay ₹" + u.amountText + " with a UPI app";
+    $("upOpenHint").textContent = plat === "ios"
+      ? "Tap your UPI app below. If nothing opens, scan the QR code from another phone, or pay the UPI ID above by hand."
+      : "Your phone shows the UPI apps on it. Pick one: the amount is already filled in.";
+    const back = location.href.split("#")[0] + "#order=" + o.orderId + "&missing=";
+    const apps = $("upApps");
+    apps.innerHTML = "";
+    for (const b of UPI.appButtons(u.uri, plat, (a) => back + a.id)) {
+      const a = el("a", "app-btn");
+      a.href = b.href;
+      const mark = el("span", "mark", b.mark);
+      mark.style.background = b.color;
+      a.append(mark, el("span", null, b.name));
+      a.onclick = () => { state.upi.leftAt = Date.now(); };
+      apps.append(a);
+    }
+    $("upQrBox").classList.toggle("open", plat === "desktop");
+    $("upQrToggle").textContent = "";
+    $("upQrToggle").append(icon("qr"), "Pay from another phone (QR code)");
+    renderUpiQr(u.uri);
+
+    // Automatic (the Xerox center's CampusPay Verifier is on): nothing to press, the bank confirms it.
+    // Otherwise "I have paid" tells the counter, who checks the payment.
+    const auto = !!u.autoConfirm;
+    state.upi.auto = auto;
+    $("upDone").classList.toggle("hidden", auto);
+    $("upHelpLink").classList.add("hidden");
+    $("upSuccess").classList.add("hidden");
+    $("upWait").classList.remove("hidden");
+    $("upDoneTitle").textContent = auto ? "Find my payment" : "After paying";
+    $("upRefOpt").textContent = auto ? "" : "(optional)";
+    $("upRef").value = "";
+    $("upRef").classList.remove("bad");
+    $("upError").classList.add("hidden");
+    $("upPaid").disabled = false;
+    $("upPaid").textContent = auto ? "Find my payment" : "I have paid ₹" + u.amountText;
+    setUpiWait(false);
+    offerUpiHelp(180000);
+    startUpiPoll(o);
+  }
+
+  function setUpiWait(confirming) {
+    const u = state.upi;
+    if (!u) return;
+    u.confirming = confirming;
+    $("upWait").classList.toggle("confirming", confirming);
+    $("upWaitTitle").textContent = confirming ? "Confirming your payment…" : "Waiting for your payment";
+    $("upWaitText").textContent = !u.auto
+      ? "After paying, tap the button below: the Xerox center checks the payment, then it prints."
+      : confirming ? "Checking with the bank. This usually takes a few seconds."
+      : "Pay in your UPI app, then come back here: the payment is confirmed automatically and printing starts.";
+  }
+
+  /** If nothing arrived after a while, offer to look the payment up by its UPI reference number. */
+  function offerUpiHelp(ms) {
+    const u = state.upi;
+    if (!u || !u.auto) return;
+    clearTimeout(u.helpTimer);
+    u.helpTimer = setTimeout(() => {
+      if (state.step === "pay" && state.upi === u && $("upDone").classList.contains("hidden")) $("upHelpLink").classList.remove("hidden");
+    }, ms);
+  }
+
+  /** Back from the UPI app: confirm at once, and keep looking every moment. */
+  function backFromUpiApp() {
+    const u = state.upi;
+    if (!u || state.step !== "pay") return;
+    if (u.leftAt) { setUpiWait(true); offerUpiHelp(60000); }
+    checkUpi(u.ref);
+  }
+
+  async function renderUpiQr(uri) {
+    const box = $("upQr");
+    box.textContent = "Loading the QR code…";
+    try {
+      await loadScript(QR_JS);
+      const qr = window.qrcode(0, "M");
+      qr.addData(uri);
+      qr.make();
+      box.innerHTML = qr.createSvgTag(8, 0);
+      const svg = box.querySelector("svg");
+      if (svg) {
+        const n = qr.getModuleCount() * 8;
+        svg.setAttribute("viewBox", "0 0 " + n + " " + n);
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+      }
+    } catch (e) {
+      box.textContent = "The QR code could not load. Pay the UPI ID above from any UPI app instead.";
+    }
+  }
+
+  function stopUpiPoll() {
+    if (state.upi && state.upi.poll) { clearTimeout(state.upi.poll); state.upi.poll = null; }
+  }
+
+  /** While the payment screen is open: the moment the bank confirms it, move on. Faster once the student is back. */
+  function startUpiPoll(o) {
+    stopUpiPoll();
+    const u = state.upi;
+    const loop = async () => {
+      await checkUpi(o);
+      if (state.step === "pay" && state.upi === u && !u.done) u.poll = setTimeout(loop, u.confirming ? 1500 : 3500);
+    };
+    u.poll = setTimeout(loop, 2500);
+  }
+
+  async function checkUpi(o) {
+    if (state.step !== "pay" || !state.upi || state.upi.ref.orderId !== o.orderId) return;
+    try {
+      const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
+      if (state.step !== "pay") return;
+      if (v.paidAt) {                                  // confirmed by the bank: done
+        const u = state.upi;
+        if (u.done) return;
+        u.done = true;
+        stopUpiPoll();
+        clearTimeout(u.helpTimer);
+        $("upWait").classList.add("hidden");
+        $("upHelpLink").classList.add("hidden");
+        $("upDone").classList.add("hidden");
+        $("upSuccess").classList.remove("hidden");
+        document.body.classList.add("upi-paid");
+        if (navigator.vibrate) navigator.vibrate(120);
+        clearDraft(false);
+        setTimeout(() => { if (state.step === "pay" && state.upi === u) openStatus(o, v, true); }, 1600);
+      } else if (v.status !== "AWAITING_PAYMENT" || (v.payment && v.payment.claimedAt)) {
+        stopUpiPoll();
+        clearDraft(false);
+        openStatus(o, v, true);
+      }
+    } catch (e) { /* offline for a moment: try again */ }
+  }
+
+  /** "I have paid": the reference number (if typed) goes to the server, which checks it against the bank. */
+  async function claimUpi() {
+    const u = state.upi;
+    if (!u) return;
+    const ref = UPI.cleanRef($("upRef").value);
+    if (!UPI.refOk(ref)) {
+      $("upRef").classList.add("bad");
+      $("upError").textContent = "A UPI reference number has 12 digits. Check it on your UPI app's receipt, or leave it empty.";
+      $("upError").classList.remove("hidden");
+      $("upRef").focus();
+      return;
+    }
+    $("upRef").classList.remove("bad");
+    $("upError").classList.add("hidden");
+    $("upPaid").disabled = true;
+    try {
+      const v = await api("POST", "/api/v1/orders/" + u.ref.orderId + "/payment/claim", { reference: ref || null }, u.ref.key);
+      stopUpiPoll();
+      clearDraft(false);
+      openStatus(u.ref, v, true);
+    } catch (e) {
+      $("upPaid").disabled = false;
+      $("upError").textContent = e.message;
+      $("upError").classList.remove("hidden");
+    }
+  }
+
+  /** From the pickup-code page: show the UPI details again (send the reference again, or pay). */
+  async function resumeUpi(o) {
+    try {
+      const c = await api("POST", "/api/v1/orders/" + o.orderId + "/payment", null, o.key);
+      if (c.provider === "upi") return openUpi(o, c);
+    } catch (e) {
+      toast(e.message, "bad");
+    }
   }
 
   // ================================================================== status and pickup code
@@ -2179,8 +2397,9 @@
       for (const sd of list) {
         const li = el("li");
         const text = el("div");
+        const stage = v.status === "AWAITING_PAYMENT" && sd.status === "READY" ? "Prints after payment" : sd.stage;
         text.append(el("b", null, sd.position + ". " + sd.fileName),
-          el("span", null, sd.stage + (sd.settings ? " · " + (sd.settings.color ? "colour" : "B/W") +
+          el("span", null, stage + (sd.settings ? " · " + (sd.settings.color ? "colour" : "B/W") +
             " · " + plural((sd.sheets || 0) * sd.settings.copies, "sheet", "sheets") : "")));
         li.append(el("span", "lamp " + docLamp(sd)), text);
         docs.append(li);
@@ -2189,6 +2408,14 @@
     const sheets = v.totalSheets;
     $("tDetails").textContent = plural(list.filter(x => x.status !== "CANCELLED").length || 1, "file", "files") +
       (sheets ? " · " + plural(sheets, "sheet", "sheets") : "") + (v.amountPaise != null ? " · " + rupees(v.amountPaise) : "");
+    // CampusPay: while the payment is not confirmed, the UPI details stay one tap away.
+    const upiOpen = v.status === "AWAITING_PAYMENT" && v.payment && v.payment.provider === "upi";
+    $("tPayBtn").classList.toggle("hidden", !upiOpen);
+    if (upiOpen) {
+      $("tPayBtn").textContent = v.payment.note ? "Send the reference again or pay"
+        : v.payment.claimedAt ? "Show payment details" : "Pay now";
+      $("tPayBtn").classList.toggle("ghost", !!v.payment.claimedAt && !v.payment.note);
+    }
   }
 
   /** afterPayment: the student has just paid (or tried to): never offer the Pay button again from here. */
@@ -2200,9 +2427,11 @@
     const tick = async () => {
       try {
         const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
-        if (v.status === "AWAITING_PAYMENT" && firstTick && !afterPayment) {
+        const upi = v.payment && v.payment.provider === "upi";
+        if (v.status === "AWAITING_PAYMENT" && firstTick && !afterPayment && !(upi && (v.payment.claimedAt || v.payment.note))) {
           clearInterval(state.poll);
           state.order = v;
+          if (upi) return resumeUpi(o);            // the UPI payment screen was open: show it again
           return showReview(v);
         }
         if (v.status === "AWAITING_UPLOAD" && firstTick) {
@@ -2211,7 +2440,7 @@
         }
         firstTick = false;
         renderStatus(v);
-        if (v.status === "AWAITING_PAYMENT") $("tMessage").textContent = "Checking your payment with the bank. This can take a minute.";
+        if (v.status === "AWAITING_PAYMENT" && !upi) $("tMessage").textContent = "Checking your payment with the bank. This can take a minute.";
         if (FINAL.includes(v.status) && v.status !== "COMPLETED") clearInterval(state.poll);
         if (v.status === "COMPLETED" && v.collected) clearInterval(state.poll);
       } catch (e) {
@@ -2454,12 +2683,48 @@
   $("reviewBtn").onclick = review;
   $("editBtn").onclick = editOrder;
   $("payBtn").onclick = pay;
+  $("upPaid").onclick = claimUpi;
+  $("upRef").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); claimUpi(); } });
+  $("upRef").addEventListener("input", () => { $("upRef").classList.remove("bad"); $("upError").classList.add("hidden"); });
+  $("upBack").onclick = () => { if (state.order) showReview(state.order); else resetToStart(); };
+  $("upQrToggle").onclick = () => $("upQrBox").classList.toggle("open");
+  $("upVpaBtn").onclick = async () => {
+    try { await navigator.clipboard.writeText($("upVpa").textContent); toast("UPI ID copied", "ok"); }
+    catch (e) { toast("UPI ID: " + $("upVpa").textContent); }
+  };
+  $("tPayBtn").onclick = () => { const o = currentStatusRef(); if (o) resumeUpi(o); };
+  // Back from a UPI app: look at once instead of waiting for the next check.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) backFromUpiApp(); });
+  window.addEventListener("pageshow", () => backFromUpiApp());
+  window.addEventListener("focus", () => backFromUpiApp());
+  $("upHelpLink").onclick = () => {
+    $("upHelpLink").classList.add("hidden");
+    $("upDone").classList.remove("hidden");
+    $("upRef").focus();
+  };
+  // Android: the chosen UPI app is not on this phone (Chrome comes back with #...&missing=<app>).
+  window.addEventListener("hashchange", () => missingApp());
   $("cancelBtn").onclick = cancelOrder;
   $("newBtn").onclick = resetToStart;
   $("year").textContent = new Date().getFullYear();
 
+  function missingApp() {
+    const m = location.hash.match(/missing=([a-z]+)/);
+    if (!m) return;
+    const app = (UPI.APPS.find(a => a.id === m[1]) || {}).name || "That app";
+    toast(app + " is not on this phone. Choose another UPI app.", "warn");
+    history.replaceState(null, "", location.hash.replace(/&missing=[a-z]+/, ""));
+  }
+
+  /** The order on the pickup-code page. */
+  function currentStatusRef() {
+    const m = location.hash.match(/order=([0-9a-f-]{36})/);
+    return m && recent().find(o => o.orderId === m[1]);
+  }
+
   (async function start() {
     if (!API) { showError("config.js has no apiBase. Open config.js and set it."); return; }
+    missingApp();
     await loadShop();
     const m = location.hash.match(/order=([0-9a-f-]{36})/);
     const saved = m && recent().find(o => o.orderId === m[1]);

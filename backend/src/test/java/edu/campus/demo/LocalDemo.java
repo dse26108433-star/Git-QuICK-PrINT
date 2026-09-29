@@ -35,6 +35,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * --real-printers: no example printers; register a Station (counter password
  * "demo-counter-password") and its real printers are used.
+ *
+ * --upi: CampusPay instead of demo payments. The UPI ID is UPI_ID if set (your
+ * own, to try a real payment of a few rupees), else a made-up one. Bank
+ * messages: POST them to /api/v1/payments/upi/alerts with header
+ * X-Alert-Token: demo-alert-token-0123456789abcdef, or paste them at the counter.
  */
 public final class LocalDemo {
 
@@ -48,6 +53,7 @@ public final class LocalDemo {
 
     public static void main(String[] args) {
         boolean realPrinters = List.of(args).contains("--real-printers");
+        boolean upi = List.of(args).contains("--upi");
         String url = TestDb.freshDatabase();
         TestDb.run(TestDb.dataSource(url), TestDb.setupSql());
         JdbcTemplate db = new JdbcTemplate(TestDb.dataSource(url));
@@ -70,14 +76,26 @@ public final class LocalDemo {
             demoPc = Map.of("agentId", pc.get("agent_id").toString(), "agentSecret", pc.get("agent_secret").toString());
         }
         SpringApplication app = new SpringApplication(PrintServerApplication.class, DemoBeans.class);
-        app.run("--server.port=" + PORT,
+        String upiId = System.getenv("UPI_ID") == null || System.getenv("UPI_ID").isBlank()
+                ? "xeroxshop@okaxis" : System.getenv("UPI_ID");
+        String upiName = System.getenv("UPI_NAME") == null ? "" : System.getenv("UPI_NAME");
+        List<String> payment = upi
+                ? List.of("--campus.payment.mode=upi", "--campus.payment.upi-id=" + upiId,
+                          "--campus.payment.upi-name=" + upiName,
+                          "--campus.payment.upi-alert-token=demo-alert-token-0123456789abcdef")
+                : List.of("--campus.payment.mode=demo");
+        List<String> all = new java.util.ArrayList<>(List.of("--server.port=" + PORT,
                 "--spring.datasource.url=" + url, "--spring.datasource.username=postgres", "--spring.datasource.password=",
                 "--campus.supabase.url=http://localhost:" + PORT, "--campus.supabase.service-key=demo",
-                "--campus.payment.mode=demo", "--campus.counter.password=demo-counter-password",
+                "--campus.counter.password=demo-counter-password",
                 "--campus.agent.token-secret=local-demo-token-secret-0123456789abcdef",
-                "--campus.cors.allowed-origins=*");
+                "--campus.cors.allowed-origins=*"));
+        all.addAll(payment);
+        app.run(all.toArray(String[]::new));
         System.out.println("\n  Campus Print demo backend on http://localhost:" + PORT
-                + "  (counter password: demo-counter-password)\n");
+                + "  (counter password: demo-counter-password)"
+                + (upi ? "\n  CampusPay: pay " + upiId + "; bank messages need X-Alert-Token: demo-alert-token-0123456789abcdef"
+                       : "") + "\n");
     }
 
     /**

@@ -9,7 +9,8 @@ const TOKEN = (() => {
   if (t) { sessionStorage.setItem("station.t", t); history.replaceState(null, "", "/"); }
   return t || sessionStorage.getItem("station.t") || "";
 })();
-const state = { local: null, summary: null, view: "counter", list: "active", editors: {}, found: null, askedPassword: false };
+const state = { local: null, summary: null, view: "counter", list: "active", editors: {}, found: null, askedPassword: false,
+                pasteResult: "" };
 
 /* ------------------------------------------------------------------ helpers */
 async function call(method, path, body) {
@@ -183,6 +184,16 @@ function handleServerError(e) {
 /* ------------------------------------------------------------------ counter */
 async function refreshCounter() {
   try {
+    if (state.list === "payments") {
+      const [s, p] = await Promise.all([server("GET", "summary"), server("GET", "payments")]);
+      state.summary = s;
+      renderSummary(s);
+      // Do not redraw while staff paste a bank message.
+      const typing = document.activeElement && document.activeElement.id === "pasteSms" && document.activeElement.value;
+      if (!typing) renderPayments(p);
+      showError("appError", null);
+      return;
+    }
     const [s, list] = await Promise.all([
       server("GET", "summary"), server("GET", "orders?view=" + state.list)
     ]);
@@ -202,6 +213,13 @@ function renderSummary(s) {
   $("nReady").textContent = s.ready;
   $("nProblems").textContent = s.problems;
   $("tabProblems").classList.toggle("alert", s.problems > 0);
+  $("tabPayments").classList.toggle("hidden", s.paymentMode !== "upi");
+  const [vk, vt] = s.paymentMode === "upi" ? verifierLine(s.upi) : ["ok", ""];
+  $("verifierBanner").classList.toggle("hidden", !(s.paymentMode === "upi" && vk === "stop"));
+  $("verifierBanner").textContent = vt;
+  $("nPay").textContent = s.paymentsToCheck || 0;
+  $("tabPayments").classList.toggle("alert", (s.paymentsToCheck || 0) > 0);
+  if (s.paymentMode !== "upi" && state.list === "payments") state.list = "active";
   $("navReady").textContent = s.ready;
   $("navReady").classList.toggle("hidden", !s.ready);
   const ready = s.printers.filter(p => p.enabled && p.status === "READY").length;
@@ -269,7 +287,8 @@ function renderOrders(list) {
 
 function orderRow(o) {
   const row = el("div", "order");
-  const [words, lamp] = STATUS[o.status] || [o.status, ""];
+  const [words, lamp] = o.status === "AWAITING_PAYMENT" && o.paymentClaimedAt ? ["Payment to check", "work"]
+    : STATUS[o.status] || [o.status, ""];
   const info = el("div");
   info.style.minWidth = "0";
   const docs = o.documents || [];
@@ -322,7 +341,7 @@ function docRow(o, d) {
   if ((d.status === "QUEUED" && (d.noPrinter || docsStarted(o))) || (d.status === "FAILED" && o.paidAt && !o.collectedAt)) {
     acts.push({ label: "Cancel this file", cls: "ghost", run: async () => {
       if (!confirm("Cancel \"" + d.fileName + "\"? The rest of the order still prints. Refund " +
-                   rupees(d.amountPaise) + " in the Razorpay dashboard.")) return;
+                   rupees(d.amountPaise) + " " + refundWhere() + ".")) return;
       const res = await server("POST", "documents/" + d.id + "/cancel");
       toast("Cancelled. Refund " + rupees(res.refundPaise) + " to the student.");
       refreshCounter();
@@ -365,14 +384,15 @@ function actionsFor(o) {
   }
   if ((o.status === "FAILED" || failed.length || o.refundDuePaise) && o.paidAt && !o.collectedAt) {
     list.push({ label: "Refunded / done", cls: "ghost", run: async () => {
-      if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand, handed over, or refunded in Razorpay)?")) return;
+      if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand, handed over, or refunded " + refundWhere() + ")?")) return;
       await server("POST", "orders/" + o.id + "/collected");
       refreshCounter();
     } });
   }
+  if (o.status === "AWAITING_PAYMENT" && upiMode()) list.push(...paymentActions(o));
   if (o.status === "QUEUED") {
     list.push({ label: "Cancel order", cls: "ghost", run: async () => {
-      if (!confirm("Cancel " + o.pickupCode + "? You must refund the student in the Razorpay dashboard.")) return;
+      if (!confirm("Cancel " + o.pickupCode + "? You must refund the student " + refundWhere() + ".")) return;
       await server("POST", "orders/" + o.id + "/cancel");
       refreshCounter();
     } });
@@ -426,8 +446,11 @@ $("findCode").addEventListener("input", async () => {
   const c = el("div", "found" + (canHand ? "" : o.status === "FAILED" ? " bad" : " warn"));
   const what = el("div", "what");
   const where = [...new Set(docs.map(d => d.printerName).filter(Boolean))];
+  const payCheck = o.status === "AWAITING_PAYMENT" && upiMode();
   const headline = canHand ? "Ready on " + (where.length ? where.join(" and ") : "the printer")
     : o.collectedAt ? "Already handed over " + when(o.collectedAt)
+    : payCheck ? (o.paymentClaimedAt ? "Payment to check: " : "Not paid yet: ") + rupees(o.amountPaise) +
+                 (o.paymentClaimRef ? " · ref " + groupRef(o.paymentClaimRef) : "")
     : (STATUS[o.status] || [o.status])[0];
   what.append(el("b", null, headline));
   for (const d of docs) {
@@ -442,6 +465,10 @@ $("findCode").addEventListener("input", async () => {
     b.onclick = () => busy(b, null, async () => { try { await handOver(o); } catch (e) { handleServerError(e); } });
     c.append(b);
     state.found = o;
+  } else if (payCheck) {
+    const acts = el("div", "acts");
+    for (const a of paymentActions(o)) acts.append(actionButton(a));
+    c.append(acts);
   }
   box.appendChild(c);
 });
@@ -913,3 +940,141 @@ $("disconnect").onclick = () => busy($("disconnect"), null, async () => {
 });
 
 boot();
+
+/* ------------------------------------------------------------------ CampusPay: UPI payments */
+/** The CampusPay Verifier phone: is it online, and what may it read? */
+function verifierLine(u) {
+  const vs = (u && u.verifiers) || [];
+  const live = vs.filter(v => Date.now() - new Date(v.lastSeenAt).getTime() < 3 * 3600 * 1000);
+  const fresh = live.find(v => v.sms || v.notifications) || live[0];
+  if (u && !u.alertsConfigured) return ["work", "Automatic confirmation is off: set UPI_ALERT_TOKEN on the server and install CampusPay Verifier on the shop's phone."];
+  if (fresh) {
+    const reads = [fresh.notifications ? "UPI app notifications" : null, fresh.sms ? "bank SMS" : null].filter(Boolean).join(" + ") || "nothing yet (allow it on the phone)";
+    return [fresh.notifications || fresh.sms ? "ok" : "work", "Verifier phone “" + fresh.device + "” online · checked in " + when(fresh.lastSeenAt) +
+      (fresh.lastAlertAt ? " · last payment message " + when(fresh.lastAlertAt) : "") + " · reads " + reads + "."];
+  }
+  if (vs.length) return ["stop", "Verifier phone “" + vs[0].device + "” not heard from since " + when(vs[0].lastSeenAt) +
+    ". Until it is back, students press “I have paid” and you confirm here. Is it switched on, online and charging?"];
+  return ["work", "No Verifier phone yet: install CampusPay Verifier on the shop's phone for automatic payments."];
+}
+
+function upiMode() { return !!(state.summary && state.summary.paymentMode === "upi"); }
+function refundWhere() { return upiMode() ? "by UPI from the shop's account" : "in the Razorpay dashboard"; }
+function groupRef(r) { return /^\d{12}$/.test(r || "") ? r.slice(0, 4) + " " + r.slice(4, 8) + " " + r.slice(8) : (r || ""); }
+
+/** Staff saw the money in the bank or UPI app (or could not find it). */
+function paymentActions(o) {
+  return [
+    { label: "Money received", cls: "go", run: async () => {
+      let ref = o.paymentClaimRef;
+      if (ref) {
+        if (!confirm("Did " + rupees(o.amountPaise) + " with reference " + groupRef(ref) +
+                     " arrive in the bank or UPI app? The order prints straight away.")) return;
+      } else {
+        ref = prompt("Did " + rupees(o.amountPaise) + " for " + o.pickupCode + " arrive in the bank or UPI app?\n" +
+                     "Type its 12-digit UPI reference number if you see it (or leave it empty), then OK.", "");
+        if (ref === null) return;
+      }
+      await server("POST", "orders/" + o.id + "/payment/approve", { reference: ref || null });
+      toast(o.pickupCode + ": payment confirmed, printing", "ok");
+      if (state.found && state.found.id === o.id) clearFind();
+      refreshCounter();
+    } },
+    { label: "Not found", cls: "ghost", run: async () => {
+      const why = prompt("Tell the student why (optional), for example: no payment of " + rupees(o.amountPaise) + " today", "");
+      if (why === null) return;
+      await server("POST", "orders/" + o.id + "/payment/reject", { reason: why || null });
+      toast(o.pickupCode + ": the student is asked to check the payment");
+      refreshCounter();
+    } }
+  ];
+}
+
+function renderPayments(p) {
+  const box = $("orderList");
+  box.innerHTML = "";
+  const u = p.upi || {};
+  const info = el("div", "notice " + (u.autoConfirm ? "ok" : "work"));
+  info.append("Students pay ", el("b", null, u.payeeVpa || "–"), " (" + (u.payeeName || "") + ") from any UPI app. ",
+    u.autoConfirm ? "Bank messages from the shop's phone confirm payments by themselves: below are only the ones they could not."
+                  : "Check each payment in the bank or UPI app, then press Money received: only then it prints.",
+    " Today: " + plural(p.today.paidOrders || 0, "order", "orders") + " paid, " + rupees(p.today.paidPaise || 0) +
+    (u.autoConfirm ? " (" + (p.today.confirmedByBank || 0) + " confirmed by the bank)." : "."));
+  box.append(info);
+  const [vk, vt] = verifierLine(u);
+  box.append(el("div", "notice " + vk, vt));
+
+  box.append(el("h3", "pay-h", "Students who say they paid (" + p.toCheck.length + ")"));
+  if (!p.toCheck.length) box.append(el("div", "empty", "Nothing to check. 👍"));
+  for (const o of p.toCheck) {
+    const row = el("div", "order pay-order");
+    const mid = el("div");
+    mid.style.minWidth = "0";
+    const head = el("div", "meta head");
+    head.append(el("span", "badge work", "Payment to check"), el("b", "pay-amount", rupees(o.amountPaise)),
+      el("span", null, o.paymentClaimRef ? "reference " : "no reference typed"));
+    if (o.paymentClaimRef) head.append(el("span", "pay-ref", groupRef(o.paymentClaimRef)));
+    head.append(el("span", null, "said paid " + when(o.paymentClaimedAt)),
+      el("span", null, plural((o.documents || []).length, "file", "files") + " · " + plural(o.totalSheets || 0, "sheet", "sheets")));
+    mid.append(head);
+    for (const a of (p.hints[o.id] || [])) {
+      mid.append(el("div", "pay-hint", "Bank message " + when(a.receivedAt) + ": " + rupees(a.amountPaise) +
+        (a.refs.length ? " · ref " + a.refs.map(groupRef).join(", ") : "") + " (same amount, not matched automatically)"));
+    }
+    const acts = el("div", "acts");
+    for (const a of paymentActions(o)) acts.append(actionButton(a));
+    row.append(el("div", "code", o.pickupCode), mid, acts);
+    box.append(row);
+  }
+
+  const paste = el("div", "card paste");
+  paste.append(el("b", null, "Paste a bank SMS"),
+    el("div", "sub", "Copy the bank's \"credited\" message from the shop's phone and paste it here: it pays the order it proves, like a forwarded one."));
+  const ta = el("textarea", "input");
+  ta.id = "pasteSms";
+  ta.rows = 3;
+  ta.placeholder = "e.g. A/C X1234 credited by Rs.20.01 ... Ref No 627312345678";
+  const res = el("div", "sub", state.pasteResult || "");
+  const go = el("button", "btn sm", "Check this message");
+  go.onclick = () => busy(go, "Checking…", async () => {
+    try {
+      const r = await server("POST", "payments/alerts", { text: ta.value });
+      state.pasteResult = r.kind !== "CREDIT" ? "Not a money-received message." : r.paidOrder
+        ? "Paid order " + r.paidOrder + " (" + rupees(r.amountPaise) + ")." : r.duplicate ? "Already pasted before."
+        : rupees(r.amountPaise) + " received, but no order waits for exactly this amount.";
+      if (r.paidOrder) toast(state.pasteResult, "ok");
+      ta.value = "";
+      refreshCounter();
+    } catch (e) { handleServerError(e); }
+  });
+  paste.append(ta, go, res);
+  box.append(el("h3", "pay-h", "Bank messages"), paste);
+
+  if (p.alerts.length) {
+    const t = el("table", "pay-alerts");
+    const head = el("tr");
+    ["Time", "Amount", "Order", "Message"].forEach(h => head.append(el("th", null, h)));
+    const th = el("thead");
+    th.append(head);
+    const tb = el("tbody");
+    const how = { REFERENCE: "by reference", AMOUNT: "by amount", COUNTER: "by staff" };
+    for (const a of p.alerts) {
+      const tr = el("tr");
+      tr.append(el("td", null, when(a.receivedAt)), el("td", null, rupees(a.amountPaise)),
+        el("td", null, a.pickupCode ? a.pickupCode + " · " + (how[a.matchMethod] || "") : "no order"),
+        el("td", "msg", a.message));
+      tb.append(tr);
+    }
+    t.append(th, tb);
+    box.append(t);
+  }
+  if (p.waiting.length) {
+    box.append(el("h3", "pay-h", "Payment screen open, not paid yet (" + p.waiting.length + ")"));
+    box.append(el("div", "sub", p.waiting.map(o => o.pickupCode + " " + rupees(o.amountPaise) + " (" + when(o.paymentStartedAt) + ")").join(" · ")));
+  }
+  if (p.paid.length) {
+    box.append(el("h3", "pay-h", "Paid by UPI, last 24 hours (" + p.paid.length + ")"));
+    box.append(el("div", "sub", p.paid.map(o => o.pickupCode + " " + rupees(o.amountPaise) + " " + when(o.paidAt) +
+      (o.paymentVerifiedBy === "counter" ? " (staff)" : " (bank)")).join(" · ")));
+  }
+}

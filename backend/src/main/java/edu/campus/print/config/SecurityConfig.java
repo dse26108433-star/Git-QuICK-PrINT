@@ -36,6 +36,8 @@ import java.util.List;
  *   /api/v1/shop,
  *   /api/v1/orders/**    students. No login: each order has a private key
  *                        that only the student's device holds.
+ *   /api/v1/payments/upi/alerts   the Xerox center's phone forwarding bank
+ *                        SMS (CampusPay), with its own secret token.
  */
 @Configuration
 @EnableWebSecurity
@@ -74,6 +76,8 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health/**").permitAll()
                     .requestMatchers("/api/v1/counter/**").hasAuthority("ROLE_COUNTER")
                     .requestMatchers("/api/v1/shop", "/api/v1/orders", "/api/v1/orders/**").permitAll()
+                    // CampusPay bank messages: UpiAlertController checks UPI_ALERT_TOKEN itself.
+                    .requestMatchers(HttpMethod.POST, "/api/v1/payments/upi/alerts", "/api/v1/payments/upi/heartbeat").permitAll()
                     .anyRequest().denyAll())
             .addFilterBefore(new CounterAuthFilter(counter), UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(rateLimit, UsernamePasswordAuthenticationFilter.class)

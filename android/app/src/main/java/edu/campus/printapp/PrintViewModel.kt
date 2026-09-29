@@ -143,6 +143,7 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
             s.step == Step.SETUP && _ui.value.open -> { closeEditor(); true }
             s.step == Step.SETUP -> { session.toHome(); true }
             s.step == Step.REVIEW -> { if (!s.paymentStarted && s.order?.editable == true) session.edit() else session.toHome(); true }
+            s.step == Step.PAY -> { session.backFromPay(); true }
             s.step == Step.STATUS -> { session.toHome(); true }
             else -> false
         }

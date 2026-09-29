@@ -121,7 +121,7 @@ create table if not exists orders (
 
     amount_paise      int,
     currency          text        not null default 'INR',
-    payment_provider  text,                        -- 'razorpay' or 'demo'
+    payment_provider  text,                        -- 'razorpay', 'upi' (CampusPay) or 'demo'
     gateway_order_id  text unique,
     gateway_payment_id text,
     paid_at           timestamptz,
@@ -156,6 +156,54 @@ alter table orders alter column file_type    drop not null;
 alter table orders alter column storage_path drop not null;
 -- The allowed statuses change in version 4; the rule is put back at the end of PART 3.
 alter table orders drop constraint if exists orders_status_check;
+
+-- CampusPay (PAYMENT_MODE=upi): students pay the Xerox center's own UPI ID
+-- straight from GPay / PhonePe / Paytm / any UPI app. See docs/campuspay-upi.md.
+alter table orders add column if not exists payment_started_at  timestamptz; -- the UPI payment screen was opened
+alter table orders add column if not exists upi_tag_paise       int;         -- the few paise that make the amount unique
+alter table orders add column if not exists payment_claim_ref   text;        -- UPI reference (UTR) the student typed
+alter table orders add column if not exists payment_claimed_at  timestamptz; -- the student said "I have paid"
+alter table orders add column if not exists payment_note        text;        -- why staff could not find the payment
+alter table orders add column if not exists payment_verified_by text;        -- 'bank-alert' or 'counter'
+-- One UPI payment pays one order, never two.
+create unique index if not exists uq_orders_upi_payment on orders (gateway_payment_id)
+    where payment_provider = 'upi';
+create unique index if not exists uq_orders_upi_claim on orders (payment_claim_ref)
+    where status = 'AWAITING_PAYMENT' and payment_claim_ref is not null;
+create index if not exists idx_orders_upi_open on orders (amount_paise, payment_started_at)
+    where status = 'AWAITING_PAYMENT' and payment_provider = 'upi';
+
+-- CampusPay: the bank's "money received" messages (SMS or app notifications,
+-- forwarded by the Xerox center's phone, or pasted at the counter). Each one
+-- confirms at most one order.
+create table if not exists payment_alerts (
+    id           uuid primary key default gen_random_uuid(),
+    received_at  timestamptz not null default now(),
+    source       text        not null default 'sms',     -- 'sms', 'notification:<app>', 'counter'
+    sender       text,
+    message      text        not null,                   -- the text, with the account balance hidden
+    message_hash text        not null unique,            -- the same message forwarded twice is kept once
+    kind         text        not null check (kind in ('CREDIT', 'DEBIT', 'OTHER')),
+    amount_paise int,
+    refs         text[]      not null default '{}',      -- 12-digit UPI reference numbers in the text
+    order_id     uuid        references orders (id) on delete set null,
+    matched_at   timestamptz,
+    match_method text                                    -- 'REFERENCE', 'AMOUNT', 'COUNTER' or 'SAME_PAYMENT'
+);
+create index if not exists idx_payment_alerts_time on payment_alerts (received_at desc);
+create index if not exists idx_payment_alerts_open on payment_alerts (amount_paise)
+    where order_id is null and kind = 'CREDIT';
+
+-- CampusPay: the phones running the CampusPay Verifier app (they forward the
+-- bank's messages). While one was seen recently, payments confirm by themselves.
+create table if not exists payment_verifiers (
+    device        text primary key,
+    app_version   text,
+    sms           boolean     not null default false,   -- reads the bank's SMS
+    notifications boolean     not null default false,   -- reads UPI business app notifications
+    last_seen_at  timestamptz not null default now(),
+    last_alert_at timestamptz
+);
 
 drop index if exists idx_orders_queue;
 create index if not exists idx_orders_queue   on orders (paid_at) where status in ('QUEUED', 'PRINTING');
@@ -468,6 +516,268 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------
+-- CampusPay (PAYMENT_MODE=upi): the Xerox center's own UPI payment gateway.
+-- Students pay the center's UPI ID from any UPI app; an order is paid only
+-- when a bank message proves the money arrived, or staff confirm it.
+-- Every function here takes the same lock, so a message, a student and staff
+-- acting at the same moment can never pay one order twice, or two orders
+-- with one payment.
+-- ---------------------------------------------------------------------
+
+-- The UPI payment screen opens: fix what the student pays. It is the price
+-- plus the smallest tag (1 to 99 paise) that no other open UPI payment of the
+-- last p_window_minutes uses, so "Rs 10.03 received" points to exactly one
+-- order. Online payments are never whole rupees, so they cannot be confused
+-- with someone paying the counter's QR code by hand.
+-- A second call returns the same amount. Nothing if the order cannot be paid now.
+create or replace function upi_start_payment(p_order_id uuid, p_reference text, p_window_minutes int)
+returns table (out_amount_paise int, out_reference text, out_started_at timestamptz, out_tag_paise int)
+language plpgsql
+set search_path = public
+as $$
+declare
+    o     orders%rowtype;
+    v_tag int;
+begin
+    perform pg_advisory_xact_lock(hashtext('campusprint.upi'));
+    select * into o from orders where id = p_order_id for update;
+    if not found or o.status <> 'AWAITING_PAYMENT' or o.amount_paise is null then
+        return;
+    end if;
+    if o.gateway_order_id is not null then
+        if o.payment_provider = 'upi' then
+            return query select o.amount_paise, o.gateway_order_id, o.payment_started_at, o.upi_tag_paise;
+        end if;
+        return;
+    end if;
+
+    -- Not an amount another open payment uses, nor one paid in the last 15 minutes: a second
+    -- message about that payment (the bank's SMS after the UPI app's notification) may still come.
+    select min(t) into v_tag
+      from generate_series(1, 99) t
+     where not exists (select 1 from orders x
+                        where x.payment_provider = 'upi' and x.amount_paise = o.amount_paise + t
+                          and ((x.status = 'AWAITING_PAYMENT'
+                                and x.payment_started_at > now() - make_interval(mins => p_window_minutes))
+                               or x.paid_at > now() - interval '15 minutes'));
+    if v_tag is null then
+        v_tag := 1 + floor(random() * 99)::int;   -- 99 open payments at this price: the reference number still works
+    end if;
+
+    update orders
+       set gateway_order_id = p_reference, payment_provider = 'upi', payment_started_at = now(),
+           upi_tag_paise = v_tag, amount_paise = o.amount_paise + v_tag
+     where id = p_order_id;
+    return query select o.amount_paise + v_tag, p_reference, now(), v_tag;
+end;
+$$;
+
+-- Pays an order through CampusPay and links the bank message that proved it.
+-- Callers hold the CampusPay lock and have checked p_payment_id is unused.
+create or replace function upi_pay_order(p_order_id uuid, p_alert_id uuid, p_payment_id text,
+                                         p_method text, p_by text)
+returns int
+language plpgsql
+set search_path = public
+as $$
+declare
+    n int;
+begin
+    n := mark_order_paid(p_order_id, 'upi', p_payment_id);
+    if n = 1 then
+        update orders set payment_verified_by = p_by, payment_note = null where id = p_order_id;
+        if p_alert_id is not null then
+            update payment_alerts set order_id = p_order_id, matched_at = now(), match_method = p_method
+             where id = p_alert_id;
+        end if;
+    end if;
+    return n;
+end;
+$$;
+
+-- A bank message arrived. It pays the ONE order it proves, if any:
+--   REFERENCE  an open order whose student typed a reference number that is in
+--              the message, for exactly this amount
+--   AMOUNT     the only open UPI order for exactly this amount, opened in the
+--              p_window_minutes before the message (and no other reference typed)
+-- Returns the order it paid, or null: staff then see the message at the counter.
+create or replace function upi_match_alert(p_alert_id uuid, p_window_minutes int)
+returns uuid
+language plpgsql
+set search_path = public
+as $$
+declare
+    a       payment_alerts%rowtype;
+    v_order uuid;
+    v_ref   text;
+    v_count int;
+begin
+    perform pg_advisory_xact_lock(hashtext('campusprint.upi'));
+    select * into a from payment_alerts where id = p_alert_id for update;
+    if not found or a.order_id is not null or a.kind <> 'CREDIT' or a.amount_paise is null then
+        return null;
+    end if;
+    -- A reference number that already paid an order: the same payment told again. Linked, pays nothing.
+    select x.id into v_order from orders x
+     where cardinality(a.refs) > 0 and x.payment_provider = 'upi' and x.gateway_payment_id = any (a.refs)
+     limit 1;
+    if v_order is not null then
+        update payment_alerts set order_id = v_order, matched_at = now(), match_method = 'SAME_PAYMENT' where id = a.id;
+        return null;
+    end if;
+
+    select o.id, o.payment_claim_ref into v_order, v_ref
+      from orders o
+     where o.status = 'AWAITING_PAYMENT' and o.payment_provider = 'upi'
+       and o.payment_claim_ref = any (a.refs) and o.amount_paise = a.amount_paise
+     limit 1;
+    if v_order is not null then
+        perform upi_pay_order(v_order, a.id, v_ref, 'REFERENCE', 'bank-alert');
+        return v_order;
+    end if;
+
+    select count(*), (array_agg(o.id))[1] into v_count, v_order
+      from orders o
+     where o.status = 'AWAITING_PAYMENT' and o.payment_provider = 'upi'
+       and o.amount_paise = a.amount_paise
+       and o.payment_started_at <= a.received_at
+       and o.payment_started_at > a.received_at - make_interval(mins => p_window_minutes)
+       and (o.payment_claim_ref is null or cardinality(a.refs) = 0);
+    if v_count = 1 then
+        perform upi_pay_order(v_order, a.id, coalesce(a.refs[1], 'alert-' || a.id), 'AMOUNT', 'bank-alert');
+        return v_order;
+    end if;
+
+    -- The same payment told by a second source minutes later (the UPI app's notification, then
+    -- the bank's SMS): one of the two has no reference number. Linked, pays nothing, and the
+    -- order keeps the real reference number.
+    select f.order_id into v_order
+      from payment_alerts f
+     where f.order_id is not null and f.id <> a.id and f.match_method in ('AMOUNT', 'REFERENCE')
+       and f.amount_paise = a.amount_paise and f.source <> a.source
+       and f.received_at > a.received_at - interval '15 minutes'
+       and (cardinality(f.refs) = 0 or cardinality(a.refs) = 0)
+       and not exists (select 1 from payment_alerts g where g.order_id = f.order_id and g.match_method = 'SAME_PAYMENT')
+     order by f.received_at desc
+     limit 1;
+    if v_order is not null then
+        update payment_alerts set order_id = v_order, matched_at = now(), match_method = 'SAME_PAYMENT' where id = a.id;
+        if cardinality(a.refs) > 0 then
+            update orders set gateway_payment_id = a.refs[1]
+             where id = v_order and gateway_payment_id like 'alert-%'
+               and not exists (select 1 from orders x where x.payment_provider = 'upi' and x.gateway_payment_id = a.refs[1]);
+        end if;
+    end if;
+    return null;
+end;
+$$;
+
+-- The student typed a reference number (or the app asks again): a bank
+-- message that arrived before may already prove this order was paid.
+-- Returns the payment id if the order is paid now.
+create or replace function upi_match_order(p_order_id uuid)
+returns text
+language plpgsql
+set search_path = public
+as $$
+declare
+    o orders%rowtype;
+    v_alert uuid;
+begin
+    perform pg_advisory_xact_lock(hashtext('campusprint.upi'));
+    select * into o from orders where id = p_order_id for update;
+    if not found or o.status <> 'AWAITING_PAYMENT' or o.payment_provider is distinct from 'upi'
+       or o.payment_claim_ref is null then
+        return null;
+    end if;
+    if exists (select 1 from orders x where x.payment_provider = 'upi' and x.gateway_payment_id = o.payment_claim_ref) then
+        return null;
+    end if;
+    select a.id into v_alert
+      from payment_alerts a
+     where a.order_id is null and a.kind = 'CREDIT' and o.payment_claim_ref = any (a.refs)
+       and a.amount_paise = o.amount_paise and a.received_at >= o.payment_started_at
+     order by a.received_at
+     limit 1
+       for update;
+    if v_alert is null then
+        return null;
+    end if;
+    perform upi_pay_order(o.id, v_alert, o.payment_claim_ref, 'REFERENCE', 'bank-alert');
+    return o.payment_claim_ref;
+end;
+$$;
+
+-- The student says "I have paid", with the UPI reference number if they have it.
+-- 'OK', 'NOT_OPEN' (paid already, or cannot be paid), 'NOT_STARTED' (no UPI
+-- payment screen was opened) or 'REF_USED' (that number paid another order).
+create or replace function upi_claim_payment(p_order_id uuid, p_ref text)
+returns text
+language plpgsql
+set search_path = public
+as $$
+declare
+    o orders%rowtype;
+begin
+    perform pg_advisory_xact_lock(hashtext('campusprint.upi'));
+    select * into o from orders where id = p_order_id for update;
+    if not found or o.status <> 'AWAITING_PAYMENT' then
+        return 'NOT_OPEN';
+    end if;
+    if o.payment_provider is distinct from 'upi' or o.payment_started_at is null then
+        return 'NOT_STARTED';
+    end if;
+    if p_ref is not null and exists (
+            select 1 from orders x
+             where x.id <> o.id and x.payment_provider = 'upi'
+               and (x.gateway_payment_id = p_ref or (x.status = 'AWAITING_PAYMENT' and x.payment_claim_ref = p_ref))) then
+        return 'REF_USED';
+    end if;
+    update orders
+       set payment_claim_ref  = coalesce(p_ref, o.payment_claim_ref),
+           payment_claimed_at = coalesce(o.payment_claimed_at, now()),
+           payment_note       = null
+     where id = o.id;
+    return 'OK';
+end;
+$$;
+
+-- Staff found the money in the bank or UPI app (or the student paid at the
+-- counter). 'OK', 'NOT_OPEN' or 'REF_USED'.
+create or replace function upi_approve_payment(p_order_id uuid, p_ref text)
+returns text
+language plpgsql
+set search_path = public
+as $$
+declare
+    o       orders%rowtype;
+    v_ref   text;
+    v_alert uuid;
+begin
+    perform pg_advisory_xact_lock(hashtext('campusprint.upi'));
+    select * into o from orders where id = p_order_id for update;
+    if not found or o.status <> 'AWAITING_PAYMENT' or coalesce(o.payment_provider, 'upi') <> 'upi' then
+        return 'NOT_OPEN';
+    end if;
+    v_ref := coalesce(nullif(trim(p_ref), ''), o.payment_claim_ref);
+    if v_ref is not null and exists (select 1 from orders x
+                                      where x.id <> o.id and x.payment_provider = 'upi' and x.gateway_payment_id = v_ref) then
+        return 'REF_USED';
+    end if;
+    if v_ref is not null then
+        select a.id into v_alert from payment_alerts a
+         where a.order_id is null and a.kind = 'CREDIT' and v_ref = any (a.refs)
+         order by a.received_at
+         limit 1;
+    end if;
+    perform upi_pay_order(o.id, v_alert,
+                          coalesce(v_ref, 'counter-' || o.pickup_code || '-' || floor(extract(epoch from now()))::bigint),
+                          'COUNTER', 'counter');
+    return 'OK';
+end;
+$$;
+
 -- Gives ONE paid document to ONE printer. Two printers asking at the same
 -- moment always get different documents (FOR UPDATE SKIP LOCKED).
 --   * only a printer that can do everything the document needs gets it
@@ -705,8 +1015,11 @@ alter table printers        enable row level security;
 alter table orders          enable row level security;
 alter table order_documents enable row level security;
 alter table order_events    enable row level security;
+alter table payment_alerts  enable row level security;
+alter table payment_verifiers enable row level security;
 
-revoke all on shop_settings, agents, printers, orders, order_documents, order_events from anon, authenticated;
+revoke all on shop_settings, agents, printers, orders, order_documents, order_events, payment_alerts, payment_verifiers
+    from anon, authenticated;
 
 revoke execute on function printer_can_do(jsonb, boolean, boolean, jsonb)      from public, anon, authenticated;
 revoke execute on function mark_order_paid(uuid, text, text)                   from public, anon, authenticated;
@@ -714,6 +1027,12 @@ revoke execute on function claim_next_job(uuid, uuid, int, boolean)            f
 revoke execute on function release_job(uuid, uuid, text, text)                 from public, anon, authenticated;
 revoke execute on function reap_expired_leases()                               from public, anon, authenticated;
 revoke execute on function enroll_agent(text)                                  from public, anon, authenticated;
+revoke execute on function upi_start_payment(uuid, text, int)                   from public, anon, authenticated;
+revoke execute on function upi_pay_order(uuid, uuid, text, text, text)          from public, anon, authenticated;
+revoke execute on function upi_match_alert(uuid, int)                           from public, anon, authenticated;
+revoke execute on function upi_match_order(uuid)                                from public, anon, authenticated;
+revoke execute on function upi_claim_payment(uuid, text)                        from public, anon, authenticated;
+revoke execute on function upi_approve_payment(uuid, text)                      from public, anon, authenticated;
 
 -- =====================================================================
 -- PART 5 - PRIVATE STORAGE BUCKET FOR THE FILES

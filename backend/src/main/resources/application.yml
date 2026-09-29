@@ -52,10 +52,18 @@ campus:
 
   payment:
     # demo     = no real money (testing only)
-    # razorpay = real payments
+    # upi      = CampusPay: students pay your UPI ID from any UPI app (docs/campuspay-upi.md)
+    # razorpay = payments through Razorpay
     mode: ${PAYMENT_MODE:demo}
     razorpay-key-id: ${RAZORPAY_KEY_ID:}
     razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
+    # CampusPay (mode upi). Your UPI ID, or the text of your shop's UPI QR code.
+    upi-id: ${UPI_ID:}
+    upi-name: ${UPI_NAME:}
+    upi-merchant-code: ${UPI_MERCHANT_CODE:}
+    # Secret the phone that forwards the bank's SMS sends (24+ characters). Empty = staff confirm payments.
+    upi-alert-token: ${UPI_ALERT_TOKEN:}
+    upi-match-minutes: ${UPI_MATCH_MINUTES:60}
 
   counter:
     # Password for web/counter.html (the Xerox center staff screen).

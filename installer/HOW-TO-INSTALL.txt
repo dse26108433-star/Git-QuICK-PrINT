@@ -1,18 +1,19 @@
-CAMPUS PRINT STATION 4.1.0 - INSTALLING AT A XEROX CENTER
+CAMPUS PRINT STATION 4.2.0 - INSTALLING AT A XEROX CENTER
 ==========================================================
 
 You need: this installer on a pen drive, the Campus Print server address,
 and the counter password. Nothing else (no Java, no other programs).
 
 Which installer?
-- CampusPrintStation-Setup-4.1.0-GitQuickPrint.exe : for Git QuICK PrINT.
+- CampusPrintStation-Setup-4.2.0-GitQuickPrint.exe : for Git QuICK PrINT.
   The server address (https://campus-print-backend.onrender.com) is already
   filled in.
-- CampusPrintStation-Setup-4.1.0.exe : any other college; you type the
+- CampusPrintStation-Setup-4.2.0.exe : any other college; you type the
   server address in step 3a.
 
-Important: Station 4.1.0 needs the version 4 server. Deploy the new backend
-first (START-HERE.md, section "Version 4"), then install this.
+Important: Station 4.2.0 needs the version 4 server (with CampusPay for the
+"UPI payments" tab). Deploy the new backend first (START-HERE.md), then install
+this. It updates an older Station in place.
 
 1. Make sure the printers are installed in Windows with the FULL Canon
    driver (UFR II or PS) and print a Windows test page (Settings > Printers

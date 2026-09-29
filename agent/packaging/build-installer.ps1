@@ -13,7 +13,7 @@
 #>
 param(
     [string]$BackendUrl = "",
-    [string]$Version = "4.1.0",
+    [string]$Version = "4.2.0",
     [string]$InnoSetup = ""
 )
 $ErrorActionPreference = 'Stop'

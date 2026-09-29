@@ -62,6 +62,7 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
                     }
                     val message = when {
                         v == null -> null
+                        v.upiOpen -> v.message
                         v.status == "AWAITING_PAYMENT" -> "Checking your payment with the bank. This can take a minute."
                         else -> v.message
                     }
@@ -88,7 +89,8 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
                                 Column(Modifier.weight(1f)) {
                                     Text("${sd.position}. ${sd.fileName}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                     val s = sd.settings
-                                    Text((sd.stage ?: "") + (if (s != null) " · " + (if (s.color) "colour" else "B/W") + " · " +
+                                    val stage = if (v.status == "AWAITING_PAYMENT" && sd.status == "READY") "Prints after payment" else sd.stage
+                                    Text((stage ?: "") + (if (s != null) " · " + (if (s.color) "colour" else "B/W") + " · " +
                                         plural((sd.sheets ?: 0) * s.copies, "sheet", "sheets") else ""), fontSize = 13.sp, color = CP.Muted)
                                 }
                             }
@@ -100,6 +102,10 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
                         v.refundDuePaise?.let { Hint("Refund due for files the counter cancelled: " + rupees(it) + ".") }
                     }
                     Spacer(Modifier.size(16.dp))
+                    if (v != null && v.upiOpen) {
+                        PrimaryButton(if (v.payment?.note != null) "Send the reference again or pay" else "Show payment details",
+                            { session.resumeUpi() }, Modifier.fillMaxWidth().padding(bottom = 10.dp).testTag("payAgain"))
+                    }
                     PrimaryButton("Print more files", { session.resetToStart() }, Modifier.fillMaxWidth())
                 }
             }

@@ -76,6 +76,11 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient()) {
         post("/api/v1/orders/$orderId/payment/confirm", JSON.encodeToString(ConfirmPayment.serializer(), body),
             OrderView.serializer(), key)
 
+    /** CampusPay: "I have paid". Paid once the bank's message or the counter confirms the money arrived. */
+    suspend fun claimPayment(orderId: String, key: String, body: ClaimPayment): OrderView =
+        post("/api/v1/orders/$orderId/payment/claim", JSON.encodeToString(ClaimPayment.serializer(), body),
+            OrderView.serializer(), key)
+
     suspend fun demoPay(orderId: String, key: String): OrderView =
         post("/api/v1/orders/$orderId/payment/demo", null, OrderView.serializer(), key)
 

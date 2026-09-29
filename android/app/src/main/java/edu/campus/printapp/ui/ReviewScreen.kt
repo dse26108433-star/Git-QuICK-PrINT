@@ -109,20 +109,24 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
             val sheets = docs.sumOf { (it.sheets ?: 0) * (it.settings?.copies ?: 1) }
             val sum = docs.sumOf { it.amountPaise ?: 0 }
             val total = v.amountPaise ?: sum
+            val tag = if (v.payment?.provider == "upi") v.payment.tagPaise ?: 0 else 0
+            val upiMode = st.shop?.paymentMode == "upi"
             CardBox(Modifier.padding(top = 4.dp)) {
                 Text("Order total", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.size(8.dp))
                 TotalLine("Files", docs.size.toString())
                 TotalLine("Pages printed", pages.toString())
                 TotalLine("Sheets of paper", sheets.toString())
-                if (total > sum) TotalLine("Minimum online payment", rupees(total - sum))
+                if (total - tag > sum) TotalLine("Minimum online payment", rupees(total - tag - sum))
+                if (tag > 0) TotalLine("UPI payment tag", "+" + rupees(tag))
                 Spacer(Modifier.size(8.dp))
                 Divider()
                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                     Text(rupees(total), fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("rvTotal"))
                 }
-                if (total > sum) Hint("Online payments start at ₹1.")
+                if (tag > 0) Hint("The few paise tell the bank's message which payment is yours.")
+                else if (total > sum) Hint("Online payments start at ₹1.")
                 val shop = st.shop
                 if (shop?.paymentMode == "demo") {
                     Text("Test mode: no real money is taken.", fontSize = 13.sp, color = CP.Warn,
@@ -133,10 +137,12 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
                     Hint("The printers are offline at the moment. You can still order: it prints as soon as they are back.")
                 }
                 Spacer(Modifier.size(8.dp))
-                PrimaryButton(if (st.paying) "Opening payment…" else (if (shop?.paymentMode == "demo") "Pay (test) " else "Pay ") + rupees(total),
+                PrimaryButton(if (st.paying) "Opening payment…" else (if (shop?.paymentMode == "demo") "Pay (test) " else "Pay ") +
+                        rupees(total) + if (upiMode) " with UPI" else "",
                     { session.pay() }, Modifier.fillMaxWidth().testTag("payBtn"), enabled = !st.paying)
                 st.payError?.let { ErrorLine(it) }
-                Text("Secure payment by Razorpay · UPI, cards, wallets", fontSize = 12.5.sp, color = CP.Muted,
+                Text(if (upiMode) "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app"
+                    else "Secure payment by Razorpay · UPI, cards, wallets", fontSize = 12.5.sp, color = CP.Muted,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 TextButton(onClick = { askCancel = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     Text("Cancel this order", color = CP.Muted)
