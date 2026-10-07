@@ -1,4 +1,4 @@
-XEOGO STATION 4.3.0 - INSTALLING AT A XEROX CENTER
+XEOGO STATION 4.3.1 - INSTALLING AT A XEROX CENTER
 ===================================================
 (QuICK PrINT. Before version 4.3 this program was called "Campus Print Station".)
 
@@ -6,13 +6,13 @@ You need: this installer on a pen drive, the XeoGo server address,
 and the counter password. Nothing else (no Java, no other programs).
 
 Which installer?
-- XeoGoStation-Setup-4.3.0-GitQuickPrint.exe : for Git QuICK PrINT.
+- XeoGoStation-Setup-4.3.1-GitQuickPrint.exe : for Git QuICK PrINT.
   The server address (https://campus-print-backend.onrender.com) is already
   filled in.
-- XeoGoStation-Setup-4.3.0.exe : any other college; you type the
+- XeoGoStation-Setup-4.3.1.exe : any other college; you type the
   server address in step 3a.
 
-Important: Station 4.3.0 belongs to the version 5 server (collecting by
+Important: Station 4.3.1 belongs to the version 5 server (collecting by
 showing the files, staff IDs). Put the new server online first (push the
 code: it updates its database by itself), then install this.
 
@@ -20,6 +20,14 @@ UPDATING an older Station (also "Campus Print Station"): just run this
 installer. It stops the old program, removes it, and keeps everything:
 the connection to the server, the printers and their settings. The setup
 wizard does not appear again.
+
+NEW IN 4.3.1 (if you installed 4.3.0 already: run this installer once more,
+it takes a minute and keeps everything):
+- A printer that is off, offline or out of paper when the PC starts gets
+  no document, not even in the first seconds. Paid documents wait on the
+  server until the printer can print.
+- A harmless error line ("Unmapping is not supported") is gone from the
+  Station's log.
 
 1. Make sure the printers are installed in Windows with the FULL driver
    (for Canon: UFR II or PS) and print a Windows test page (Settings >

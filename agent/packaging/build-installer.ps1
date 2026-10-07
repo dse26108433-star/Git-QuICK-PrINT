@@ -13,7 +13,7 @@
 #>
 param(
     [string]$BackendUrl = "",
-    [string]$Version = "4.3.0",
+    [string]$Version = "4.3.1",
     [string]$InnoSetup = ""
 )
 $ErrorActionPreference = 'Stop'
@@ -50,8 +50,9 @@ Copy-Item $jar "$work\input\"
 # --- 2. a small private Java with only what the app uses ---------------------
 Say "Finding the Java parts the app needs"
 $mods = (& "$jdk\bin\jdeps.exe" --ignore-missing-deps --print-module-deps --multi-release 21 $jar).Trim()
-# + local web server, modern HTTPS certificates, Indian date formats
-$mods = (($mods -split ',') + @('jdk.httpserver', 'jdk.crypto.ec', 'jdk.localedata') | Sort-Object -Unique) -join ','
+# + local web server, modern HTTPS certificates, Indian date formats, and the part the PDF library uses to let
+#   go of files (without it every start wrote "Unmapping is not supported" as an error into the log)
+$mods = (($mods -split ',') + @('jdk.httpserver', 'jdk.crypto.ec', 'jdk.localedata', 'jdk.unsupported') | Sort-Object -Unique) -join ','
 Say "Modules: $mods"
 & "$jdk\bin\jlink.exe" --add-modules $mods --include-locales=en,en-IN --strip-debug --no-header-files `
     --no-man-pages --compress=zip-6 --output "$work\runtime"

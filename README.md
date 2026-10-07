@@ -64,7 +64,7 @@ can give a new password, switch an ID off, or remove it: any of these signs ever
 ## What happens in the Xerox center
 
 - One Windows PC is connected to the printers. It runs **XeoGo Station**: one installer
-  (`installer/XeoGoStation-Setup-4.3.0.exe`) with its own Java inside. A setup wizard connects the PC to the server
+  (`installer/XeoGoStation-Setup-4.3.1.exe`) with its own Java inside. A setup wizard connects the PC to the server
   and **scans the printers**; after that the Station shows the counter and **prints paid files by itself**, starts
   with Windows and keeps printing from the tray.
 - The Station **reads what each printer can do** and keeps the server up to date; the Xerox center ticks what to

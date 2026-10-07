@@ -8,7 +8,7 @@
 ; and opens the app on the last page so the setup wizard can start.
 ; ---------------------------------------------------------------------------
 #ifndef AppVersion
-  #define AppVersion "4.3.0"
+  #define AppVersion "4.3.1"
 #endif
 #define AppName "XeoGo Station"
 #define AppExe  "XeoGo Station.exe"

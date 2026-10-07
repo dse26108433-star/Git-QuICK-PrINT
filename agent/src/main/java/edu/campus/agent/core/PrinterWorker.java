@@ -71,6 +71,11 @@ public class PrinterWorker implements Runnable {
                     sleep(Duration.ofSeconds(10));        // switched off, or not installed in Windows
                     continue;
                 }
+                if (!health.looked(c.id())) {
+                    // just started: Windows has not said yet whether this printer can print now
+                    sleep(Duration.ofSeconds(1));
+                    continue;
+                }
                 if (health.notReady(c.id()) != null) {
                     // offline, out of paper, jammed...: paid documents stay safe on the server (another
                     // printer may take them) instead of waiting in this printer's Windows queue

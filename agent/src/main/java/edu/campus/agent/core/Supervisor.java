@@ -54,6 +54,7 @@ public class Supervisor {
     private volatile List<PrinterConfig> printers = List.of();
     private volatile boolean running = true;
     private boolean wasOffline = false;
+    private boolean beatAgain = false;           // the printers were just set up: tell the server how they are, now
     private volatile Instant lastContact;        // last good answer from the backend
     private volatile String problem;             // why the backend cannot be reached / refused us, or null
     private final Object wake = new Object();
@@ -104,6 +105,10 @@ public class Supervisor {
                 temp.sweepStale();
                 lastSweep = Instant.now();
             }
+            if (beatAgain) {
+                beatAgain = false;
+                continue;
+            }
             synchronized (wake) {
                 try {
                     wake.wait(cfg.heartbeat().toMillis());
@@ -131,27 +136,12 @@ public class Supervisor {
     private void beat() {
         List<PrinterReport> reports = new ArrayList<>();
         // Windows' own view of each printer: one that is offline or out of paper takes no new documents
-        Map<String, String> ready = null;
-        if (cfg.checkPrinterStatus && !printers.isEmpty()) {
-            try {
-                ready = edu.campus.agent.print.PrinterStatus.read(printers.stream().map(PrinterConfig::windowsPrinterName).toList());
-            } catch (Exception e) {
-                log.debug("Printer status not readable this time ({}); keeping the last answer", e.toString());
-            }
-        }
+        Map<String, String> ready = readStatus(printers);
         for (PrinterConfig p : printers) {
             boolean present = PrinterDiscovery.find(p.windowsPrinterName()).isPresent();
             health.setPresent(p.id(), present);
-            if (ready != null) {
-                String why = ready.get(p.windowsPrinterName());
-                String before = health.notReady(p.id());
-                if (why != null && !why.equals(before)) {
-                    log.warn("Printer {}: {} - it takes no new documents until this is fixed", p.name(), why);
-                } else if (why == null && before != null) {
-                    log.info("Printer {}: ready again", p.name());
-                }
-                health.setNotReady(p.id(), why);
-            }
+            if (ready != null) noteReadiness(p, ready.get(p.windowsPrinterName()));
+            else health.cannotLook(p.id());       // Windows cannot be asked: the last answer stays (none: ready)
             String attention = health.attention(p.id());
             String notReady = health.notReady(p.id());
             if (!present) {
@@ -198,11 +188,33 @@ public class Supervisor {
         List<PrinterConfig> fresh = result.printers() == null ? List.of() : result.printers();
         if (!sameSetup(fresh, printers)) {
             applyPrinters(fresh);
+            beatAgain = !fresh.isEmpty();
         } else {
             printers = fresh;            // the server's features version may have changed
         }
         processor.flushJournal();
         keepFeaturesUpToDate();
+    }
+
+    /** Windows' own view of the printers (name -> why it cannot print now); null when it cannot be read this time. */
+    private Map<String, String> readStatus(List<PrinterConfig> list) {
+        if (!cfg.checkPrinterStatus || list.isEmpty()) return null;
+        try {
+            return edu.campus.agent.print.PrinterStatus.read(list.stream().map(PrinterConfig::windowsPrinterName).toList());
+        } catch (Exception e) {
+            log.debug("Printer status not readable this time ({}); keeping the last answer", e.toString());
+            return null;
+        }
+    }
+
+    private void noteReadiness(PrinterConfig p, String why) {
+        String before = health.notReady(p.id());
+        if (why != null && !why.equals(before)) {
+            log.warn("Printer {}: {} - it takes no new documents until this is fixed", p.name(), why);
+        } else if (why == null && before != null) {
+            log.info("Printer {}: ready again", p.name());
+        }
+        health.setNotReady(p.id(), why);
     }
 
     /** Workers only care about what they print on; the features' version is handled separately. */
@@ -220,11 +232,17 @@ public class Supervisor {
     }
 
     private void applyPrinters(List<PrinterConfig> fresh) {
+        // Ask Windows how each printer is BEFORE its worker may take a document. The PC is often on before
+        // the printer: without this, a printer that was off got a paid document into its queue in the
+        // first seconds after the Station started.
+        Map<String, String> ready = readStatus(fresh);
         Set<String> keep = new HashSet<>();
         for (PrinterConfig p : fresh) {
             keep.add(p.id());
             boolean present = PrinterDiscovery.find(p.windowsPrinterName()).isPresent();
             health.setPresent(p.id(), present);
+            if (ready != null) noteReadiness(p, ready.get(p.windowsPrinterName()));
+            else if (!cfg.checkPrinterStatus) health.cannotLook(p.id());
             if (present && tickets != null) tickets.restore(p.windowsPrinterName());   // after a power cut
             PrinterWorker w = workers.get(p.id());
             if (w == null || !w.isAlive()) {

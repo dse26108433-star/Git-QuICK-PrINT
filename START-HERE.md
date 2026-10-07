@@ -28,7 +28,7 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 | ★ New student website design + phone app + QR poster | ✅ Done and tested (desktop + phone) · 🪧 print the poster |
 | ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ✅ backend live on Render · ⏳ website on Netlify · 🖨️ install Station 4.1.0 (see ★★ below) |
 | ★★★ XeoGo Pay: your own UPI payment gateway, automatic | ✅ Done and tested (server, website, app 3.2.0, Station 4.2.0, Verifier 1.0.0) · ⏳ your UPI ID + token on the server · 📱 Verifier on the shop phone (see ★★★ below) |
-| ★★★★ Version 5 — **XeoGo**: no pickup code (show your files), free staff printing, updates with one push | ✅ Done and tested (server, both websites, both apps, Station 4.3.0, Verifier 1.1.0) · 🖨️ install Station 4.3.0 · 📱 install the new apps · make the staff IDs (see ★★★★ below) |
+| ★★★★ Version 5 — **XeoGo**: no pickup code (show your files), free staff printing, updates with one push | ✅ Done and tested (server, both websites, both apps, Station 4.3.1, Verifier 1.1.0) · 🖨️ install Station 4.3.1 · 📱 install the new apps · make the staff IDs (see ★★★★ below) |
 
 ---
 
@@ -537,7 +537,7 @@ safety rules and a presentation script: [`docs/campuspay-upi.md`](docs/campuspay
 - [ ] 3. Push this folder to GitHub (Render and Netlify update by themselves).
 - [ ] 4. 📱 Shop phone: install `XeoGoPay-Verifier-1.1.0.apk` → server address + token → Save and connect → Allow
       notifications, SMS and battery (Android 13+: App info → ⋮ → Allow restricted settings first).
-- [ ] 5. Students' app: install `XeoGo-3.3.0.apk`. 🖨️ Xerox PC: install `XeoGoStation-Setup-4.3.0-GitQuickPrint.exe`.
+- [ ] 5. Students' app: install `XeoGo-3.3.0.apk`. 🖨️ Xerox PC: install `XeoGoStation-Setup-4.3.1-GitQuickPrint.exe`.
 - [ ] 6. Pay ₹2.01 for a one-page order from your own phone and watch it confirm and print.
 
 ---
@@ -606,10 +606,11 @@ Content-Security-Policy; pages typed and then left at once were lost → kept.
 - [x] Student website and staff website (`staff.html`): driven in Edge on phone and laptop sizes
 - [x] Android: XeoGo 3.3.0 (students, with the opening and the animated uploads) and XeoGo Staff 3.3.0 from the
       same code · XeoGo Pay Verifier 1.1.0
-- [x] Station 4.3.0: **At the counter now**, pictures, **Find**, **Staff** screen, **Word files** (tried with a
+- [x] Station 4.3.1: **At the counter now**, pictures, **Find**, **Staff** screen, **Word files** (tried with a
+- [x] Station 4.3.1: a printer that is off (or offline, out of paper) when the PC starts gets no document in the first seconds either: the Station asks Windows how each printer is before it takes anything, and tells the server at once. A harmless error line ("Unmapping is not supported") is gone from the Station's log.
       real Microsoft Word); updates "Campus Print Station" in place
 - [ ] 1. Push to GitHub (Render builds and starts the new server; Netlify publishes both websites).
-- [ ] 2. 🖨️ Xerox PC: run `XeoGoStation-Setup-4.3.0-GitQuickPrint.exe` (it replaces the old Station and keeps its
+- [ ] 2. 🖨️ Xerox PC: run `XeoGoStation-Setup-4.3.1-GitQuickPrint.exe` (it replaces the old Station and keeps its
       settings). Until then the old Station still prints; staff find an order by the **Order …** number shown
       on the student's order.
 - [ ] 3. Station → **Staff** → set the free pages per month → make a staff ID for each staff member, hand out

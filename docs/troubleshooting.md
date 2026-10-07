@@ -122,8 +122,8 @@ Whether the real service carries that depends on what it runs on:
 | Stapled / punched in the wrong place | Each Canon driver names positions differently. Print one test order per option and check; untick positions that come out wrong. `PrinterSmokeTest "<printer>" test.pdf --staple top-left` prints one by hand. |
 | Colour file came out grey (or B/W in colour) | Printer properties → the driver must follow the application's colour choice (not forced to B/W / colour). Then **Test B/W** and **Test colour** in the Station. |
 | Printout smaller than the preview | Driver defaults "Fit to paper" / "Scale" must be off (100 %). The Station prints at 100 % from the paper corner. |
-| A Station older than 4.0 prints only some files | Old Stations only get plain A4 one-sided files. Install `XeoGoStation-Setup-4.3.0.exe` (it updates in place). |
-| A Station older than 4.3 ("Campus Print Station") shows no pictures and no Staff screen | It still prints. Install `XeoGoStation-Setup-4.3.0.exe`: it replaces the old program and keeps its settings. |
+| A Station older than 4.0 prints only some files | Old Stations only get plain A4 one-sided files. Install `XeoGoStation-Setup-4.3.1.exe` (it updates in place). |
+| A Station older than 4.3 ("Campus Print Station") shows no pictures and no Staff screen | It still prints. Install `XeoGoStation-Setup-4.3.1.exe`: it replaces the old program and keeps its settings. |
 
 ## Xerox PC / printing (details)
 

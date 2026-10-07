@@ -1,5 +1,9 @@
 package edu.campus.agent.core;
 
+import edu.campus.agent.config.AgentConfig;
+import edu.campus.agent.net.BackendClient;
+import edu.campus.agent.net.Messages.ClaimedJob;
+import edu.campus.agent.net.Messages.PrinterConfig;
 import edu.campus.agent.print.PrinterStatus;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -7,9 +11,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,6 +38,50 @@ class ReliabilityTest {
         assertThat(PrinterStatus.problem("Paused", false)).isEqualTo("Paused in Windows");
         assertThat(PrinterStatus.problem("DoorOpen, UserIntervention", false)).isEqualTo("A door is open");
         assertThat(PrinterStatus.problem("Normal", true)).isEqualTo("Set to \"Use printer offline\" in Windows");
+    }
+
+    /**
+     * The PC is usually on before the printer. In the first seconds after the Station starts nobody
+     * has asked Windows how the printer is: until that first answer it takes no document, and when
+     * the answer is "cannot print now" it still takes none.
+     */
+    @Test
+    void aPrinterNobodyHasAskedWindowsAboutYetTakesNoDocument() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        BackendClient backend = new BackendClient(new AgentConfig()) {
+            @Override
+            public Optional<ClaimedJob> claim(String printerId) {
+                asked.incrementAndGet();
+                return Optional.empty();
+            }
+        };
+        PrinterHealth health = new PrinterHealth();
+        health.setPresent("p1", true);              // installed in Windows; how it is, nobody knows yet
+        assertThat(health.looked("p1")).isFalse();
+        PrinterWorker worker = new PrinterWorker(new PrinterConfig("p1", "Printer 1", "Any printer", false, true, true, "", false),
+                backend, null, health, Duration.ofMillis(50));
+        worker.start();
+        try {
+            Thread.sleep(1500);
+            assertThat(asked.get()).as("asked for a document before Windows said how the printer is").isZero();
+
+            health.setNotReady("p1", "Printer is offline");      // the first answer: it cannot print now
+            assertThat(health.looked("p1")).isTrue();
+            Thread.sleep(1500);
+            assertThat(asked.get()).as("asked for a document for a printer that is offline").isZero();
+
+            health.setNotReady("p1", null);                      // switched on: ready
+            for (int i = 0; i < 200 && asked.get() == 0; i++) Thread.sleep(50);
+            assertThat(asked.get()).as("a ready printer asks for documents").isPositive();
+        } finally {
+            worker.stop();
+        }
+
+        // a PC where Windows cannot be asked at all prints as before
+        PrinterHealth blind = new PrinterHealth();
+        blind.cannotLook("p2");
+        assertThat(blind.looked("p2")).isTrue();
+        assertThat(blind.notReady("p2")).isNull();
     }
 
     @Test
