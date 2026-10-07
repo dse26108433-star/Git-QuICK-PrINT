@@ -23,6 +23,14 @@ public final class Messages {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record HeartbeatResult(List<PrinterConfig> printers, int leaseSeconds, String centerName) {}
 
+    /**
+     * One Word file to turn into a PDF (see core/WordFiles). sha256: of the file the server looked into; only
+     * that file is opened. The PDF goes to uploadUrl (PUT, with uploadContentType).
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ConversionJob(String documentId, String fileName, long fileSizeBytes, String sha256,
+                                String downloadUrl, String uploadUrl, String uploadContentType, int secondsAllowed) {}
+
     /** What this PC sees for one printer. status: READY, MISSING or ERROR. */
     public record PrinterReport(String printerId, String status, String detail) {}
 
@@ -91,7 +99,7 @@ public final class Messages {
             JobSettings settings,
             Paper paper,
             ImageInfo image,        // pictures only
-            Boolean stampCode,      // pickup code on the first page (counter switch); null = yes
+            Boolean stampCode,      // order number on the first page (counter switch); null = yes
             int attempt,
             int maxAttempts,
             int leaseSeconds

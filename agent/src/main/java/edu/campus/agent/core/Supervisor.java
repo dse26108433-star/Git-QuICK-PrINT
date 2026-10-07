@@ -48,6 +48,7 @@ public class Supervisor {
     private final TempFiles temp;
     private final CapabilityCache capabilities;
     private final PrintTicket tickets;
+    private volatile WordFiles wordFiles;        // null: this PC does not take Word files at all
 
     private final Map<String, PrinterWorker> workers = new HashMap<>();
     private volatile List<PrinterConfig> printers = List.of();
@@ -82,9 +83,21 @@ public class Supervisor {
         });
     }
 
+    /** Word files are turned into PDFs on this PC (see WordFiles). Set before run(). */
+    public void setWordFiles(WordFiles w) {
+        this.wordFiles = w;
+    }
+
+    /** For the Station's screen and its "Check again" button. Null when this PC does not take Word files. */
+    public WordFiles wordFiles() {
+        return wordFiles;
+    }
+
     /** Runs until stop() is called. */
     public void run() {
         processor.flushJournal();
+        WordFiles w = wordFiles;
+        if (w != null) w.start();
         while (running) {
             beat();
             if (Instant.now().isAfter(lastSweep.plus(Duration.ofHours(1)))) {
@@ -155,7 +168,9 @@ public class Supervisor {
 
         HeartbeatResult result;
         try {
-            result = backend.heartbeat(reports);
+            WordFiles w = wordFiles;
+            edu.campus.agent.word.WordEngine.State word = w == null ? null : w.state();
+            result = backend.heartbeat(reports, word != null && word.ready(), word == null ? "" : word.note());
         } catch (OfflineException e) {
             problem = "Cannot reach the server: " + e.getMessage();
             if (!wasOffline) {
@@ -232,7 +247,7 @@ public class Supervisor {
             }
         }
         if (fresh.isEmpty()) {
-            log.warn("No printers are set up for this PC yet (Printers screen in Campus Print Station).");
+            log.warn("No printers are set up for this PC yet (Printers screen in XeoGo Station).");
         }
         printers = fresh;
     }
@@ -293,6 +308,8 @@ public class Supervisor {
         running = false;
         workers.values().forEach(PrinterWorker::stop);
         discovery.shutdownNow();
+        WordFiles w = wordFiles;
+        if (w != null) w.stop();
         wakeUp();
     }
 

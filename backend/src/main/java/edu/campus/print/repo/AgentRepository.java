@@ -21,4 +21,18 @@ public interface AgentRepository extends JpaRepository<Agent, UUID> {
              where id = :id
             """, nativeQuery = true)
     int touch(@Param("id") UUID id, @Param("version") String version, @Param("host") String host);
+
+    /** What the PC said about Word files with its heartbeat: its Microsoft Word made a test PDF, or why not. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = "update agents set word_ready = :ready, word_note = nullif(:note, '') where id = :id",
+            nativeQuery = true)
+    int wordReady(@Param("id") UUID id, @Param("ready") boolean ready, @Param("note") String note);
+
+    /** PCs that can turn Word files into PDFs and answered within the last :seconds. */
+    @Query(value = """
+            select count(*) from agents
+             where not revoked and word_ready and last_seen_at > now() - make_interval(secs => :seconds)
+            """, nativeQuery = true)
+    long countWordReady(@Param("seconds") int seconds);
 }

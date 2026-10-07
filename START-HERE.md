@@ -15,19 +15,20 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 | 1. Printing from Java | ✅ Done on laptop test printers · 🖨️ on the Xerox PC this is now the Station's **Test print** button |
 | 2. Database (Supabase) | ✅ Done · 🖨️ put the REAL Canon names in later (from `list-printers.bat`) |
 | 3. Backend | ✅ Done (runs on http://localhost:8080) |
-| 4. Connect the Xerox PC | ✅ Replaced by the **Campus Print Station installer** (see ★ below) · 🖨️ install it on the Xerox PC |
+| 4. Connect the Xerox PC | ✅ Replaced by the **XeoGo Station installer** (see ★ below) · 🖨️ install it on the Xerox PC |
 | 5. First real order | ✅ Done (B/W PDF + colour JPG) |
 | 6. Staff counter screen | ✅ Done |
 | 7. Razorpay test payments | ⏳ Needs your Razorpay test keys |
 | 8. Android app | ✅ Builds (`app-debug.apk`) · ⏳ set `API_BASE` + run on your phone |
 | ★ No more cover sheets (paper saving) | ✅ Done and tested · 🖨️ check the label once on each real Canon |
 | ★ Choose pages (e.g. only 333-390 of a 1000-page PDF) | ✅ Done and tested (website, server, Xerox PC, counter, app) |
-| ★ Campus Print Station: one installer, no Java needed | ✅ Built, installed on this laptop and tested · 🖨️ install at the Xerox center |
-| ★ "Pickup code on pages" on/off switch | ✅ Done and tested (Station counter + counter.html) |
+| ★ XeoGo Station: one installer, no Java needed | ✅ Built, installed on this laptop and tested · 🖨️ install at the Xerox center |
+| ★ "Order number on pages" on/off switch | ✅ Done and tested (Station counter + counter.html) |
 | ★ Student website on Netlify + backend online | ⏳ Files ready · needs your Render + Netlify accounts (see ★ Going online) |
 | ★ New student website design + phone app + QR poster | ✅ Done and tested (desktop + phone) · 🪧 print the poster |
 | ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ✅ backend live on Render · ⏳ website on Netlify · 🖨️ install Station 4.1.0 (see ★★ below) |
-| ★★★ CampusPay: your own UPI payment gateway, automatic | ✅ Done and tested (server, website, app 3.2.0, Station 4.2.0, Verifier 1.0.0) · ⏳ your UPI ID + token on the server · 📱 Verifier on the shop phone (see ★★★ below) |
+| ★★★ XeoGo Pay: your own UPI payment gateway, automatic | ✅ Done and tested (server, website, app 3.2.0, Station 4.2.0, Verifier 1.0.0) · ⏳ your UPI ID + token on the server · 📱 Verifier on the shop phone (see ★★★ below) |
+| ★★★★ Version 5 — **XeoGo**: no pickup code (show your files), free staff printing, updates with one push | ✅ Done and tested (server, both websites, both apps, Station 4.3.0, Verifier 1.1.0) · 🖨️ install Station 4.3.0 · 📱 install the new apps · make the staff IDs (see ★★★★ below) |
 
 ---
 
@@ -39,14 +40,17 @@ If something goes wrong, look in `docs/troubleshooting.md`.
  1. choose PDF / PNG / JPG
  2. see the file, pick
     B/W or colour + copies
- 3. pay (Razorpay)  ─────────────►  checks payment
- 4. gets a pickup code              puts order in queue  ◄──────  "any work for Printer 2?"
-                                                                   prints it on a free Canon
-                                                                   (pickup code printed small
+ 3. pay (UPI / Razorpay)  ───────►  checks payment
+ 4. the files stay on the phone,    puts order in queue  ◄──────  "any work for Printer 2?"
+    with the time they are ready                                   prints it on a free printer
+                                                                   (order number printed small
                                                                     on the first page: no
                                                                     extra sheet)
- 5. shows code at the counter  ◄──  staff screen: "Ready"
+ 5. "I'm at the counter": shows  ◄─  counter screen: the same
+    the files, takes the pages       files, "Handed over"
 ```
+
+College staff do the same in **XeoGo Staff** with a staff ID, without step 3: free, up to a number of pages a month.
 
 - **Many files, one order.** Each file has its own pages, copies, colour, sides, paper, layout and finishing.
 - **No login.** Each order has a secret key saved on the student's phone.
@@ -67,7 +71,7 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 
 ## STEP 1 — Can the Xerox PC print from Java?  (do this first!)
 
-> ★ **Now much easier:** install **Campus Print Station** (see the ★ section below). Its setup wizard scans the
+> ★ **Now much easier:** install **XeoGo Station** (see the ★ section below). Its setup wizard scans the
 > printers and has a **Test print** button for each one: that replaces everything in this step and in STEP 4.
 > The steps below are the old manual way, kept for reference.
 
@@ -84,7 +88,7 @@ This checks the printers before anything else exists.
 - [ ] 3. 🖨️ Copy into it:
    - `agent/target/print-agent.jar`
    - everything inside `agent/winsw/`
-   > Easier: use the Campus Print Station installer instead (★ section below).
+   > Easier: use the XeoGo Station installer instead (★ section below).
 - [ ] 4. 🖨️ On the Xerox PC, double-click **`list-printers.bat`**.
    You see the printer names, for example `"Canon iR2625"`. **Write them down exactly.**
    > ✅ Checked on the laptop: `list-printers.bat` works and lists every Windows printer.
@@ -97,7 +101,7 @@ This checks the printers before anything else exists.
    test-print.bat "Canon iR-ADV C3530" --color
    ```
 
-**You are done when:** each printer gave you **one** test page with the label **Pickup TEST1** in its
+**You are done when:** each printer gave you **one** test page with the label **Order TEST1** in its
 bottom-right corner, fully readable (not cut off by the edge of the paper). No cover sheet any more.
 The red box must be **red** on the colour test and **grey** on the B/W tests.
 
@@ -105,7 +109,7 @@ The red box must be **red** on the colour test and **grey** on the B/W tests.
 > `CampusPrint Test BW` and `CampusPrint Test Colour`. They save pages as PDF in `C:\CampusPrintTest\`.
 > Both test prints finished with `Result: COMPLETED - printed`. The TEST1 cover sheet and the test page
 > came out correctly (see `C:\CampusPrintTest\step1-*.pdf`). *(That was before the paper-saving change;
-> the new test page with the `Pickup TEST1` label was also checked: see the ★ section below.)*
+> the new test page with the `Order TEST1` label was also checked: see the ★ section below.)*
 > The "grey on B/W" check can only be done on a real Canon, because the PDF test printer always keeps colour.
 
 > Tip: the printers should be installed in Windows "for all users"
@@ -218,8 +222,8 @@ Close the window (Ctrl+C) before step 4b.
 - [x] 3. Open `http://localhost:3000` in the browser.
 - [x] 4. Choose a small PDF → you see the pages → choose **B/W**, **1 copy** → **Continue to payment** → **Pay (test)**.
 
-**You are done when:** you see a big pickup code, the status goes
-"Paid → Printing on Printer 1 → Ready", and the first page shows the label **Pickup CODE** (the same code)
+**You are done when:** you see your file with the times, the status goes
+"Paid → Printing on Printer 1 → Ready", and the first page shows the label **Order CODE** (the order's number)
 in its bottom-right corner. There is no extra cover sheet.
 
 - [x] Try again with a JPG photo and **Colour**: it must go to the colour printer.
@@ -240,10 +244,11 @@ in its bottom-right corner. There is no extra cover sheet.
 You see: every printer with a lamp (green = ready), orders being printed, orders
 ready to hand over, and problems. Staff press **Handed over** when the student takes the paper.
 
-**Handing over (no cover sheet):** the student shows the code on their phone → staff type it in the
-**Code** box → the screen shows the printer and e.g. *"6 sheets · first page has Pickup K7M4X"* → staff
-take those pages (each order starts with the page that has the label in its bottom-right corner)
-→ **Handed over**.
+**Handing over (no code, no cover sheet):** the student opens the order on their phone and taps **I'm at the
+counter** → the order appears in the green box at the top of this screen, with a picture of each file → the same
+pictures are on the student's phone → staff take those pages (each file starts with the page that has the small
+**Order …** label in its bottom-right corner) → **Handed over** → the phone shows **Collected**.
+A phone without internet: type the file's name in **Find**.
 
 **You are done when:** your test order from STEP 5 is under "Ready to hand over", and "Handed over" moves it away.
 
@@ -258,7 +263,7 @@ take those pages (each order starts with the page that has the label in its bott
 orders that sheet was thrown away after checking, so the Xerox center lost paper and toner on every order.
 
 **The fix:** the code is now printed **small in the bottom-right corner of the first page** of each order,
-e.g. `Pickup K7M4X · 3 pages × 2`. No extra sheet.
+e.g. `Order K7M4X · 3 pages × 2`. No extra sheet.
 
 - The student's layout is kept. If that corner is blank (almost always) the label goes into the margin and
   nothing else changes. If something is there (a page number, a full-page photo) only page 1 is shrunk by
@@ -269,7 +274,7 @@ e.g. `Pickup K7M4X · 3 pages × 2`. No extra sheet.
 - Optional: a cover sheet only for **big** orders. In `agent.yml` set `coverSheetMinSheets: 30`
   (orders of 30+ sheets get one). Default `0` = never.
 - The student's status screen now says: *"The same code is printed small at the bottom of your first page."*
-- The counter shows *"N sheets · first page has Pickup CODE"* and a short how-to for staff.
+- The counter shows *"N sheets · first page has Order CODE"* and a short how-to for staff.
 
 - [x] Label added in the blank margin (normal notes) — tested
 - [x] Page with a page number in the corner → page 1 shrunk slightly, label in a clean strip — tested
@@ -279,7 +284,7 @@ e.g. `Pickup K7M4X · 3 pages × 2`. No extra sheet.
 - [x] Step 1 test tool: `test-print.bat "<printer>"` prints the label; `--cover` also prints a cover sheet — tested
 - [x] Backup print method (SumatraPDF, `printStrategy: external`) prints the label too — tested
 - [x] Counter screen and student message updated; backend rebuilt
-- [x] New agent built into the Campus Print Station installer
+- [x] New agent built into the XeoGo Station installer
 - [ ] 🖨️ On the Xerox PC: run `test-print.bat` once per Canon and check the label is fully readable
 
 > Also fixed while testing on the Epson: the agent used to report an order as **printed** if it could not
@@ -316,22 +321,22 @@ e.g. `Pickup K7M4X · 3 pages × 2`. No extra sheet.
 - [x] Real browser test (Microsoft Edge): choose file → type pages → preview → pay (test) → Ready → counter
 - [x] Phone-size screen: fits, no sideways scrolling
 - [x] Android app: same Pages choice, builds (`app-debug.apk`), unit test passes
-- [x] New agent built into the Campus Print Station installer
+- [x] New agent built into the XeoGo Station installer
 - [ ] 📱 Try it once in the Android app on your phone (STEP 8)
-- [ ] 🖨️ Install Campus Print Station on the Xerox PC (★ section below)
+- [ ] 🖨️ Install XeoGo Station on the Xerox PC (★ section below)
 
 ---
 
-## ★ Campus Print Station — the Xerox center software  (new)
+## ★ XeoGo Station — the Xerox center software  (new)
 
 **What it is:** one installer, `installer/CampusPrintStation-Setup-4.1.0.exe` (37 MB; version 3.0.0 until ★★). Like big companies' apps, it
 carries its **own private Java inside**, so the Xerox PC needs **nothing else installed**. No admin password needed.
 
-**At the college:** double-click the installer → Next → Install → Finish ("Open Campus Print Station now" is ticked).
+**At the college:** double-click the installer → Next → Install → Finish ("Open XeoGo Station now" is ticked).
 The app opens with a 3-step wizard:
 1. **Connect** — server address, counter password, PC name. The PC registers itself (no SQL any more).
 2. **Printers** — it **scans every printer in Windows**; tick the ones to use, name them, choose B/W / colour /
-   colour only, and press **Test B/W** / **Test colour** (the Step 1 test page with "Pickup TEST1").
+   colour only, and press **Test B/W** / **Test colour** (the Step 1 test page with "Order TEST1").
 3. **Ready** — opens the **counter**. Paid orders from the website now print by themselves.
 
 After that it **starts with Windows**, keeps printing when the window is closed (icon next to the clock), and a
@@ -340,14 +345,14 @@ newer installer updates it in place. Full guide: `installer/HOW-TO-INSTALL.txt`.
 **The counter in the app:** type the student's code → the order card shows printer + number of sheets → **Enter**
 hands it over. Printer lamps with "Taking orders" switches, tabs (Printing / Ready / Problems / All), prices, and:
 
-**"Pickup code on pages" switch** (top right of the counter, and in Settings): untick it for a while when a student
+**"Order number on pages" switch** (top right of the counter, and in Settings): untick it for a while when a student
 wants **only their own PDF/JPG on the paper** — orders then print with nothing added. Tick it again afterwards.
 (Also added to `web/counter.html`.)
 
 - [x] Installer built (jlink private Java + jpackage + Inno Setup), 37 MB, installs without admin
 - [x] Installed on this laptop: Start menu + desktop shortcuts, uninstall entry in Windows Settings → Apps
 - [x] Setup wizard: wrong password refused; PC registered; **8 Windows printers found** (real ones first, virtual ones marked)
-- [x] Test print from the wizard → "Pickup TEST1" test page came out
+- [x] Test print from the wizard → "Order TEST1" test page came out
 - [x] Orders from the student website printed **by the installed app** (B/W PDF, colour photo, pages 333-390)
 - [x] Counter: code typed → "Ready on Front B/W · 3 sheets" → **Enter** → handed over
 - [x] Switch OFF → order printed with **nothing** in the corner · switch ON → label back
@@ -364,7 +369,7 @@ The student website runs in students' browsers, so the **backend must be on the 
 laptop). Everything is prepared:
 
 - [x] `render.yaml` + `backend/Dockerfile` — put the backend on Render (or any Docker host)
-- [x] `web/netlify.toml` — the `web` folder is the Netlify site; the staff counter page is kept off it
+- [x] `web/_headers`, `web/_redirects`, `web/netlify.toml` — the `web` folder is the Netlify site (dragged onto Netlify by hand, or published from git); the staff counter page is kept off it
 - [x] Website polished: logo, clear headline, 3-step "how it works", tab icon, share preview for WhatsApp
 **Cost to start: ₹0** (GitHub, Render free, Netlify free, Supabase free; Razorpay only takes a fee per payment).
 The project was checked: no passwords or keys will be uploaded (`backend/.env` stays on this laptop).
@@ -381,7 +386,7 @@ The project was checked: no passwords or keys will be uploaded (`backend/.env` s
       ```
       cd "D:\Downloads\files (6)\remoteprint\remoteprint"
       git add -A
-      git commit -m "Campus Print"
+      git commit -m "XeoGo"
       git remote add origin https://github.com/YOUR-NAME/campus-print.git
       git push -u origin main
       ```
@@ -445,7 +450,7 @@ The project was checked: no passwords or keys will be uploaded (`backend/.env` s
 
 ## ★★ Version 4: many files per order, every print option, printer-aware  (new)
 
-**What students get now** (website): add all files at once (PDF, JPG, PNG, mixed; drag & drop, pick several,
+**What students get now** (website): add all files at once (PDF, Word, JPG, PNG, mixed; drag & drop, pick several,
 paste), each with its own upload progress, cancel, try again and remove. Then set up **each file on its own**,
 with a print preview of every sheet:
 
@@ -505,35 +510,114 @@ To do, in this order:
 
 ---
 
-## ★★★ CampusPay — your own UPI payment gateway  (new)
+## ★★★ XeoGo Pay — your own UPI payment gateway  (new)
 
 **What students get:** Pay → the phone shows the UPI apps on it (Google Pay, PhonePe, Paytm, BHIM…; a laptop shows a
-QR code) → they pay → come back → **Payment successful** by itself in about a second → printing → pickup code.
+QR code) → they pay → come back → **Payment successful** by itself in about a second → printing → their files and times.
 Nothing to type, nothing to press. The money goes straight into the Xerox center's bank account: no gateway, no fees.
 
 **How it knows:** the business UPI app on the shop's phone gets "₹20.01 received" pushed by its server within seconds;
-the new **CampusPay Verifier** app on that phone passes it to the server, which matches it to exactly one order
+the new **XeoGo Pay Verifier** app on that phone passes it to the server, which matches it to exactly one order
 (every payment has its own amount, ₹20.**01**) and releases the print job. The bank's SMS is a backup. Full guide,
 safety rules and a presentation script: [`docs/campuspay-upi.md`](docs/campuspay-upi.md).
 
-- [x] Server: CampusPay API, bank-message reading (SBI, HDFC, ICICI, Axis, Kotak, PNB, PhonePe/Paytm/GPay texts), matching
+- [x] Server: XeoGo Pay API, bank-message reading (SBI, HDFC, ICICI, Axis, Kotak, PNB, PhonePe/Paytm/GPay texts), matching
       inside the database under one lock · 15 + 9 automatic tests
 - [x] Website: UPI app buttons (Android intent / iPhone links), QR code on laptops, automatic "Confirming… → Payment
       successful", fallbacks · tested in Edge at phone, iPhone and laptop sizes
 - [x] Android app 3.2.0: lists the UPI apps really installed on the phone, with icons; comes back and confirms by itself
-- [x] CampusPay Verifier 1.0.0 (new app for the shop phone): tested on Android 14 — real SMS → order paid in 0.3 s,
+- [x] XeoGo Pay Verifier 1.0.0 (new app for the shop phone): tested on Android 14 — real SMS → order paid in 0.3 s,
       real notification → 0.55 s; OTPs and other SMS never leave the phone
 - [x] Station 4.2.0 and web counter: **UPI payments** tab (today's payments, the Verifier phone's status, every bank
       message and the order it paid, backup "Money received" button, "Paste a bank SMS")
 - [ ] 1. Get a **business UPI ID** for the shop's bank account (PhonePe Business / Paytm for Business / Google Pay for
       Business / BharatPe — free). Only the UPI ID is needed: never give out the account number or IFSC.
 - [ ] 2. Render → Environment: `PAYMENT_MODE=upi`, `UPI_ID` (or paste your QR's text), `UPI_NAME`, `UPI_ALERT_TOKEN`
-      (Render generates it) → Save. Supabase → run `db/setup.sql` again (adds the CampusPay tables).
+      (Render generates it) → Save. (The server brings the database up to date by itself when it starts.)
 - [ ] 3. Push this folder to GitHub (Render and Netlify update by themselves).
-- [ ] 4. 📱 Shop phone: install `CampusPay-Verifier-1.0.0.apk` → server address + token → Save and connect → Allow
+- [ ] 4. 📱 Shop phone: install `XeoGoPay-Verifier-1.1.0.apk` → server address + token → Save and connect → Allow
       notifications, SMS and battery (Android 13+: App info → ⋮ → Allow restricted settings first).
-- [ ] 5. Students' app: install `CampusPrint-Android-3.2.0-debug.apk`. 🖨️ Xerox PC: install `CampusPrintStation-Setup-4.2.0-GitQuickPrint.exe`.
+- [ ] 5. Students' app: install `XeoGo-3.3.0.apk`. 🖨️ Xerox PC: install `XeoGoStation-Setup-4.3.0-GitQuickPrint.exe`.
 - [ ] 6. Pay ₹2.01 for a one-page order from your own phone and watch it confirm and print.
+
+---
+
+## ★★★★ Version 5 — XeoGo: show your files, free staff printing, one-push updates  (new)
+
+**The name.** The product is **XeoGo** (*QuICK PrINT*); the logo is `branding/logo.png` on every app. What was
+"Campus Print" before is the same thing: installed copies update in place and keep their orders and settings.
+
+**No pickup code any more.** After paying, the order shows a picture of each file with the times (paid, ready at
+about, ready since). At the counter the student taps **I'm at the counter**: the order appears on the counter's
+screen with the same pictures; **Handed over** turns the phone to **Collected**. A screenshot or a copy of the PDF
+cannot collect. Details: `docs/how-it-works.md` → *Collecting*.
+
+**Free printing for college staff.** Station → **Staff**: make a staff ID (name → username + password, shown
+once). Staff sign in on `staff.html` or in the **XeoGo Staff** app and press **Print now · free**, up to the pages
+per month you set (1000 to start with; one ID can have its own number). No payment, no code. Details:
+`docs/how-it-works.md` → *Staff printing*.
+
+**Updates with one push.** The server brings its own database up to date when it starts: you never run
+`setup.sql` by hand again. Push the code → Render and Netlify update by themselves.
+
+**The student app moves.** XeoGo (the students' app, not the staff app) opens with a two-second opening: the
+logo lands, a light goes round it, the name is set, a few printed pages fly out, and the screen opens onto the
+app (a tap skips it). While files are on their way, the top of *Your files* is a card with a ring that fills,
+the per cent counting up and what is happening in words; each file gets a green tick when the Xerox center has
+accepted it. Phones set to "remove animations" show none of it. The code is in `android/app/.../ui/Motion.kt`,
+`Intro.kt` and `UploadStage.kt`.
+
+**Word files (.docx).** Students add Word files like PDFs (website, both apps, "Share to XeoGo"). The server
+first looks inside the file: only a plain document goes on (no macros, no embedded programs, nothing that
+fetches or asks). Then the **Xerox PC's own Microsoft Word** turns it into pages, hidden, in about a second, so
+it looks exactly as if the student had brought it on a pen drive; from then on it is a PDF like any other, with
+every setting (pick pages on the page pictures, copies, colour, two-sided, pages per sheet, paper, finishing)
+and the same price rules. The student sees those pages before paying. Station → **Printers** → **Word files**
+says whether this PC can do it ("Ready: Microsoft Word 2016") or why not. It needs Microsoft Word on the Xerox
+PC and works while the Station is on; otherwise, and for old `.doc` files, students are told to save as PDF.
+Details: `docs/how-it-works.md` → *Word files*.
+
+**Hundreds of customers at once.** Tried with 500 customers arriving within 40 seconds: every order printed,
+no wrong answer. What makes that hold: each phone is told by the server how soon to ask again (every few
+seconds while it prints or the student stands at the counter, seldom while nothing can change, and less often
+for everybody when the server is busy); big uploads are checked one after the other, small ones together, so
+memory cannot run out; a busy server makes a file wait its turn instead of failing; two printers finishing files
+of one order at the same instant no longer trip over each other in the database. The limit of new orders from
+one network address is 1000 a minute (a whole campus shares one address). What the free plans can carry, and
+when to pay for more: `docs/troubleshooting.md` → *Many customers at once*.
+
+**"Waking up the print service".** On Render's free plan the server sleeps after about 15 quiet minutes and
+needs a minute or two for the first visitor. The website and the apps now say exactly that, calmly, keep asking
+by themselves, and add the files chosen meanwhile as soon as the server is up (before: a red "Cannot reach the
+print service"). While the Xerox PC's Station is running it talks to the server all the time, so the server
+stays awake during opening hours.
+
+**Closed on the way** (found while hunting for loopholes): a text message from any phone ("Rs 20 credited") or a
+chat message in a UPI app could have been taken for a payment → only bank sender names and business UPI apps count
+now; the counter password could be guessed without limit through a forged address → limited per address and in
+total, and the counter stays signed in with a token; an empty `PAYMENT_MODE` meant free test printing → it now
+means paying is switched off; other websites could reach the Station on the PC → refused; scripts from other
+websites ran next to the students' order keys → PDF.js and the QR library are part of the site now, with a
+Content-Security-Policy; pages typed and then left at once were lost → kept.
+
+- [x] Server: hand-over without a code, first-sheet pictures, ready-time estimate, staff IDs and the monthly
+      limit inside the database, database self-update, Word files, the asking pace · 126 automatic tests
+      against a real PostgreSQL, and a run with 500 customers at once
+- [x] Student website and staff website (`staff.html`): driven in Edge on phone and laptop sizes
+- [x] Android: XeoGo 3.3.0 (students, with the opening and the animated uploads) and XeoGo Staff 3.3.0 from the
+      same code · XeoGo Pay Verifier 1.1.0
+- [x] Station 4.3.0: **At the counter now**, pictures, **Find**, **Staff** screen, **Word files** (tried with a
+      real Microsoft Word); updates "Campus Print Station" in place
+- [ ] 1. Push to GitHub (Render builds and starts the new server; Netlify publishes both websites).
+- [ ] 2. 🖨️ Xerox PC: run `XeoGoStation-Setup-4.3.0-GitQuickPrint.exe` (it replaces the old Station and keeps its
+      settings). Until then the old Station still prints; staff find an order by the **Order …** number shown
+      on the student's order.
+- [ ] 3. Station → **Staff** → set the free pages per month → make a staff ID for each staff member, hand out
+      the slips.
+- [ ] 4. 📱 Students: `XeoGo-3.3.0.apk` (or just the website). Staff: `XeoGoStaff-3.3.0.apk` (or `…/staff`).
+- [ ] 5. 📱 Shop phone, only with XeoGo Pay: `XeoGoPay-Verifier-1.1.0.apk` over the old one.
+- [ ] 6. One test order from a phone: pay → see the file and the times → **I'm at the counter** → **Handed
+      over** → **Collected**. One staff order: sign in → **Print now · free** → the pages left go down.
 
 ---
 
@@ -561,13 +645,16 @@ safety rules and a presentation script: [`docs/campuspay-upi.md`](docs/campuspay
 
 - [x] 1. Android Studio → **Open** → choose the `android` folder. Wait for "Gradle sync" to finish.
    > ✅ The Gradle wrapper (`gradlew`, `gradle-wrapper.jar`) was missing and has been added. `gradlew assembleDebug`
-   > → **BUILD SUCCESSFUL**, giving `android/app/build/outputs/apk/debug/app-debug.apk`. SDK Platform 35 was installed.
+   > → **BUILD SUCCESSFUL**. Since version 3.3.0 it makes two apps from the same code:
+   > `app/build/outputs/apk/student/debug/app-student-debug.apk` (XeoGo) and
+   > `app/build/outputs/apk/staff/debug/app-staff-debug.apk` (XeoGo Staff). SDK Platform 35 was installed.
 - [ ] 2. Open `app/src/main/java/edu/campus/printapp/AppConfig.kt` and set `API_BASE` to your laptop's
    Wi-Fi address, e.g. `http://192.168.1.10:8080` (phone and laptop on the same Wi-Fi).
 - [ ] 3. Connect your phone (USB debugging on) → press the green **Run** ▶ button.
 
-**You are done when:** you can pick a PDF on the phone, see it, pay (test), and get a pickup code.
-You can also **Share** a PDF from WhatsApp to "Campus Print".
+**You are done when:** you can pick a PDF on the phone, see it, pay (test), and see your file with the times
+and the **I'm at the counter** button.
+You can also **Share** a PDF from WhatsApp to "XeoGo".
 
 ---
 

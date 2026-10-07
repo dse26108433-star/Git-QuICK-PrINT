@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import edu.campus.print.support.Docx;
 import edu.campus.print.support.FakeStorage;
 import edu.campus.print.support.Files;
 import edu.campus.print.support.TestDb;
@@ -23,12 +24,16 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -36,7 +41,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * The whole API against a real PostgreSQL, with storage in memory: a
  * student's multi-file order from upload to paper, the checks on settings,
- * printer features, the counter, and the one-file (Android) way.
+ * printer features, the counter, collecting by showing the files (no pickup
+ * code), and the one-file (Android) way.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -49,6 +55,7 @@ class ApiFlowTest {
     @Autowired MockMvc mvc;
     @Autowired FakeStorage storage;
     @Autowired JdbcTemplate jdbc;
+    @Autowired edu.campus.print.orders.WordFiles wordFiles;
 
     private String pcId;
     private String pcSecret;
@@ -77,6 +84,7 @@ class ApiFlowTest {
         r.add("spring.datasource.username", () -> "postgres");
         r.add("spring.datasource.password", () -> "");
         r.add("campus.supabase.url", () -> "https://storage.test");
+        r.add("campus.shop.shop-cache-millis", () -> "0");
         r.add("campus.supabase.service-key", () -> "test-key");
         r.add("campus.payment.mode", () -> "demo");
         r.add("campus.counter.password", () -> COUNTER);
@@ -87,6 +95,7 @@ class ApiFlowTest {
     /** Every test starts with: one PC, a B/W duplex A3 stapling printer and a colour photo printer. */
     @BeforeEach
     void shop() throws Exception {
+        jdbc.update("delete from document_previews");
         jdbc.update("delete from order_events");
         jdbc.update("delete from order_documents");
         jdbc.update("delete from orders");
@@ -322,7 +331,7 @@ class ApiFlowTest {
         String good = o.add("ok.pdf", "PDF", Files.pdf(1));
         JsonNode view = o.uploaded(bad);
         assertThat(view.path("status").asText()).isEqualTo("REJECTED");
-        assertThat(view.path("problem").asText()).isEqualTo("Only PDF, PNG and JPG files can be printed.");
+        assertThat(view.path("problem").asText()).isEqualTo("Only PDF, Word (.docx), PNG and JPG files can be printed.");
         o.uploaded(good);
         MvcResult r = o.reviewRaw(Map.of(good, Map.of()), good);
         assertThat(r.getResponse().getStatus()).isEqualTo(400);
@@ -348,6 +357,224 @@ class ApiFlowTest {
         JsonNode view = o.view();
         assertThat(view.path("refundDuePaise").asInt()).isEqualTo(400);
         assertThat(view.path("message").asText()).contains("A refund of ₹4 is due");
+    }
+
+    // ------------------------------------------------------------------ collecting by showing the files (no pickup code)
+
+    @Test
+    void theStudentShowsTheFilesAtTheCounterAndStaffHandThemOver() throws Exception {
+        Order o = newOrder();
+        String notes = o.add("Notes.pdf", "PDF", Files.pdf(4));
+        String photo = o.add("Photo.jpg", "JPEG", Files.jpegWithOrientation(400, 300, 1));
+        o.uploaded(notes);
+        o.uploaded(photo);
+        o.review(Map.of(notes, Map.of(), photo, Map.of("color", true)), notes, photo);
+
+        // Not paid: there is nothing to collect, and nobody shows up on the staff screen.
+        MvcResult early = mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o)).andReturn();
+        assertThat(early.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(early).path("error").asText()).isEqualTo("NOT_PAID");
+
+        JsonNode paid = o.pay();
+        assertThat(paid.path("serverTime").asText()).isNotEmpty();
+        assertThat(paid.path("arrivedAt").isNull()).isTrue();
+        assertThat(counter(get("/api/v1/counter/summary")).path("atCounter")).isEmpty();
+
+        // The Xerox PC prints both files and sends a picture of each first sheet.
+        JsonNode job1 = claim(bwPrinter);
+        JsonNode job2 = claim(colourPrinter);
+        byte[] picture = Files.jpegWithOrientation(120, 170, 1);
+        sendPreview(job1, picture, 200);
+        printed(job1);
+        printed(job2);
+        sendPreview(job2, picture, 200);              // also taken just after the file printed
+
+        JsonNode ready = o.view();
+        assertThat(ready.path("status").asText()).isEqualTo("COMPLETED");
+        assertThat(ready.path("message").asText()).contains("show your files")
+                .doesNotContain(ready.path("pickupCode").asText());
+        assertThat(ready.path("documents").get(0).path("hasPreview").asBoolean()).isTrue();
+        assertThat(ready.path("documents").get(0).path("printedAt").asText()).isNotEmpty();
+        // The student can fetch the picture of their own file; nobody else can.
+        MvcResult mine = mvc.perform(key(get("/api/v1/orders/" + o.id + "/documents/" + notes + "/preview"), o)).andReturn();
+        assertThat(mine.getResponse().getStatus()).isEqualTo(200);
+        assertThat(mine.getResponse().getContentType()).isEqualTo("image/jpeg");
+        assertThat(mine.getResponse().getContentAsByteArray()).isEqualTo(picture);
+        Order other = newOrder();
+        assertThat(mvc.perform(key(get("/api/v1/orders/" + o.id + "/documents/" + notes + "/preview"), other)).andReturn()
+                .getResponse().getStatus()).isEqualTo(404);
+        assertThat(mvc.perform(get("/api/v1/counter/documents/" + notes + "/preview")).andReturn()
+                .getResponse().getStatus()).isEqualTo(401);
+
+        // At the counter the student taps "I'm at the counter": the order is on the staff screen, with its files.
+        JsonNode here = json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o)).andReturn());
+        assertThat(here.path("arrivedAt").asText()).isNotEmpty();
+        JsonNode at = counter(get("/api/v1/counter/summary")).path("atCounter");
+        assertThat(at).hasSize(1);
+        assertThat(at.get(0).path("id").asText()).isEqualTo(o.id);
+        assertThat(at.get(0).path("arrivedAt").asText()).isNotEmpty();
+        assertThat(at.get(0).path("documents").get(0).path("hasPreview").asBoolean()).isTrue();
+        assertThat(at.get(0).path("documents").get(0).path("printerName").asText()).isEqualTo("Printer 1 (B/W)");
+        MvcResult pic = mvc.perform(get("/api/v1/counter/documents/" + notes + "/preview")
+                .header("X-Counter-Password", COUNTER)).andReturn();
+        assertThat(pic.getResponse().getContentAsByteArray()).isEqualTo(picture);
+
+        // Someone with another order's key cannot put this order on the staff screen...
+        assertThat(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), other)).andReturn()
+                .getResponse().getStatus()).isEqualTo(404);
+        // ...and leaving that screen takes the order off it again.
+        json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"here\":false}")).andReturn());
+        assertThat(counter(get("/api/v1/counter/summary")).path("atCounter")).isEmpty();
+        json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o)).andReturn());
+
+        // Staff hand the pages over: once. The phone shows "Collected", and the pictures are gone.
+        JsonNode handed = counter(post("/api/v1/counter/orders/" + o.id + "/collected"));
+        assertThat(handed.path("studentAtCounter").asBoolean()).isTrue();
+        JsonNode done = o.view();
+        assertThat(done.path("collected").asBoolean()).isTrue();
+        assertThat(done.path("collectedAt").asText()).isNotEmpty();
+        assertThat(done.path("stage").asText()).isEqualTo("Collected");
+        assertThat(done.path("documents").get(0).path("hasPreview").asBoolean()).isFalse();
+        assertThat(counter(get("/api/v1/counter/summary")).path("atCounter")).isEmpty();
+        MvcResult again = mvc.perform(post("/api/v1/counter/orders/" + o.id + "/collected")
+                .header("X-Counter-Password", COUNTER)).andReturn();
+        assertThat(again.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(again).path("message").asText()).contains("already handed over");
+        assertThat(jdbc.queryForObject("select count(*) from document_previews", Integer.class)).isZero();
+        // Tapping again after that changes nothing.
+        assertThat(json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o)).andReturn())
+                .path("arrivedAt").isNull()).isTrue();
+    }
+
+    @Test
+    void onlyThePcPrintingAFileCanSendItsPicture() throws Exception {
+        Order o = newOrder();
+        String doc = o.add("Notes.pdf", "PDF", Files.pdf(1));
+        o.uploaded(doc);
+        o.review(Map.of(doc, Map.of()), doc);
+        o.pay();
+        JsonNode job = claim(bwPrinter);
+        byte[] picture = Files.jpegWithOrientation(120, 170, 1);
+        String url = "/agent/v1/jobs/" + job.path("jobId").asText() + "/preview";
+
+        // Another claim (an older try at this file, or a guess): refused.
+        assertThat(mvc.perform(agentAuth(post(url).header("X-Claim-Token", UUID.randomUUID().toString())
+                .contentType(MediaType.IMAGE_JPEG).content(picture))).andReturn().getResponse().getStatus()).isEqualTo(409);
+        // Not signed in as a PC: refused.
+        assertThat(mvc.perform(post(url).header("X-Claim-Token", job.path("claimToken").asText())
+                .contentType(MediaType.IMAGE_JPEG).content(picture)).andReturn().getResponse().getStatus()).isEqualTo(401);
+        // Not a picture, or far too big: refused.
+        sendPreview(job, ("<html>" + "x".repeat(300) + "</html>").getBytes(StandardCharsets.UTF_8), 400);
+        byte[] huge = new byte[400 * 1024];
+        System.arraycopy(picture, 0, huge, 0, picture.length);
+        sendPreview(job, huge, 400);
+        assertThat(o.view().path("documents").get(0).path("hasPreview").asBoolean()).isFalse();
+        sendPreview(job, picture, 200);
+        assertThat(o.view().path("documents").get(0).path("hasPreview").asBoolean()).isTrue();
+    }
+
+    @Test
+    void beingAtTheCounterWearsOffByItself() throws Exception {
+        Order o = newOrder();
+        String doc = o.add("Notes.pdf", "PDF", Files.pdf(1));
+        o.uploaded(doc);
+        o.review(Map.of(doc, Map.of()), doc);
+        o.pay();
+        json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o)).andReturn());
+        assertThat(counter(get("/api/v1/counter/summary")).path("atCounter")).hasSize(1);
+        // The student walked off without closing the screen: a few minutes later the order is off the staff screen.
+        jdbc.update("update orders set arrived_at = now() - interval '10 minutes' where id = ?::uuid", o.id);
+        assertThat(o.view().path("arrivedAt").isNull()).isTrue();
+        assertThat(counter(get("/api/v1/counter/summary")).path("atCounter")).isEmpty();
+        // Staff can still hand it over (found in the list); the answer says the phone was not at the counter.
+        printed(claim(bwPrinter));
+        assertThat(counter(post("/api/v1/counter/orders/" + o.id + "/collected")).path("studentAtCounter").asBoolean())
+                .isFalse();
+    }
+
+    @Test
+    void staffFindAnOrderByAFileNameWhenThePhoneIsOffline() throws Exception {
+        Order a = newOrder();
+        String da = a.add("Thermodynamics Notes.pdf", "PDF", Files.pdf(1));
+        a.uploaded(da);
+        a.review(Map.of(da, Map.of()), da);
+        a.pay();
+        Order b = newOrder();
+        String db = b.add("Resume.pdf", "PDF", Files.pdf(1));
+        b.uploaded(db);
+        b.review(Map.of(db, Map.of()), db);
+        b.pay();
+        Order unpaid = newOrder();
+        String du = unpaid.add("Thermo draft.pdf", "PDF", Files.pdf(1));
+        unpaid.uploaded(du);
+        unpaid.review(Map.of(du, Map.of()), du);
+
+        JsonNode found = counter(get("/api/v1/counter/orders").param("q", "thermo"));
+        assertThat(found).hasSize(1);                                       // paid orders only
+        assertThat(found.get(0).path("id").asText()).isEqualTo(a.id);
+        String number = b.view().path("pickupCode").asText();
+        assertThat(counter(get("/api/v1/counter/orders").param("q", number.toLowerCase())).get(0).path("id").asText())
+                .isEqualTo(b.id);
+        assertThat(counter(get("/api/v1/counter/orders").param("q", "no such file"))).isEmpty();
+        // A Station before 4.3 still looks an order up by its number.
+        assertThat(counter(get("/api/v1/counter/orders").param("code", number)).get(0).path("id").asText()).isEqualTo(b.id);
+    }
+
+    @Test
+    void aPaidOrderSaysAboutWhenItWillBeReady() throws Exception {
+        Order o = newOrder();
+        String doc = o.add("Notes.pdf", "PDF", Files.pdf(6));
+        o.uploaded(doc);
+        o.review(Map.of(doc, Map.of("copies", 2)), doc);
+        // No printer is online yet: when it prints cannot be known.
+        assertThat(o.pay().path("estimatedReadyAt").isNull()).isTrue();
+        agent(post("/agent/v1/heartbeat").content("{\"agentVersion\":\"4.3.0\",\"hostName\":\"test\",\"printers\":["
+                + "{\"printerId\":\"" + bwPrinter + "\",\"status\":\"READY\",\"detail\":\"\"}]}"));
+        JsonNode waiting = o.view();
+        Instant now = Instant.parse(waiting.path("serverTime").asText());
+        Instant about = Instant.parse(waiting.path("estimatedReadyAt").asText());
+        assertThat(Duration.between(now, about)).isBetween(Duration.ofSeconds(15), Duration.ofMinutes(5));
+        // A longer queue ahead means later.
+        Order behind = newOrder();
+        String d2 = behind.add("More.pdf", "PDF", Files.pdf(6));
+        behind.uploaded(d2);
+        behind.review(Map.of(d2, Map.of()), d2);
+        behind.pay();
+        assertThat(Instant.parse(behind.view().path("estimatedReadyAt").asText())).isAfter(about);
+        printed(claim(bwPrinter));
+        JsonNode done = o.view();
+        assertThat(done.path("estimatedReadyAt").isNull()).isTrue();
+        assertThat(done.path("completedAt").asText()).isNotEmpty();
+    }
+
+    // ------------------------------------------------------------------ the counter password
+
+    @Test
+    void aSignedInCounterKeepsWorkingWhileWrongPasswordsMustWait() throws Exception {
+        String token = counter(post("/api/v1/counter/session")).path("token").asText();
+        RequestPostProcessor guesser = r -> {
+            r.setRemoteAddr("203.0.113.9");
+            return r;
+        };
+        for (int i = 0; i < 10; i++) {
+            assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Password", "guess-number-" + i)
+                    .with(guesser)).andReturn().getResponse().getStatus()).isEqualTo(401);
+        }
+        // That address has to wait now, even if the next guess were right...
+        assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Password", COUNTER).with(guesser))
+                .andReturn().getResponse().getStatus()).isEqualTo(429);
+        // ...but a screen that signed in before is not disturbed, wherever it is.
+        assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Session", token).with(guesser))
+                .andReturn().getResponse().getStatus()).isEqualTo(200);
+        assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Session", token))
+                .andReturn().getResponse().getStatus()).isEqualTo(200);
+        // A made-up or changed token is nothing.
+        assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Session", "1999999999.abc.def"))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        assertThat(mvc.perform(get("/api/v1/counter/summary").header("X-Counter-Session", token + "x"))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
+        assertThat(mvc.perform(get("/api/v1/counter/summary")).andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 
     // ------------------------------------------------------------------ one-file apps (Android)
@@ -407,6 +634,334 @@ class ApiFlowTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    // ------------------------------------------------------------------ two printers, one order, the same moment
+
+    /**
+     * Two files of one order print on two printers, and both printers report
+     * at the same instant, again and again. Nothing may be lost to the two
+     * waiting for each other (the database then gives one of them up).
+     */
+    @Test
+    void twoPrintersFinishingFilesOfOneOrderAtTheSameMomentBothCount() throws Exception {
+        java.util.concurrent.ExecutorService two = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            agentAuth(post("/agent/v1/heartbeat"));                        // sign the PC in once, before the threads
+            for (int round = 0; round < 25; round++) {
+                Order o = newOrder();
+                String a = o.add("A.pdf", "PDF", Files.pdf(1));
+                String b = o.add("B.png", "PNG", Files.png(20, 10));
+                o.uploaded(a);
+                o.uploaded(b);
+                o.review(Map.of(a, Map.of(), b, Map.of("color", true)), a, b);      // A to the B/W printer, B to the colour one
+                o.pay();
+                JsonNode first = claim(bwPrinter);
+                JsonNode second = claim(colourPrinter);
+                assertThat(first).isNotNull();
+                assertThat(second).isNotNull();
+                for (String status : List.of("DOWNLOADING", "SUBMITTED", "COMPLETED")) {
+                    java.util.concurrent.CyclicBarrier together = new java.util.concurrent.CyclicBarrier(2);
+                    List<java.util.concurrent.Future<Integer>> answers = new java.util.ArrayList<>();
+                    for (JsonNode job : List.of(first, second)) {
+                        answers.add(two.submit(() -> {
+                            together.await();
+                            return mvc.perform(post("/agent/v1/jobs/" + job.path("jobId").asText() + "/status")
+                                    .header("Authorization", "Bearer " + agentToken).contentType(MediaType.APPLICATION_JSON)
+                                    .content("{\"claimToken\":\"" + job.path("claimToken").asText() + "\",\"status\":\"" + status + "\"}"))
+                                    .andReturn().getResponse().getStatus();
+                        }));
+                    }
+                    for (java.util.concurrent.Future<Integer> f : answers) {
+                        assertThat(f.get()).as("round " + round + ", " + status).isEqualTo(200);
+                    }
+                }
+                assertThat(o.view().path("status").asText()).as("round " + round).isEqualTo("COMPLETED");
+            }
+        } finally {
+            two.shutdownNow();
+        }
+    }
+
+    // ------------------------------------------------------------------ hundreds of screens asking "how is my order"
+
+    @Test
+    void theServerSaysHowSoonToAskAgain() throws Exception {
+        Order o = newOrder();
+        String a = o.add("A.pdf", "PDF", Files.pdf(1));
+        o.uploaded(a);
+        o.review(Map.of(a, Map.of()), a);
+        assertThat(o.view().path("pollSeconds").asInt()).isEqualTo(3);        // about to pay: soon
+        o.pay();
+        assertThat(o.view().path("pollSeconds").asInt()).isEqualTo(6);        // waiting for a printer
+        JsonNode job = claim(bwPrinter);                                       // a printer took it
+        assertThat(o.view().path("pollSeconds").asInt()).isEqualTo(4);        // printing: it changes any moment
+        printed(job);
+        // ready, the student on the way: nothing changes until they are there, so seldom
+        assertThat(o.view().path("pollSeconds").asInt()).isEqualTo(12);
+        json(mvc.perform(key(post("/api/v1/orders/" + o.id + "/arrive"), o).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"here\":true}")).andReturn());
+        assertThat(o.view().path("pollSeconds").asInt()).isEqualTo(3);        // at the counter: "Collected" shows at once
+        counter(post("/api/v1/counter/orders/" + o.id + "/collected"));
+        assertThat(o.view().path("pollSeconds").asInt()).isZero();            // done: nothing more to ask
+    }
+
+    // ------------------------------------------------------------------ Word files
+
+    /** The PC says with its heartbeat whether its Microsoft Word can make PDFs. */
+    private void pcWithWord(boolean ready) throws Exception {
+        agent(post("/agent/v1/heartbeat").content("{\"agentVersion\":\"4.3.0\",\"hostName\":\"test\",\"wordFiles\":"
+                + ready + ",\"wordNote\":\"Microsoft Word 2013\"}"));
+    }
+
+    private JsonNode claimWord() throws Exception {
+        MvcResult r = mvc.perform(agentAuth(post("/agent/v1/conversions/claim"))).andReturn();
+        if (r.getResponse().getStatus() == 204) return null;
+        assertThat(r.getResponse().getStatus()).as(r.getResponse().getContentAsString()).isEqualTo(200);
+        return json(r);
+    }
+
+    private boolean wordFilesOffered() throws Exception {
+        return json(mvc.perform(get("/api/v1/shop")).andReturn()).path("wordFiles").asBoolean();
+    }
+
+    @Test
+    void aWordFileIsTurnedIntoPagesByTheXeroxPcAndThenPrintsLikeAnyPdf() throws Exception {
+        jdbc.update("update agents set word_ready = false");
+        Order o = newOrder();
+        // no PC with Word: said before anything is uploaded
+        assertThat(wordFilesOffered()).isFalse();
+        MvcResult no = mvc.perform(key(post("/api/v1/orders/" + o.id + "/documents"), o).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"fileName\":\"Report.docx\",\"fileType\":\"DOCX\",\"fileSizeBytes\":100}")).andReturn();
+        assertThat(no.getResponse().getStatus()).isEqualTo(409);
+        assertThat(json(no).path("error").asText()).isEqualTo("WORD_NOT_AVAILABLE");
+        assertThat(json(no).path("message").asText()).contains("Save the file as PDF");
+
+        pcWithWord(true);
+        assertThat(wordFilesOffered()).isTrue();
+        byte[] docx = Docx.pages(3).bytes();
+        String d = o.add("Report.docx", "DOCX", docx);
+        String wordPath = o.uploads.get(d);
+        assertThat(wordPath).endsWith(".docx");
+        JsonNode waiting = o.uploaded(d);
+        assertThat(waiting.path("status").asText()).isEqualTo("CONVERTING");
+        assertThat(waiting.path("fileType").asText()).isEqualTo("DOCX");
+        assertThat(waiting.path("stage").asText()).isEqualTo("Being prepared");
+        assertThat(waiting.path("pageCount").isNull()).isTrue();
+        // not yet: no price, no file to show
+        assertThat(o.reviewRaw(Map.of(d, Map.of()), d).getResponse().getStatus()).isEqualTo(409);
+        assertThat(mvc.perform(key(get("/api/v1/orders/" + o.id + "/documents/" + d + "/file-url"), o)).andReturn()
+                .getResponse().getStatus()).isEqualTo(409);
+
+        // the Xerox PC takes it: exactly the file the server looked into, and a place for the PDF
+        JsonNode job = claimWord();
+        assertThat(job.path("documentId").asText()).isEqualTo(d);
+        assertThat(job.path("fileName").asText()).isEqualTo("Report.docx");
+        assertThat(job.path("sha256").asText()).isEqualTo(edu.campus.print.common.Secrets.sha256Hex(docx));
+        assertThat(job.path("downloadUrl").asText()).endsWith(wordPath);
+        assertThat(job.path("uploadUrl").asText()).endsWith(d + "-pages.pdf");
+        assertThat(job.path("secondsAllowed").asInt()).isGreaterThan(30);
+        assertThat(claimWord()).isNull();                         // one PC per file
+
+        byte[] pages = Files.pdf(3);                              // what the PC's Word made of it
+        storage.upload(job.path("uploadUrl").asText(), pages);
+        assertThat(agent(post("/agent/v1/conversions/" + d + "/done")).path("status").asText()).isEqualTo("READY");
+
+        // from here on it is a PDF with a Word file's name
+        JsonNode doc = o.view().path("documents").get(0);
+        assertThat(doc.path("status").asText()).isEqualTo("READY");
+        assertThat(doc.path("fileType").asText()).isEqualTo("PDF");
+        assertThat(doc.path("sourceType").asText()).isEqualTo("DOCX");
+        assertThat(doc.path("fileName").asText()).isEqualTo("Report.docx");
+        assertThat(doc.path("pageCount").asInt()).isEqualTo(3);
+        assertThat(storage.has(wordPath)).isFalse();              // the Word file itself is gone
+        String file = json(mvc.perform(key(get("/api/v1/orders/" + o.id + "/documents/" + d + "/file-url"), o)).andReturn())
+                .path("url").asText();
+        assertThat(file).endsWith(d + "-pages.pdf");
+
+        // every setting a PDF has: pages 1-2, two copies, two-sided, stapled
+        JsonNode priced = o.review(Map.of(d, Map.of("pages", "1-2", "copies", 2, "duplex", "LONG_EDGE")), d);
+        assertThat(priced.path("documents").get(0).path("printPages").asInt()).isEqualTo(2);
+        assertThat(priced.path("documents").get(0).path("sheets").asInt()).isEqualTo(1);
+        assertThat(priced.path("amountPaise").asInt()).isEqualTo(2 * 2 * 200);
+        o.pay();
+        JsonNode print = claim(bwPrinter);
+        assertThat(print.path("fileName").asText()).isEqualTo("Report.docx");
+        assertThat(print.path("fileType").asText()).isEqualTo("PDF");
+        assertThat(print.path("pageCount").asInt()).isEqualTo(3);
+        assertThat(print.path("sha256").asText()).isEqualTo(edu.campus.print.common.Secrets.sha256Hex(pages));
+        assertThat(print.path("settings").path("pages").asText()).isEqualTo("1-2");
+        printed(print);
+        assertThat(o.view().path("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void aWordFileWithSomethingActiveNeverReachesTheXeroxPc() throws Exception {
+        pcWithWord(true);
+        Order o = newOrder();
+        String macro = o.add("Macro.docx", "DOCX", Docx.plain().part("word/vbaProject.bin", new byte[]{1}).bytes());
+        String dde = o.add("Dde.docx", "DOCX", Docx.plain().body(Docx.field(" DDEAUTO excel \"Book1.xls\" r1c1 ")).bytes());
+        String old = o.add("Old.doc", "DOCX", join(new byte[]{(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1},
+                new byte[3000], "WordDocument".getBytes(StandardCharsets.UTF_16LE)));
+        String zip = o.add("Sheet.xlsx", "DOCX", Docx.plain()
+                .mainType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml").bytes());
+        for (String d : List.of(macro, dde)) {
+            JsonNode v = o.uploaded(d);
+            assertThat(v.path("status").asText()).isEqualTo("REJECTED");
+            assertThat(v.path("problem").asText()).contains("cannot be prepared automatically").contains("Save As");
+        }
+        assertThat(o.uploaded(old).path("problem").asText()).startsWith("This is an older kind of Word file (.doc)");
+        assertThat(o.uploaded(zip).path("problem").asText()).contains("Save this file as PDF");
+        assertThat(claimWord()).isNull();                         // nothing for the PC to open
+        for (String d : List.of(macro, dde, old, zip)) assertThat(storage.has(o.uploads.get(d))).isFalse();   // the files are gone
+    }
+
+    @Test
+    void aFileIsJudgedByWhatItIsNotWhatItIsCalled() throws Exception {
+        jdbc.update("update agents set word_ready = false");
+        Order o = newOrder();
+        // called a PDF, really a Word file, and no PC with Word: refused, with the reason
+        String d = o.add("Really-word.pdf", "PDF", Docx.plain().bytes());
+        JsonNode v = o.uploaded(d);
+        assertThat(v.path("status").asText()).isEqualTo("REJECTED");
+        assertThat(v.path("problem").asText()).contains("not online right now");
+        // with one: it is prepared like any Word file (its PDF goes to a place of its own)
+        pcWithWord(true);
+        String e = o.add("Also-word.pdf", "PDF", Docx.plain().bytes());
+        assertThat(o.uploaded(e).path("status").asText()).isEqualTo("CONVERTING");
+        JsonNode job = claimWord();
+        assertThat(job.path("uploadUrl").asText()).endsWith(e + "-pages.pdf").doesNotEndWith(o.uploads.get(e));
+        // called a Word file, really a PDF: simply a PDF
+        String f = o.add("Really-pdf.docx", "DOCX", Files.pdf(2));
+        JsonNode pdf = o.uploaded(f);
+        assertThat(pdf.path("status").asText()).isEqualTo("READY");
+        assertThat(pdf.path("fileType").asText()).isEqualTo("PDF");
+    }
+
+    @Test
+    void aWordFileThePcCannotOpenIsRefusedWithAdvice() throws Exception {
+        pcWithWord(true);
+        Order o = newOrder();
+        String d = o.add("Odd.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(d);
+        claimWord();
+        // Word on that PC stopped working (not the file): back in line, once
+        assertThat(agent(post("/agent/v1/conversions/" + d + "/failed").content("{\"code\":\"ENGINE\",\"message\":\"Word did not start\"}"))
+                .path("status").asText()).isEqualTo("CONVERTING");
+        assertThat(o.view().path("documents").get(0).path("status").asText()).isEqualTo("CONVERTING");
+        assertThat(claimWord().path("documentId").asText()).isEqualTo(d);
+        assertThat(agent(post("/agent/v1/conversions/" + d + "/failed").content("{\"code\":\"ENGINE\"}"))
+                .path("status").asText()).isEqualTo("REJECTED");
+        assertThat(o.view().path("documents").get(0).path("problem").asText()).contains("Try again in a few minutes");
+
+        // the file itself: refused with the way that always works
+        String e = o.add("Broken.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(e);
+        claimWord();
+        agent(post("/agent/v1/conversions/" + e + "/failed").content("{\"code\":\"FAILED\",\"message\":\"C:\\\\secret\\\\path\"}"));
+        JsonNode doc = find(o.view().path("documents"), "id", e);
+        assertThat(doc.path("status").asText()).isEqualTo("REJECTED");
+        assertThat(doc.path("problem").asText()).isEqualTo("Microsoft Word at the Xerox center could not open this file."
+                + " In Word, choose File \u2192 Save As \u2192 PDF, and add the PDF.");     // nothing of the PC's own message
+        assertThat(storage.has(o.uploads.get(e))).isFalse();
+
+        // what comes back must really be a PDF
+        String g = o.add("Fake.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(g);
+        JsonNode job = claimWord();
+        storage.upload(job.path("uploadUrl").asText(), "not a pdf".getBytes(StandardCharsets.UTF_8));
+        assertThat(agent(post("/agent/v1/conversions/" + g + "/done")).path("status").asText()).isEqualTo("REJECTED");
+        assertThat(storage.has(o.uploads.get(g))).isFalse();
+        assertThat(storage.has(job.path("uploadUrl").asText().substring(FakeStorage.UPLOAD.length()))).isFalse();
+    }
+
+    @Test
+    void onlyThePcThatTookAWordFileCanFinishIt() throws Exception {
+        pcWithWord(true);
+        Order o = newOrder();
+        String d = o.add("Mine.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(d);
+        JsonNode job = claimWord();
+        String firstPc = agentToken;
+
+        // another PC of the same center
+        JsonNode pc2 = counter(post("/api/v1/counter/pcs").content("{\"name\":\"Second PC\"}"));
+        String basic = Base64.getEncoder().encodeToString((pc2.path("agentId").asText() + ":" + pc2.path("agentSecret").asText())
+                .getBytes(StandardCharsets.UTF_8));
+        String other = json(mvc.perform(post("/agent/v1/token").header("Authorization", "Basic " + basic)).andReturn())
+                .path("token").asText();
+        storage.upload(job.path("uploadUrl").asText(), Files.pdf(1));
+        assertThat(mvc.perform(post("/agent/v1/conversions/" + d + "/done").header("Authorization", "Bearer " + other))
+                .andReturn().getResponse().getStatus()).isEqualTo(409);
+        assertThat(mvc.perform(post("/agent/v1/conversions/" + d + "/failed").header("Authorization", "Bearer " + other)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"FAILED\"}")).andReturn().getResponse().getStatus())
+                .isEqualTo(409);
+        // and nobody without a PC's sign-in at all
+        assertThat(mvc.perform(post("/agent/v1/conversions/claim")).andReturn().getResponse().getStatus()).isIn(401, 403);
+        assertThat(o.view().path("documents").get(0).path("status").asText()).isEqualTo("CONVERTING");
+
+        agentToken = firstPc;
+        assertThat(agent(post("/agent/v1/conversions/" + d + "/done")).path("status").asText()).isEqualTo("READY");
+        // a second "done" changes nothing
+        assertThat(mvc.perform(agentAuth(post("/agent/v1/conversions/" + d + "/done"))).andReturn().getResponse().getStatus())
+                .isEqualTo(409);
+        assertThat(o.view().path("documents").get(0).path("pageCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void aWordFileNeverWaitsForEver() throws Exception {
+        pcWithWord(true);
+        Order o = newOrder();
+        // several in line: each is told how many are before it
+        String a = o.add("A.docx", "DOCX", Docx.plain().bytes());
+        String b = o.add("B.docx", "DOCX", Docx.plain().bytes());
+        String c = o.add("C.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(a);
+        Thread.sleep(15);
+        o.uploaded(b);
+        Thread.sleep(15);
+        assertThat(o.uploaded(c).path("ahead").asInt()).isEqualTo(2);
+        assertThat(find(o.view().path("documents"), "id", c).path("stage").asText()).isEqualTo("Being prepared \u2013 2 ahead");
+        assertThat(wordFiles.expire()).isZero();                  // all is well: nothing is given up
+
+        // the PC takes one and goes silent: after a while it is handed out again, and then given up
+        assertThat(claimWord().path("documentId").asText()).isEqualTo(a);
+        jdbc.update("update order_documents set convert_claimed_at = now() - interval '2 minutes' where id = ?::uuid", a);
+        assertThat(claimWord().path("documentId").asText()).isEqualTo(a);         // the oldest first, again
+        jdbc.update("update order_documents set convert_claimed_at = now() - interval '2 minutes' where id = ?::uuid", a);
+        assertThat(claimWord().path("documentId").asText()).isEqualTo(b);         // a third time: no
+        assertThat(wordFiles.expire()).isEqualTo(1);
+        JsonNode gone = find(o.view().path("documents"), "id", a);
+        assertThat(gone.path("status").asText()).isEqualTo("REJECTED");
+        assertThat(gone.path("problem").asText()).contains("did not finish preparing");
+
+        // ten minutes in line is the limit
+        jdbc.update("update order_documents set convert_requested_at = now() - interval '11 minutes' where id = ?::uuid", c);
+        assertThat(wordFiles.expire()).isEqualTo(1);
+        assertThat(find(o.view().path("documents"), "id", c).path("status").asText()).isEqualTo("REJECTED");
+
+        // the PC goes offline while a file waits: said as it is
+        String e = o.add("E.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(e);
+        jdbc.update("update agents set last_seen_at = now() - interval '5 minutes'");
+        jdbc.update("update order_documents set convert_requested_at = now() - interval '50 seconds' where id = ?::uuid", e);
+        assertThat(wordFiles.expire()).isEqualTo(1);
+        assertThat(find(o.view().path("documents"), "id", e).path("problem").asText()).contains("not online right now");
+        assertThat(wordFilesOffered()).isFalse();
+
+        // a removed file is nothing to prepare
+        pcWithWord(true);
+        String f = o.add("F.docx", "DOCX", Docx.plain().bytes());
+        o.uploaded(f);
+        json(mvc.perform(key(delete("/api/v1/orders/" + o.id + "/documents/" + f), o)).andReturn());
+        // (b is still held by the PC from above)
+        assertThat(claimWord()).isNull();
+    }
+
+    private static byte[] join(byte[]... parts) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        for (byte[] p : parts) out.writeBytes(p);
+        return out.toByteArray();
+    }
 
     private Order newOrder() throws Exception {
         JsonNode c = json(mvc.perform(post("/api/v1/orders").contentType(MediaType.APPLICATION_JSON).content("{}"))
@@ -503,6 +1058,14 @@ class ApiFlowTest {
                 .content("{\"printerId\":\"" + printer + "\"}"))).andReturn();
         if (r.getResponse().getStatus() == 204) return null;
         return json(r);
+    }
+
+    /** The Xerox PC sends the picture of a file's first sheet. */
+    private void sendPreview(JsonNode job, byte[] jpeg, int expectedStatus) throws Exception {
+        MvcResult r = mvc.perform(agentAuth(post("/agent/v1/jobs/" + job.path("jobId").asText() + "/preview")
+                .header("X-Claim-Token", job.path("claimToken").asText())
+                .contentType(MediaType.IMAGE_JPEG).content(jpeg))).andReturn();
+        assertThat(r.getResponse().getStatus()).as(r.getResponse().getContentAsString()).isEqualTo(expectedStatus);
     }
 
     private void printed(JsonNode job) throws Exception {

@@ -70,7 +70,7 @@ private val Warn = Color(0xFFB26B12)
 private val Danger = Color(0xFFB4382A)
 
 /**
- * The CampusPay Verifier: set up once on the Xerox center's phone, then it
+ * The XeoGo Pay Verifier: set up once on the Xerox center's phone, then it
  * works by itself in the background (the screen only shows how it is doing).
  */
 class MainActivity : ComponentActivity() {
@@ -119,7 +119,7 @@ private fun Screen() {
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F6F3)).verticalScroll(rememberScrollState())) {
         Column(Modifier.fillMaxWidth().background(Ink).statusBarsPadding().padding(20.dp)) {
-            Text("CAMPUSPAY", color = Color(0xFF9FB0C3), fontSize = 12.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold)
+            Text("XEOGO PAY", color = Color(0xFF9FB0C3), fontSize = 12.sp, letterSpacing = 3.sp, fontWeight = FontWeight.SemiBold)
             Text("Verifier", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -139,7 +139,7 @@ private fun Screen() {
         }
 
         Column(Modifier.padding(16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Card("1. Connect to your Campus Print server") {
+            Card("1. Connect to your XeoGo server") {
                 Field("Server address", server, { server = it })
                 Field("Token (UPI_ALERT_TOKEN from the server's settings)", token, { token = it },
                     secret = !showToken, mono = true)
@@ -149,8 +149,9 @@ private fun Screen() {
                     Text("Show the token", fontSize = 13.sp, color = Muted)
                 }
                 Field("This phone's name", device, { device = it })
-                if (server.startsWith("http://") && !server.contains("localhost") && !server.contains("192.168.") && !server.contains("10.0.2.2")) {
-                    Note("This address is not https://: the token could be read on the way. Use the https:// address of your server.", Warn)
+                if (server.trim().startsWith("http://") && !Config.localAddress(server.trim())) {
+                    Note("Use the https:// address of your server: over http:// the token could be read on the way, " +
+                        "so nothing is sent.", Danger)
                 }
                 Button(onClick = {
                     p.server = server; p.token = token; p.device = device
@@ -169,13 +170,13 @@ private fun Screen() {
             }
 
             Card("2. Allow it to read payments") {
-                Permission("UPI app notifications (instant)",
-                    "“₹20.01 received” from PhonePe Business, Paytm for Business, Google Pay… Arrives in seconds.",
+                Permission("UPI business app notifications (instant)",
+                    "“₹20.01 received” from PhonePe Business, Paytm for Business, Google Pay for Business or BharatPe. Arrives in seconds.",
                     notifications, p.notificationsOn, { p.notificationsOn = it; tick++ }) {
                     context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 }
                 Permission("Bank SMS (backup)",
-                    "The bank's “credited” SMS. Only those are sent; every other SMS stays on the phone.",
+                    "The bank's “credited” SMS. Only those are sent; texts from phone numbers and every other SMS stay on the phone.",
                     sms, p.smsOn, { p.smsOn = it; tick++ }) { askSms.launch(android.Manifest.permission.RECEIVE_SMS) }
                 Permission("Never paused by battery saver", "So a payment is never held back.", battery, null, null) {
                     context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
@@ -192,10 +193,14 @@ private fun Screen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Also other apps", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("For example your bank's own app. Only “money received” messages are sent.", fontSize = 12.5.sp, color = Muted)
+                        Text("For example your bank's own app. Only “money received” messages are sent, and they count " +
+                            "only for apps listed in the server's UPI_TRUSTED_APPS. Chat and SMS apps are never read.",
+                            fontSize = 12.5.sp, color = Muted)
                     }
                     Switch(p.allApps, { p.allApps = it; tick++ })
                 }
+                Note("The ordinary PhonePe, Google Pay and Paytm apps are not read: anyone can send a chat message " +
+                    "there that says “₹20 received”. With those, the bank's SMS confirms the payment.", Muted)
                 Note("Keep this phone switched on, on the internet and charging: it is the Xerox center's payment line.", Muted)
             }
 
@@ -207,7 +212,7 @@ private fun Screen() {
                     scope.launch { withContext(Dispatchers.IO) { Verifier.send(context); Verifier.heartbeat(context) }; tick++ }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Send now") }
             }
-            Text("CampusPay Verifier ${Verifier.version(context)} · Campus Print · by Vedant Pravin Surve",
+            Text("XeoGo Pay Verifier ${Verifier.version(context)} · XeoGo · by Vedant Pravin Surve",
                 fontSize = 12.sp, color = Muted, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }

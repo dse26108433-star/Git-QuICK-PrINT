@@ -36,7 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * --real-printers: no example printers; register a Station (counter password
  * "demo-counter-password") and its real printers are used.
  *
- * --upi: CampusPay instead of demo payments. The UPI ID is UPI_ID if set (your
+ * --upi: XeoGo Pay instead of demo payments. The UPI ID is UPI_ID if set (your
  * own, to try a real payment of a few rupees), else a made-up one. Bank
  * messages: POST them to /api/v1/payments/upi/alerts with header
  * X-Alert-Token: demo-alert-token-0123456789abcdef, or paste them at the counter.
@@ -89,12 +89,13 @@ public final class LocalDemo {
                 "--campus.supabase.url=http://localhost:" + PORT, "--campus.supabase.service-key=demo",
                 "--campus.counter.password=demo-counter-password",
                 "--campus.agent.token-secret=local-demo-token-secret-0123456789abcdef",
-                "--campus.cors.allowed-origins=*"));
+                "--campus.cors.allowed-origins=*",
+                "--campus.shop.shop-cache-millis=0"));      // tests change printers and look at once
         all.addAll(payment);
         app.run(all.toArray(String[]::new));
-        System.out.println("\n  Campus Print demo backend on http://localhost:" + PORT
+        System.out.println("\n  XeoGo demo backend on http://localhost:" + PORT
                 + "  (counter password: demo-counter-password)"
-                + (upi ? "\n  CampusPay: pay " + upiId + "; bank messages need X-Alert-Token: demo-alert-token-0123456789abcdef"
+                + (upi ? "\n  XeoGo Pay: pay " + upiId + "; bank messages need X-Alert-Token: demo-alert-token-0123456789abcdef"
                        : "") + "\n");
     }
 

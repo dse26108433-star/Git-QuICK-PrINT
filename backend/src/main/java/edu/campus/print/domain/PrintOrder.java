@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * One student's print order (table "orders"): a pickup code, one payment,
+ * One student's print order (table "orders"): an order number, one payment,
  * and one or more documents (OrderDocument), each with its own settings.
  *
  * Named PrintOrder because ORDER is a reserved word in JPA queries.
@@ -46,7 +46,7 @@ public class PrintOrder implements Persistable<UUID> {
     @Column(name = "paid_at")            private Instant paidAt;
     @Column(name = "payment_checked_at") private Instant paymentCheckedAt;
 
-    // CampusPay (direct UPI). Written only by the upi_* functions in db/setup.sql.
+    // XeoGo Pay (direct UPI). Written only by the upi_* functions in db/setup.sql.
     @Column(name = "payment_started_at", insertable = false, updatable = false)  private Instant paymentStartedAt;
     @Column(name = "upi_tag_paise", insertable = false, updatable = false)       private Integer upiTagPaise;
     @Column(name = "payment_claim_ref", insertable = false, updatable = false)   private String paymentClaimRef;
@@ -57,8 +57,15 @@ public class PrintOrder implements Persistable<UUID> {
     @Column(name = "completed_at") private Instant completedAt;
     @Column(name = "failed_at")    private Instant failedAt;
     @Column(name = "collected_at") private Instant collectedAt;
+    /** The student's phone said "I am at the counter". Written only by OrderRepository.markArrived. */
+    @Column(name = "arrived_at", insertable = false, updatable = false) private Instant arrivedAt;
     @Column(name = "error_code")    private String errorCode;
     @Column(name = "error_message") private String errorMessage;
+
+    /** Free printing for college staff: the staff ID this order belongs to. Null: an ordinary order, paid for. */
+    @Column(name = "staff_id", updatable = false) private UUID staffId;
+    /** A staff order: the printed sides it takes from the month's free pages (set when it is reviewed). */
+    @Column(name = "staff_pages") private Integer staffPages;
 
     @Column(name = "created_at", insertable = false, updatable = false) private Instant createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false) private Instant updatedAt;
@@ -103,15 +110,25 @@ public class PrintOrder implements Persistable<UUID> {
     public Instant getPaymentClaimedAt() { return paymentClaimedAt; }
     public String getPaymentNote() { return paymentNote; }
     public String getPaymentVerifiedBy() { return paymentVerifiedBy; }
-    /** The student opened the CampusPay (UPI) payment screen for this order. */
+    /** The student opened the XeoGo Pay (UPI) payment screen for this order. */
     public boolean isUpiStarted() { return "upi".equals(paymentProvider) && paymentStartedAt != null; }
     public Instant getCompletedAt() { return completedAt; }
     public Instant getFailedAt() { return failedAt; }
     public Instant getCollectedAt() { return collectedAt; }
+    public Instant getArrivedAt() { return arrivedAt; }
+    /** The student opened this paid order at the counter within the last few minutes, and has not been handed it yet. */
+    public boolean isAtCounter(java.time.Duration within) {
+        return arrivedAt != null && collectedAt == null && paidAt != null
+                && arrivedAt.isAfter(Instant.now().minus(within));
+    }
     public String getErrorCode() { return errorCode; }
     public void setErrorCode(String v) { this.errorCode = v; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String v) { this.errorMessage = v; }
+    public UUID getStaffId() { return staffId; }
+    public void setStaffId(UUID v) { this.staffId = v; }
+    public Integer getStaffPages() { return staffPages; }
+    public void setStaffPages(Integer v) { this.staffPages = v; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

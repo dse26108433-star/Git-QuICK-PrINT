@@ -108,6 +108,27 @@ object TestFiles {
 
     fun text(name: String) = File(dir, name).apply { writeText("This is just text, not a PDF at all.") }
 
+    /** A small Word file (.docx): a ZIP with the parts Word needs. extra: more parts, by name. */
+    fun docx(name: String, extra: Map<String, String> = emptyMap()): File = File(dir, name).apply {
+        java.util.zip.ZipOutputStream(outputStream()).use { zip ->
+            val parts = linkedMapOf(
+                "[Content_Types].xml" to "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>",
+                "_rels/.rels" to "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/>",
+                "word/document.xml" to "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body/></w:document>")
+            parts.putAll(extra)
+            for ((part, content) in parts) {
+                zip.putNextEntry(java.util.zip.ZipEntry(part))
+                zip.write(content.toByteArray())
+                zip.closeEntry()
+            }
+        }
+    }
+
+    /** An old Word file (.doc): only how it starts matters here. */
+    fun oldDoc(name: String): File = File(dir, name).apply {
+        writeBytes(byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte()) + ByteArray(600))
+    }
+
     /** As the app does with a picked file: its own copy first. */
     fun incoming(f: File) = IncomingFile(f.name, f.length()) {
         File(dir, "copy-${System.nanoTime()}-${f.name}").also { f.copyTo(it) }

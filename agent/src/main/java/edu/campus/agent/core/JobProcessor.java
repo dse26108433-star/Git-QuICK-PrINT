@@ -7,6 +7,7 @@ import edu.campus.agent.net.Messages.ClaimedJob;
 import edu.campus.agent.print.PrintEngine;
 import edu.campus.agent.print.PrintJob;
 import edu.campus.agent.print.PrinterDiscovery;
+import edu.campus.agent.print.SheetPicture;
 import edu.campus.agent.print.SpoolerMonitor;
 import edu.campus.agent.util.TempFiles;
 import org.slf4j.Logger;
@@ -34,6 +35,8 @@ import java.util.function.Consumer;
  *      out on the chosen paper, check the printer can do every setting
  *                                            (problem -> give it back or fail it;
  *                                             nothing has printed)
+ *      a small picture of the first sheet goes to the server: the counter and the
+ *      student's phone show it, which is how the pages find their owner
  *   3. tell the backend SUBMITTED           (if that fails -> do NOT print)
  *   4. write "sent" to the journal on disk
  *   5. send the sheets to Windows           -- point of no return --
@@ -56,6 +59,17 @@ public class JobProcessor {
     private final PrinterHealth health;
     private final long maxFileSizeBytes;
     private volatile Consumer<String> capabilityDoubt = id -> { };
+
+    /** The first-sheet pictures are sent on the side: a slow connection never holds up a printer. */
+    private final ExecutorService pictures = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "sheet-pictures");
+        t.setDaemon(true);
+        return t;
+    });
+    /** A picture never needs to be large: the counter shows it at the size of a hand. */
+    static final int PICTURE_MAX_BYTES = 180 * 1024;
+    /** Until when pictures are not sent: the server is an older one without them. */
+    private volatile long noPicturesUntil;
 
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
     private final ScheduledExecutorService leaseTimer = Executors.newScheduledThreadPool(1, r -> {
@@ -142,6 +156,7 @@ public class JobProcessor {
                 log.warn("{}: the backend took this document back while preparing. Not printing.", tag);
                 return;
             }
+            sendPicture(j, prepared, tag);
 
             // 3: claim the right to print. If the backend does not confirm, we do not print.
             try {
@@ -233,6 +248,37 @@ public class JobProcessor {
                 journal.recordOutcome(entry, status, code, message);
             }
             log.warn("Order {}: result {} saved; will report when the connection is back", j.pickupCode(), status);
+        }
+    }
+
+    /**
+     * Draws the first sheet small and sends it to the server, for the counter
+     * and the student's phone. Whatever goes wrong here, the document prints.
+     */
+    private void sendPicture(ClaimedJob j, PrintEngine.Prepared prepared, String tag) {
+        if (System.currentTimeMillis() < noPicturesUntil) return;
+        try {
+            byte[] jpeg = SheetPicture.of(prepared.imposed().sheets(), prepared.job().color(), PICTURE_MAX_BYTES);
+            if (jpeg == null) {
+                log.debug("{}: no picture of the first sheet could be made", tag);
+                return;
+            }
+            pictures.execute(() -> {
+                try {
+                    backend.sendPreview(j.jobId(), j.claimToken(), jpeg);
+                } catch (RejectedException e) {
+                    if (e.status == 404 || e.status == 405) {
+                        noPicturesUntil = System.currentTimeMillis() + 30 * 60_000L;
+                        log.info("The server does not take pictures of printed sheets yet (it is an older version).");
+                    } else {
+                        log.debug("{}: the picture of the first sheet was not taken ({})", tag, e.getMessage());
+                    }
+                } catch (Exception e) {
+                    log.debug("{}: the picture of the first sheet could not be sent ({})", tag, e.toString());
+                }
+            });
+        } catch (Exception | LinkageError e) {
+            log.debug("{}: no picture of the first sheet ({})", tag, e.toString());
         }
     }
 

@@ -237,7 +237,7 @@ public final class CapabilityDiscovery {
         return c;
     }
 
-    /** Campus Print finishing id -> the Print Schema option that asks for it, and back. */
+    /** XeoGo finishing id -> the Print Schema option that asks for it, and back. */
     public static final Map<String, String> STAPLES = Map.of(
             "psk:StapleTopLeft", "STAPLE_TOP_LEFT", "psk:StapleTopRight", "STAPLE_TOP_RIGHT",
             "psk:StapleBottomLeft", "STAPLE_BOTTOM_LEFT", "psk:StapleBottomRight", "STAPLE_BOTTOM_RIGHT",

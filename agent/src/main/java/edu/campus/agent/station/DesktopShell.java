@@ -75,7 +75,7 @@ public final class DesktopShell {
         if (!SystemTray.isSupported()) return;
         try {
             PopupMenu menu = new PopupMenu();
-            MenuItem openItem = new MenuItem("Open Campus Print");
+            MenuItem openItem = new MenuItem("Open XeoGo");
             openItem.addActionListener(e -> open.run());
             menu.add(openItem);
             menu.addSeparator();
@@ -88,7 +88,7 @@ public final class DesktopShell {
             quitItem.addActionListener(e -> quit.run());
             menu.add(quitItem);
 
-            trayIcon = new TrayIcon(icon(), "Campus Print Station", menu);
+            trayIcon = new TrayIcon(icon(), "XeoGo Station", menu);
             trayIcon.setImageAutoSize(true);
             trayIcon.addActionListener(e -> open.run());          // double-click
             SystemTray.getSystemTray().add(trayIcon);
@@ -134,9 +134,35 @@ public final class DesktopShell {
         return run("reg", "query", RUN_KEY, "/v", RUN_VALUE) == 0;
     }
 
+    /**
+     * After an update the program can be in a new folder or have a new name
+     * (before 4.3 it was "Campus Print Station"). "Start with Windows" then
+     * still points at the old place, which is gone: point it at this program.
+     */
+    public static void refreshAutostart() {
+        if (!autostartSupported()) return;
+        String now = output("reg", "query", RUN_KEY, "/v", RUN_VALUE);
+        if (now == null) return;                                  // switched off: leave it off
+        if (!now.toLowerCase(java.util.Locale.ROOT).contains(launcher().toLowerCase(java.util.Locale.ROOT))) {
+            log.info("Start with Windows pointed at another place: now this program");
+            setAutostart(true);
+        }
+    }
+
+    /** What a command printed, or null when it failed. */
+    private static String output(String... cmd) {
+        try {
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            String text = new String(p.getInputStream().readAllBytes(), java.nio.charset.Charset.defaultCharset());
+            return p.waitFor(15, TimeUnit.SECONDS) && p.exitValue() == 0 ? text : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public static boolean setAutostart(boolean on) {
         if (!autostartSupported()) return false;
-        // The value holds quotes ("C:\...\Campus Print Station.exe" --background), which do not survive
+        // The value holds quotes ("C:\...\XeoGo Station.exe" --background), which do not survive
         // Windows command-line quoting; an encoded PowerShell command carries them safely.
         String key = "'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'";
         String script = on

@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Campus Print Station - the Xerox center app.
+   XeoGo Station - the Xerox center app.
    Same vocabulary as the student website: paper, ink, and the
    indicator lamps on a copier (green ready, amber working, red
    attention) as the only strong colours.
@@ -169,13 +169,34 @@ p { margin: 0; }
 .label-switch small { display: block; color: var(--ink-soft); font-size: 12.5px; }
 .label-switch.off { border-color: #EBD3AE; background: var(--work-bg); }
 
-/* ---------- counter: find a code ---------- */
+/* ---------- counter: students at the counter now (no code: their order comes up by itself) ---------- */
+.at { background: var(--ready-bg); border: 2px solid var(--lamp-ready); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
+.at:empty { display: none; }
+.at.new { animation: arrive 1.4s ease-out; }
+@keyframes arrive { from { box-shadow: 0 0 0 10px rgba(46, 125, 79, .35); } to { box-shadow: 0 0 0 0 rgba(46, 125, 79, 0); } }
+.at h2 { display: flex; align-items: center; gap: 10px; font-size: 17px; margin: 0; }
+.at > .sub { font-size: 13.5px; color: var(--ink-soft); margin: 2px 0 2px; }
+.at .order { margin-top: 10px; border-color: #BFDCCB; grid-template-columns: auto 1fr auto; }
+
+/* pictures of the first printed sheets */
+.pics { display: flex; gap: 8px; flex-wrap: wrap; align-content: center; max-width: 360px; }
+.pic { position: relative; width: 44px; height: 58px; flex: none; padding: 0; border: 1px solid var(--rule-strong); border-radius: 4px;
+       background: #F3F4F0; display: grid; place-items: center; overflow: hidden; font-size: 11px; color: var(--ink-soft); cursor: default; }
+.pic.has { cursor: zoom-in; }
+.pic.big { width: 104px; height: 138px; }
+.pic img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.pic.bw img, .zoom.bw img { filter: grayscale(1); }
+.pic .n { position: absolute; left: 2px; bottom: 2px; background: var(--ink); color: #fff; font-size: 10px; font-weight: 700;
+          border-radius: 3px; padding: 0 4px; line-height: 15px; }
+.zoom { position: fixed; inset: 0; z-index: 60; background: rgba(20, 38, 59, .86); display: grid; place-items: center; padding: 24px; cursor: zoom-out; }
+.zoom img { max-width: 100%; max-height: 100%; background: #fff; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+
+/* ---------- counter: find an order by a file name (a phone without internet) ---------- */
 .find { display: grid; grid-template-columns: minmax(260px, 420px) 1fr; gap: 14px; align-items: start; margin-bottom: 18px; }
 .find-box { position: relative; }
-.find-box .input { min-height: 64px; font-size: 32px; font-weight: 700; letter-spacing: .28em; text-transform: uppercase;
-                   padding: 0 18px; font-variant-numeric: tabular-nums; border-radius: var(--radius); }
-.find-box .input::placeholder { font-size: 16px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8B98A5; }
+.find-box .input { min-height: 44px; font-size: 15px; padding: 0 14px; border-radius: var(--radius); width: 100%; }
 .find-hint { font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+.find-result { display: grid; gap: 8px; }
 .find-result:empty { display: none; }
 .found { display: flex; align-items: center; gap: 16px; background: var(--sheet); border: 2px solid var(--lamp-ready); border-radius: var(--radius);
          padding: 14px 18px; box-shadow: var(--shadow); }
@@ -208,9 +229,10 @@ p { margin: 0; }
 .tab.on .n { background: var(--ink); color: #fff; }
 .tab.alert .n { background: var(--lamp-stop); color: #fff; }
 .orders { display: grid; gap: 8px; }
-.order { display: grid; grid-template-columns: 116px 1fr auto; gap: 16px; align-items: center; background: var(--sheet);
+.order { display: grid; grid-template-columns: minmax(0, auto) 1fr auto; gap: 16px; align-items: center; background: var(--sheet);
          border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 16px; }
 .order .code { font-size: 22px; font-weight: 800; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+.order .no { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--ink-soft); }
 .order .file { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .order .meta { font-size: 13px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 3px; }
 .order .err { font-size: 13px; color: var(--lamp-stop); margin-top: 4px; }
@@ -291,7 +313,7 @@ p { margin: 0; }
   .main { padding: 20px 16px 40px; }
 }
 
-/* ------------------------------------------------------------------ CampusPay: UPI payments */
+/* ------------------------------------------------------------------ XeoGo Pay: UPI payments */
 .tab.hidden { display: none; }
 .pay-h { font-size: 15px; margin: 18px 0 8px; }
 .pay-order { border-left: 4px solid var(--lamp-work); }
@@ -306,5 +328,47 @@ p { margin: 0; }
 .pay-alerts td, .pay-alerts th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
 .pay-alerts th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
 .pay-alerts .msg { color: var(--ink-soft); word-break: break-word; }
+.pay-alerts .untrusted td { background: var(--stop-bg); }
+.pay-alerts .why { display: block; color: var(--lamp-stop); margin: 2px 0 6px; }
 .found .acts { display: flex; gap: 6px; flex-wrap: wrap; }
 .orders > .sub, .paste .sub { color: var(--ink-soft); font-size: 13px; }
+
+/* ---------------------------------------------------------------- staff IDs (free printing for college staff) */
+.badge.staff { background: #E6ECF7; color: #24427A; }
+.order .who { font-weight: 600; color: var(--ink); }
+.staff-list { display: grid; gap: 8px; }
+.staff-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(170px, 1fr) auto; gap: 14px; align-items: center;
+  border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
+.staff-row.off { background: #F6F6F3; }
+.staff-row.off .who b { color: var(--ink-soft); }
+.staff-row .who { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
+.staff-row .who b { font-size: 15px; overflow-wrap: anywhere; }
+.staff-row .user { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--ink-soft); }
+.staff-row .use .n { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.staff-row .use .last { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.staff-row .bar { height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; margin-top: 4px; }
+.staff-row .bar i { display: block; height: 100%; background: var(--lamp-ready); }
+.staff-row .bar i.full { background: var(--lamp-stop); }
+.staff-row .acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (max-width: 900px) { .staff-row { grid-template-columns: 1fr; } .staff-row .acts { justify-content: flex-start; } }
+.slip { margin-top: 14px; border: 2px solid var(--lamp-ready); background: var(--ready-bg); border-radius: 10px; padding: 14px 16px; }
+.slip > b { display: block; font-size: 15px; }
+.slip dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 10px 0; align-items: baseline; }
+.slip dt { font-size: 13px; color: var(--ink-soft); }
+.slip dd { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 16px; font-weight: 700; user-select: all; overflow-wrap: anywhere; }
+.slip dd.big { font-size: 22px; letter-spacing: .06em; }
+.slip p { font-size: 13px; color: var(--ink-2); margin: 0 0 10px; }
+.slip .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* The slip for the staff member, on paper: only the slip prints. */
+#printSlip { display: none; }
+@media print {
+  body > *:not(#printSlip) { display: none !important; }
+  #printSlip { display: block; font-family: system-ui, "Segoe UI", sans-serif; color: #000; padding: 12mm; max-width: 110mm; border: 1px dashed #666; }
+  #printSlip h1 { font-size: 16pt; margin: 0 0 1mm; }
+  #printSlip .where { font-size: 10pt; margin: 0 0 5mm; color: #333; }
+  #printSlip dl { display: grid; grid-template-columns: auto 1fr; gap: 2mm 6mm; margin: 0 0 5mm; }
+  #printSlip dt { font-size: 10pt; color: #333; }
+  #printSlip dd { margin: 0; font-family: Consolas, monospace; font-size: 14pt; font-weight: 700; }
+  #printSlip .note { font-size: 9.5pt; margin: 0; }
+}

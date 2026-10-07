@@ -32,10 +32,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /**
- * CampusPay, the Xerox center's own UPI payment gateway (PAYMENT_MODE=upi),
+ * XeoGo Pay, the Xerox center's own UPI payment gateway (PAYMENT_MODE=upi),
  * against a real PostgreSQL: amounts that tell payments apart, bank messages
  * that pay exactly one order, the student's reference number, and staff
- * confirming at the counter. Above all: nothing is paid on anyone's word alone.
+ * confirming at the counter. Above all: nothing is paid on anyone's word alone,
+ * and nothing is paid by a message somebody other than the bank could have written.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -72,11 +73,13 @@ class UpiPaymentTest {
         r.add("spring.datasource.username", () -> "postgres");
         r.add("spring.datasource.password", () -> "");
         r.add("campus.supabase.url", () -> "https://storage.test");
+        r.add("campus.shop.shop-cache-millis", () -> "0");
         r.add("campus.supabase.service-key", () -> "test-key");
         r.add("campus.payment.mode", () -> "upi");
         r.add("campus.payment.upi-id", () -> "xeroxshop@okaxis");
         r.add("campus.payment.upi-name", () -> "Main Xerox Center");
         r.add("campus.payment.upi-alert-token", () -> TOKEN);
+        r.add("campus.payment.upi-sms-senders", () -> "BANK");     // the test shop's bank texts as "AX-BANK"
         r.add("campus.counter.password", () -> COUNTER);
         r.add("campus.agent.token-secret", () -> "a-test-token-secret-that-is-long-enough-123");
         r.add("campus.cors.allowed-origins", () -> "http://localhost:3000");
@@ -86,6 +89,7 @@ class UpiPaymentTest {
     void shop() throws Exception {
         jdbc.update("delete from payment_alerts");
         jdbc.update("delete from payment_verifiers");
+        jdbc.update("delete from payment_senders");
         jdbc.update("delete from order_events");
         jdbc.update("delete from order_documents");
         jdbc.update("delete from orders");
@@ -382,7 +386,128 @@ class UpiPaymentTest {
         assertThat(claimed.view().path("status").asText()).isEqualTo("QUEUED");
     }
 
+    // ------------------------------------------------------------------ messages anyone could have written
+
+    @Test
+    void aTextFromAPhoneNumberNeverPaysAnOrder() throws Exception {
+        Order o = pricedOrder(1);
+        o.startPayment();                                                    // Rs 2.01
+        // A student texts the shop's phone the words a bank would use.
+        for (String from : List.of("+919876543210", "9876543210", "98765 43210", "")) {
+            JsonNode r = from(from, "sms", "Dear customer, your a/c XX1234 is credited by Rs.2.01 on 06Oct26. UPI Ref "
+                    + "62731234" + (1000 + from.length()));
+            assertThat(r.path("stored").asBoolean()).isTrue();
+            assertThat(r.path("trusted").asBoolean()).as("from '" + from + "'").isFalse();
+            assertThat(r.path("paidOrder").isNull()).isTrue();
+        }
+        assertThat(o.view().path("status").asText()).isEqualTo("AWAITING_PAYMENT");
+        // Typing the reference number of that text does not help either.
+        assertThat(o.claim("627312341013").path("status").asText()).isEqualTo("AWAITING_PAYMENT");
+        // Staff see it, with the reason, and cannot make that number a "bank".
+        JsonNode alerts = counter(get("/api/v1/counter/payments")).path("alerts");
+        assertThat(alerts).hasSize(4);
+        assertThat(alerts.get(0).path("trusted").asBoolean()).isFalse();
+        assertThat(alerts.get(0).path("trustNote").asText()).contains("phone number");
+        assertThat(alerts.get(0).path("senderKey").isNull()).isTrue();
+        MvcResult t = mvc.perform(post("/api/v1/counter/payments/alerts/" + alerts.get(3).path("id").asText()
+                + "/trust-sender").header("X-Counter-Password", COUNTER)).andReturn();
+        assertThat(t.getResponse().getStatus()).isEqualTo(400);
+        // The bank's own messages keep working next to all this.
+        Order honest = pricedOrder(1);
+        honest.startPayment();                                               // Rs 2.02
+        assertThat(sms("Rs 2.02 credited to a/c XX1234 UPI Ref 627399990001").path("paidOrder").asText())
+                .isEqualTo(honest.code);
+        assertThat(o.view().path("status").asText()).isEqualTo("AWAITING_PAYMENT");
+    }
+
+    @Test
+    void aChatMessageInAUpiAppNeverPaysAnOrder() throws Exception {
+        Order o = pricedOrder(1);
+        o.startPayment();                                                    // Rs 2.01
+        // Anyone can send the shop a message in Google Pay, PhonePe or Paytm; the phone shows it as a notification.
+        for (String app : List.of("com.google.android.apps.nbu.paisa.user", "com.phonepe.app", "net.one97.paytm",
+                "com.whatsapp")) {
+            JsonNode r = from("Rahul", "notification:" + app, "Rs 2.01 received " + app.length());
+            assertThat(r.path("trusted").asBoolean()).as(app).isFalse();
+            assertThat(r.path("paidOrder").isNull()).isTrue();
+        }
+        assertThat(o.view().path("status").asText()).isEqualTo("AWAITING_PAYMENT");
+        // A business UPI app has no chat: its "received" notification is the payment company speaking.
+        JsonNode real = from("PhonePe Business", "notification:com.phonepe.app.business", "Rs 2.01 received from Rahul");
+        assertThat(real.path("trusted").asBoolean()).isTrue();
+        assertThat(real.path("paidOrder").asText()).isEqualTo(o.code);
+    }
+
+    @Test
+    void anUnknownSenderNameWaitsUntilStaffSayItIsTheirBank() throws Exception {
+        Order o = pricedOrder(2);
+        o.startPayment();                                                    // Rs 4.01
+        // A ledger app texts "you received" for whatever a stranger typed in: a sender name, but not a bank.
+        JsonNode khata = from("VM-KHTABK", "sms", "You received Rs 4.01 from Rahul Stores. Balance Rs 0");
+        assertThat(khata.path("trusted").asBoolean()).isFalse();
+        assertThat(khata.path("paidOrder").isNull()).isTrue();
+        // The shop's real bank is a small one this server does not know yet.
+        JsonNode bank = from("JD-RDCBNK-S", "sms", "Your a/c XX1234 is credited by Rs.4.01 UPI Ref 627312340001");
+        assertThat(bank.path("trusted").asBoolean()).isFalse();
+        assertThat(o.view().path("status").asText()).isEqualTo("AWAITING_PAYMENT");
+
+        JsonNode list = counter(get("/api/v1/counter/payments"));
+        JsonNode waiting = list.path("alerts").get(0);
+        assertThat(waiting.path("senderKey").asText()).isEqualTo("RDCBNK");
+        assertThat(waiting.path("trustNote").asText()).contains("This is our bank");
+        // One press at the counter: that sender is believed from now on, and the waiting message pays its order.
+        JsonNode trusted = counter(post("/api/v1/counter/payments/alerts/" + waiting.path("id").asText() + "/trust-sender"));
+        assertThat(trusted.path("sender").asText()).isEqualTo("RDCBNK");
+        assertThat(o.view().path("status").asText()).isEqualTo("QUEUED");
+        assertThat(counter(get("/api/v1/counter/payments")).path("senders").get(0).asText()).isEqualTo("RDCBNK");
+        // The ledger app's text is still not counted.
+        assertThat(jdbc.queryForObject("select count(*) from payment_alerts where not trusted", Integer.class)).isEqualTo(1);
+
+        Order next = pricedOrder(3);
+        next.startPayment();                                                 // Rs 6.01
+        assertThat(from("AX-RDCBNK", "sms", "Your a/c XX1234 is credited by Rs.6.01 UPI Ref 627312340002")
+                .path("paidOrder").asText()).isEqualTo(next.code);
+    }
+
+    @Test
+    void anAmountIsNotGivenOutAgainWhileOthersAreFree() throws Exception {
+        Order a = pricedOrder(2);
+        assertThat(a.startPayment().path("amountPaise").asInt()).isEqualTo(401);
+        // a never pays and its payment screen is long closed.
+        jdbc.update("update orders set payment_started_at = now() - interval '3 hours' where id = ?::uuid", a.id);
+        // The next student gets an amount nobody had, so a late message about Rs 4.01 can only mean a.
+        assertThat(pricedOrder(2).startPayment().path("amountPaise").asInt()).isEqualTo(402);
+    }
+
+    @Test
+    void whilePaymentsConfirmByThemselvesIHavePaidNeedsTheReferenceNumber() throws Exception {
+        jdbc.update("delete from payment_verifiers");
+        heartbeat();
+        Order o = pricedOrder(1);
+        o.startPayment();
+        ObjectNode none = JSON.createObjectNode();
+        none.putNull("reference");
+        MvcResult r = mvc.perform(key(post("/api/v1/orders/" + o.id + "/payment/claim"), o)
+                .contentType(MediaType.APPLICATION_JSON).content(none.toString())).andReturn();
+        assertThat(r.getResponse().getStatus()).isEqualTo(400);
+        assertThat(json(r).path("error").asText()).isEqualTo("REFERENCE_NEEDED");
+        assertThat(counter(get("/api/v1/counter/summary")).path("paymentsToCheck").asInt()).isZero();
+        assertThat(o.claim("627312345678").path("stage").asText()).isEqualTo("Checking your payment");
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    /** A message as the Verifier phone forwards it, from this sender (SMS) or with this title (notification). */
+    private JsonNode from(String sender, String source, String text) throws Exception {
+        ObjectNode b = JSON.createObjectNode();
+        if (!sender.isEmpty()) b.put("from", sender);
+        b.put("text", text);
+        b.put("source", source);
+        MvcResult r = mvc.perform(post("/api/v1/payments/upi/alerts").header("X-Alert-Token", TOKEN)
+                .contentType(MediaType.APPLICATION_JSON).content(b.toString())).andReturn();
+        assertThat(r.getResponse().getStatus()).as(r.getResponse().getContentAsString()).isEqualTo(200);
+        return json(r);
+    }
 
     private JsonNode sms(String text) throws Exception {
         return sms(text, null);

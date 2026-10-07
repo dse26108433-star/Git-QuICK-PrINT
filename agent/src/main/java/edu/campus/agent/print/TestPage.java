@@ -48,7 +48,7 @@ public final class TestPage {
                 cs.beginText();
                 cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 28);
                 cs.newLineAtOffset(60, 760);
-                cs.showText("Campus Print - test page");
+                cs.showText("XeoGo - test page");
                 cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
                 cs.newLineAtOffset(0, -30);
                 cs.showText("If you can read this, the Xerox PC can print. " + LocalDateTime.now().withNano(0));

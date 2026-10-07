@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A printer connected to a Xerox center PC. Added by the Campus Print Station
+ * A printer connected to a Xerox center PC. Added by the XeoGo Station
  * app when staff tick it after the printer scan (or by hand in seed.sql).
  *
  * capabilities: what the printer can do, as Windows reports it (paper sizes,

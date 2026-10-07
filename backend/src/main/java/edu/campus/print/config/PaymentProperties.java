@@ -5,11 +5,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * mode = "demo"      no real money; a "Pay (demo)" button marks the order paid.
  *                    Only for testing on your own computer.
- * mode = "upi"       CampusPay: students pay the Xerox center's own UPI ID with
+ * mode = "upi"       XeoGo Pay: students pay the Xerox center's own UPI ID with
  *                    any UPI app; bank messages or staff confirm each payment.
  *                    upiId: the UPI ID, or the text of the shop's UPI QR code.
  *                    upiAlertToken: the secret the phone that forwards bank SMS sends.
+ *                    upiSmsSenders: more bank SMS sender names to believe (e.g. "SVCBNK, TJSBBK").
+ *                    upiTrustedApps: more UPI app packages whose notifications are believed.
  * mode = "razorpay"  payments through Razorpay (test keys first, live keys later).
+ *
+ * Anything else (also an empty PAYMENT_MODE) switches paying OFF: nothing is
+ * ever printed for free because a setting was forgotten.
  */
 @ConfigurationProperties(prefix = "campus.payment")
 public record PaymentProperties(
@@ -20,8 +25,14 @@ public record PaymentProperties(
         String upiName,
         String upiMerchantCode,
         String upiAlertToken,
-        Integer upiMatchMinutes
+        Integer upiMatchMinutes,
+        String upiSmsSenders,
+        String upiTrustedApps
 ) {
+    public boolean isDemo() {
+        return "demo".equalsIgnoreCase(mode == null ? "" : mode.trim());
+    }
+
     public boolean isRazorpay() {
         return "razorpay".equalsIgnoreCase(mode == null ? "" : mode.trim());
     }

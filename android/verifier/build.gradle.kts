@@ -5,9 +5,9 @@ plugins {
 }
 
 /*
- * CampusPay Verifier: runs on the Xerox center's phone (the one that gets the
+ * XeoGo Pay Verifier: runs on the Xerox center's phone (the one that gets the
  * UPI payments). It passes each "money received" notification of the UPI
- * business app, and each bank SMS about money received, to the Campus Print
+ * business app, and each bank SMS about money received, to the XeoGo
  * server, which confirms the student's order by itself. Not for students.
  */
 android {
@@ -18,8 +18,8 @@ android {
         applicationId = "edu.campus.verifier"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         // The server it talks to, unless changed on the phone (-PapiBase=http://... to build for another one)
         val apiBase = (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
@@ -31,6 +31,15 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+        // "dist": the build that is handed out (gradlew :verifier:assembleDist): cannot be debugged, code left
+        // as tested, signed with this computer's debug key so it installs over the copy handed out before.
+        create("dist") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
         }
     }
 

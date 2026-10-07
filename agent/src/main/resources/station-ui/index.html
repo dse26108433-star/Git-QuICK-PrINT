@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Campus Print Station</title>
+<title>XeoGo Station</title>
 <link rel="icon" href="icon-64.png">
 <link rel="stylesheet" href="app.css">
 </head>
@@ -11,33 +11,27 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <symbol id="logo" viewBox="0 0 64 64">
-      <rect width="64" height="64" rx="14" fill="#14263B"/>
-      <path d="M20 13h17l9 9v29a2 2 0 0 1-2 2H20a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z" fill="#fff"/>
-      <path d="M37 13v9h9" fill="#D9DCD4"/>
-      <rect x="23" y="29" width="18" height="2.6" rx="1.3" fill="#9AA3AC"/>
-      <rect x="23" y="35" width="14" height="2.6" rx="1.3" fill="#9AA3AC"/>
-      <circle cx="46" cy="47" r="8" fill="#2E7D4F" stroke="#14263B" stroke-width="3"/>
-    </symbol>
     <symbol id="i-counter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M3 10h18M5 10V20h14V10M8 10V6a4 4 0 0 1 8 0v4"/></symbol>
     <symbol id="i-printer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-staff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
   </defs>
 </svg>
 
-<div id="boot" class="boot">Starting Campus Print&hellip;</div>
+<div id="boot" class="boot">Starting XeoGo&hellip;</div>
 
 <!-- =============================== SETUP WIZARD =============================== -->
 <section id="setup" class="setup hidden">
   <div class="setup-card">
     <div class="setup-brand">
-      <svg class="logo"><use href="#logo"/></svg>
-      <div><b>Campus Print Station</b><small>Set up this Xerox center PC</small></div>
+      <img class="logo" src="logo.png" alt="">
+      <div><b>XeoGo Station</b><small>Set up this Xerox center PC</small></div>
     </div>
     <ol class="steps">
       <li id="ss1">1. Connect</li><li id="ss2">2. Printers</li><li id="ss3">3. Ready</li>
@@ -46,9 +40,9 @@
     <!-- step 1 -->
     <div class="card" id="setupConnect">
       <h1>Connect this PC</h1>
-      <p class="lead">Campus Print needs to know where your online shop lives. You only do this once.</p>
+      <p class="lead">XeoGo needs to know where your online shop lives. You only do this once.</p>
       <div class="form">
-        <label class="field"><span>Campus Print server address</span>
+        <label class="field"><span>XeoGo server address</span>
           <input class="input" id="suUrl" placeholder="https://your-print-server.example.com" autocomplete="off" spellcheck="false">
           <small>The address of your backend. Ask the person who set up the website if you do not know it.</small>
         </label>
@@ -75,7 +69,7 @@
           <div>
             <h1>Choose the printers</h1>
             <p class="lead" style="margin:6px 0 0">We found these printers on this PC and read what each can do (paper sizes,
-              two-sided, stapling...). Tick the ones Campus Print may use, give each a short name, and say if it prints in colour.</p>
+              two-sided, stapling...). Tick the ones XeoGo may use, give each a short name, and say if it prints in colour.</p>
           </div>
           <button class="btn ghost sm" data-scan>Scan again</button>
         </div>
@@ -94,9 +88,10 @@
       <h1>This PC is ready</h1>
       <p class="lead" style="margin-top:6px">Paid orders from the student website now print here automatically.</p>
       <ul class="checklist">
-        <li>Each file's first page shows its pickup code in the corner (no cover sheets, no wasted paper).</li>
+        <li>No codes: a student opens their order at the counter and it appears on this screen, with a picture of each file.</li>
+        <li>Each file's first page has a small order number in the corner, so piles are easy to tell apart (no cover sheets).</li>
         <li>Students only see the paper sizes and options your printers can really do.</li>
-        <li id="suAutostartLine">Campus Print starts together with Windows and keeps printing when this window is closed.</li>
+        <li id="suAutostartLine">XeoGo starts together with Windows and keeps printing when this window is closed.</li>
         <li>The printer icon next to the clock opens this screen again.</li>
       </ul>
       <div class="form-actions">
@@ -111,24 +106,25 @@
 <div id="app" class="app hidden">
   <aside class="side">
     <div class="side-brand">
-      <svg class="logo"><use href="#logo"/></svg>
-      <div><b>Campus Print</b><small id="sideCenter">Xerox center</small></div>
+      <img class="logo" src="logo.png" alt="">
+      <div><b>XeoGo</b><small id="sideCenter">Xerox center</small></div>
     </div>
     <nav class="nav" aria-label="Pages">
       <button data-view="counter" class="on"><svg><use href="#i-counter"/></svg>Counter<span class="count hidden" id="navReady"></span></button>
       <button data-view="printers"><svg><use href="#i-printer"/></svg>Printers<span class="count alert hidden" id="navPrinters">!</span></button>
+      <button data-view="staff"><svg><use href="#i-staff"/></svg>Staff</button>
       <button data-view="settings"><svg><use href="#i-settings"/></svg>Settings</button>
     </nav>
     <div class="side-foot">
       <div class="pc"><span class="lamp" id="pcLamp"></span><span id="pcText">Checking&hellip;</span></div>
       <div class="pc-detail" id="pcDetail"></div>
-      <div class="version">Campus Print Station <span class="ver"></span></div>
+      <div class="version">XeoGo Station <span class="ver"></span></div>
       <div class="credit">by Vedant Pravin Surve</div>
     </div>
   </aside>
 
   <main class="main">
-    <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to CampusPay (PAYMENT_MODE=upi) or Razorpay before real use.</div>
+    <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to XeoGo Pay (PAYMENT_MODE=upi) or Razorpay before real use.</div>
     <div id="appError" class="notice stop hidden" style="margin-bottom:16px" role="alert"></div>
 
     <!-- ------------------------------ COUNTER ------------------------------ -->
@@ -139,15 +135,18 @@
           <p class="sub" id="counterSub">&nbsp;</p>
         </div>
         <label class="label-switch" id="stampCard" title="Switch off for a while if a student wants nothing but their own file on the paper">
-          <span class="switch"><input type="checkbox" id="stampToggle" aria-label="Print pickup code on pages"><i></i></span>
-          <span><b>Pickup code on pages</b><small id="stampHint">Printed small in the corner of each first page</small></span>
+          <span class="switch"><input type="checkbox" id="stampToggle" aria-label="Print the order number on pages"><i></i></span>
+          <span><b>Order number on pages</b><small id="stampHint">Printed small in the corner of each first page</small></span>
         </label>
       </div>
 
+      <!-- Students standing at the counter: their order appears here by itself, with pictures of the files -->
+      <div class="at" id="atCounter" aria-live="polite"></div>
+
       <div class="find">
         <div class="find-box">
-          <input class="input" id="findCode" maxlength="5" placeholder="Type the student's pickup code" autocomplete="off" spellcheck="false" aria-label="Pickup code">
-          <div class="find-hint">The student shows the code on their phone. Press <b>Enter</b> to hand over.</div>
+          <input class="input" id="findText" maxlength="80" placeholder="Find an order: file name or order number" autocomplete="off" spellcheck="false" aria-label="Find an order by a file name or its order number">
+          <div class="find-hint">Only when a student's phone has no internet. Otherwise their order appears above when they tap <b>I'm at the counter</b>.</div>
         </div>
         <div class="find-result" id="findResult" aria-live="polite"></div>
       </div>
@@ -178,15 +177,81 @@
       </div>
       <div class="plist" id="printerEditor"></div>
       <div id="printersError" class="notice stop hidden" style="margin-top:14px" role="alert"></div>
+
+      <div class="card" id="wordCard" style="margin-top:18px">
+        <div class="card-head" style="margin-bottom:8px">
+          <div><h2>Word files <span class="small muted">(.docx)</span></h2></div>
+          <button class="btn ghost" id="wordCheck">Check again</button>
+        </div>
+        <p id="wordState" class="notice work" aria-live="polite">Checking Microsoft Word on this PC&hellip;</p>
+        <p class="small muted" style="margin:10px 0 0">Students add Word files like any other file. This PC opens each one
+          in its own Microsoft Word, out of sight, and turns it into pages: it prints exactly as it would from a pen
+          drive, and the student sees those pages before paying. A file with macros or anything else that can run is
+          refused before it gets here. The Word you work with yourself is not touched.</p>
+      </div>
       <div class="page-actions">
         <span class="small muted" id="printersSaved"></span>
         <button class="btn" id="savePrinters">Save printers</button>
       </div>
     </section>
 
+    <!-- ------------------------------ STAFF ------------------------------ -->
+    <section id="view-staff" class="hidden">
+      <div class="page-head">
+        <div>
+          <h1>Staff</h1>
+          <p class="sub">College staff print for free with a staff ID: a username and a password that you make here, nothing
+            else. They sign in on the staff website or the staff app and collect like everyone else, by showing their files.
+            No payment, no code.</p>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h2>New staff ID</h2>
+          <div class="form" style="margin-top:12px">
+            <label class="field"><span>Name</span>
+              <input class="input" id="staffName" maxlength="60" placeholder="e.g. Prof. Rakesh Sharma" autocomplete="off"></label>
+            <label class="field"><span>Username</span>
+              <input class="input" id="staffUsername" maxlength="30" placeholder="Leave empty: made from the name" autocomplete="off" spellcheck="false">
+              <small>The password is made for you: you see it once, right after.</small></label>
+          </div>
+          <div id="staffMadeNote" class="notice stop hidden" style="margin-top:12px" role="alert"></div>
+          <div class="page-actions"><button class="btn" id="staffMake">Make staff ID</button></div>
+          <div id="staffSlip" class="slip hidden" aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <h2>Free pages</h2>
+          <div class="form" style="margin-top:12px">
+            <label class="field"><span>Free pages for each staff ID, per month</span>
+              <input class="input" id="staffPages" type="number" min="0" max="100000" step="50" inputmode="numeric">
+              <small>One printed side is one page. The count starts again by itself on the 1st of every month. One ID can
+                have its own number: press <b>Pages</b> on that ID.</small></label>
+          </div>
+          <div class="page-actions"><span class="small muted" id="staffSaved"></span><button class="btn" id="staffSave">Save</button></div>
+          <div class="set-row">
+            <div><b>Colour and special paper are free too</b>
+              <small>Off: free staff printing is black &amp; white on the usual paper.</small></div>
+            <span class="switch"><input type="checkbox" id="staffColor" aria-label="Colour and special paper are free for staff"><i></i></span>
+          </div>
+          <div class="set-row" id="staffSiteRow">
+            <div><b>Where staff sign in</b><small id="staffSite"></small></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-head">
+          <div><h2>Staff IDs <span class="muted" id="staffCount"></span></h2><p class="small muted" id="staffMonth"></p></div>
+          <input class="input" id="staffFilter" placeholder="Find a name or username" style="max-width:260px" autocomplete="off" aria-label="Find a staff ID">
+        </div>
+        <div id="staffList" class="staff-list"></div>
+      </div>
+    </section>
+
     <!-- ------------------------------ SETTINGS ------------------------------ -->
     <section id="view-settings" class="hidden">
-      <div class="page-head"><div><h1>Settings</h1><p class="sub">Prices, the pickup code, and this PC.</p></div></div>
+      <div class="page-head"><div><h1>Settings</h1><p class="sub">Prices, the label on pages, and this PC.</p></div></div>
       <div class="grid2">
         <div class="card">
           <h2>Shop</h2>
@@ -212,12 +277,12 @@
         </div>
 
         <div class="card">
-          <h2>Pickup code on pages</h2>
+          <h2>Order number on pages</h2>
           <div class="set-row">
-            <div><b>Print the pickup code on each order</b>
-              <small>Small label in the corner of the first page, so staff can find the right pages. Switch it off for a
-                while if a student wants only their own file on the paper, then switch it on again.</small></div>
-            <span class="switch"><input type="checkbox" id="stampToggle2" aria-label="Print pickup code on pages"><i></i></span>
+            <div><b>Print the order number on each file</b>
+              <small>Small label in the corner of the first page, so staff can tell the orders apart in the tray. Nobody has
+                to show or type it. Switch it off for a while if a student wants only their own file on the paper.</small></div>
+            <span class="switch"><input type="checkbox" id="stampToggle2" aria-label="Print the order number on pages"><i></i></span>
           </div>
         </div>
 
@@ -242,11 +307,11 @@
             <button class="btn ghost sm" id="openLogs">Open folder</button>
           </div>
           <div class="set-row">
-            <div><b>About</b><small>Campus Print Station <span class="ver"></span> &middot; Designed &amp; developed by
+            <div><b>About</b><small>XeoGo Station <span class="ver"></span> &middot; Designed &amp; developed by
               <b style="display:inline;color:var(--ink)">Vedant Pravin Surve</b></small></div>
           </div>
           <div class="set-row">
-            <div><b>Disconnect this PC</b><small>It stops printing, and its printers are removed from Campus Print.</small></div>
+            <div><b>Disconnect this PC</b><small>It stops printing, and its printers are removed from XeoGo.</small></div>
             <button class="btn danger sm" id="disconnect">Disconnect</button>
           </div>
         </div>
@@ -255,6 +320,7 @@
   </main>
 </div>
 
+<div id="printSlip" aria-hidden="true"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="app.js"></script>
 </body>

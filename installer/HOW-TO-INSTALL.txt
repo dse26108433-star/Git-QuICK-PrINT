@@ -1,32 +1,38 @@
-CAMPUS PRINT STATION 4.2.0 - INSTALLING AT A XEROX CENTER
-==========================================================
+XEOGO STATION 4.3.0 - INSTALLING AT A XEROX CENTER
+===================================================
+(QuICK PrINT. Before version 4.3 this program was called "Campus Print Station".)
 
-You need: this installer on a pen drive, the Campus Print server address,
+You need: this installer on a pen drive, the XeoGo server address,
 and the counter password. Nothing else (no Java, no other programs).
 
 Which installer?
-- CampusPrintStation-Setup-4.2.0-GitQuickPrint.exe : for Git QuICK PrINT.
+- XeoGoStation-Setup-4.3.0-GitQuickPrint.exe : for Git QuICK PrINT.
   The server address (https://campus-print-backend.onrender.com) is already
   filled in.
-- CampusPrintStation-Setup-4.2.0.exe : any other college; you type the
+- XeoGoStation-Setup-4.3.0.exe : any other college; you type the
   server address in step 3a.
 
-Important: Station 4.2.0 needs the version 4 server (with CampusPay for the
-"UPI payments" tab). Deploy the new backend first (START-HERE.md), then install
-this. It updates an older Station in place.
+Important: Station 4.3.0 belongs to the version 5 server (collecting by
+showing the files, staff IDs). Put the new server online first (push the
+code: it updates its database by itself), then install this.
 
-1. Make sure the printers are installed in Windows with the FULL Canon
-   driver (UFR II or PS) and print a Windows test page (Settings > Printers
-   & scanners). In each printer's Properties > Device Settings, set what is
-   really fitted: duplex unit, finisher (stapler, puncher). Put paper in.
+UPDATING an older Station (also "Campus Print Station"): just run this
+installer. It stops the old program, removes it, and keeps everything:
+the connection to the server, the printers and their settings. The setup
+wizard does not appear again.
+
+1. Make sure the printers are installed in Windows with the FULL driver
+   (for Canon: UFR II or PS) and print a Windows test page (Settings >
+   Printers & scanners). In each printer's Properties > Device Settings,
+   set what is really fitted: duplex unit, finisher (stapler, puncher).
+   Put paper in.
 
 2. Double-click the installer.
    - If Windows shows "Windows protected your PC": click "More info",
      then "Run anyway". (This happens because the installer is not
      code-signed yet; see the note below.)
    - Click Next / Install. No administrator password is needed.
-   - An older Campus Print Station is updated in place; its settings stay.
-   - On the last page keep "Open Campus Print Station now" ticked > Finish.
+   - On the last page keep "Open XeoGo Station now" ticked > Finish.
 
 3. The app opens with a short setup (skipped when updating):
    a) Connect this PC: server address, counter password, a name for the PC.
@@ -36,9 +42,9 @@ this. It updates an older Station in place.
       sizes, two-sided, finishing). Open "What students can choose on this
       printer" and untick paper sizes you do not keep. Stapling, punching
       and binding stay off until you tick them: tick one only after a
-      test order with it came out right. Press "Test B/W" / "Test colour" on each one.
-      Check the paper: B/W test = red box GREY, colour test = red box RED,
-      and the label "Pickup TEST1" readable in the bottom-right corner.
+      test order with it came out right. Press "Test B/W" / "Test colour" on
+      each one. Check the paper: B/W test = red box GREY, colour test = red
+      box RED, and the label "Order TEST1" readable in the bottom-right corner.
       Printers that can print two-sided also have "Test two-sided": one
       sheet, printed on both sides.
    c) "This PC is ready" > Open the counter.
@@ -47,18 +53,35 @@ this. It updates an older Station in place.
    "Paper sizes, paper types and finishing" the extra for A3 (200 % preset)
    or special paper, and a price per copy for stapling, punching, binding.
 
-5. Send one test order from a phone for each option you offer (two-sided,
+5. Staff (college staff print for free): open "Staff" on the left.
+   - "Free pages": how many pages each staff ID may print per month
+     (1000 to start with), and whether colour is free too. Save.
+   - "New staff ID": type the person's name > Make staff ID. The username
+     and the password appear ONCE: press "Print slip" or "Copy" and give
+     them to the staff member. Forgotten later? "New password" on their ID.
+   - Staff sign in on the staff website (its address is shown on that
+     screen) or in the XeoGo Staff app.
+
+6. Send one test order from a phone for each option you offer (two-sided,
    A3, 2 per sheet, each staple / punch position). Untick any option that
    does not come out right.
 
 Done. From now on:
 - Paid files print by themselves, each on a printer that can do everything
-  it needs. Closing the window does not stop printing; the Campus Print
-  icon next to the clock opens it again.
-- It starts together with Windows.
+  it needs. Closing the window does not stop printing; the XeoGo icon next
+  to the clock opens it again. It starts together with Windows.
+- HANDING OVER, WITHOUT ANY CODE: the student opens their order on their
+  phone and taps "I'm at the counter". The order appears in the green box
+  "At the counter now", with a picture of each file. The same pictures are
+  on the student's phone. Give them those pages (each file's first sheet
+  has a small "Order ....." label) and press "Handed over": their phone
+  shows "Collected".
+- A phone without internet at the counter: type the file's name in "Find
+  an order", check that the phone shows the same order, press "Handed over".
+- A staff order shows "Staff · free" and the person's name.
 - A new printer, or a changed driver setting: Printers > "Scan again".
 - To update: run a newer installer; it closes the old version by itself.
-- To remove: Windows Settings > Apps > Campus Print Station > Uninstall.
+- To remove: Windows Settings > Apps > XeoGo Station > Uninstall.
 
 Code signing (optional, for a warning-free install): buy a code-signing
 certificate (or use Microsoft "Trusted Signing") and sign the .exe with
@@ -67,3 +90,12 @@ signtool. Until then the "More info > Run anyway" step is normal.
 Making an installer for a new college (server address already filled in):
     cd agent\packaging
     powershell -ExecutionPolicy Bypass -File build-installer.ps1 -BackendUrl "https://print.college.in"
+
+WORD FILES
+----------
+Students can send Word files (.docx). This PC turns each one into pages with its
+own Microsoft Word, out of sight, before the student pays. Nothing to set up:
+Station -> Printers -> "Word files" says "Ready: Microsoft Word ..." when it works,
+or why not (no Word on this PC, Word not activated...). The Word you work with
+yourself is not touched. Without Word on this PC, students are simply asked to
+send a PDF instead.

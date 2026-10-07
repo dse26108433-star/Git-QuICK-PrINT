@@ -49,10 +49,10 @@ import edu.campus.printapp.flow.UpiRef
 data class UpiApp(val packageName: String, val label: String, val icon: ImageBitmap?)
 
 /**
- * CampusPay: pay the Xerox center with a UPI app on this phone. The apps
+ * XeoGo Pay: pay the Xerox center with a UPI app on this phone. The apps
  * listed are the ones really installed. After paying, the app comes back
  * here by itself and waits for the bank's message, which confirms the payment
- * automatically; then the pickup code opens.
+ * automatically; then the order opens, with its files and the times.
  */
 @Composable
 fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpenUpi: (String, String?) -> Unit) {
@@ -112,7 +112,7 @@ fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpe
                             Text(if (st.upiConfirming) "Confirming your payment…" else "Waiting for your payment",
                                 fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.testTag("upiState"))
                             Text(if (u.autoConfirm) "Pay in the UPI app and come back: the bank confirms it by itself, usually " +
-                                    "in a few seconds, and your pickup code opens."
+                                    "in a few seconds, and your prints open."
                                 else "After paying, tap the button below: the Xerox center checks the payment, then it prints.",
                                 fontSize = 13.sp, color = CP.Muted)
                         }
@@ -147,7 +147,7 @@ fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpe
                     }
                 }
             }
-            Text("CampusPay · straight to the Xerox center's account", fontSize = 12.5.sp, color = CP.Muted,
+            Text("XeoGo Pay · straight to the Xerox center's account", fontSize = 12.5.sp, color = CP.Muted,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
             TextButton(onClick = { session.backFromPay() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text("Back to the summary", color = CP.Muted)

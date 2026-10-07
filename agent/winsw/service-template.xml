@@ -5,7 +5,7 @@
 -->
 <service>
   <id>CampusPrintAgent</id>
-  <name>Campus Print Agent</name>
+  <name>XeoGo Agent</name>
   <description>Prints paid student orders on the Xerox center printers.</description>
 
   <executable>JAVA_EXE</executable>

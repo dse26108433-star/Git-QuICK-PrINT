@@ -55,6 +55,20 @@ public class GlobalExceptionHandler {
                 .body(body("CONFLICT", "This order changed at the same moment. Refresh and try again."));
     }
 
+    /**
+     * Two things touched the same order at the same instant and the database gave one of them up (or a
+     * database connection was not free in time). Nothing was changed: "busy, try again", which the Xerox PC
+     * and the apps do by themselves, instead of an error nobody can act on.
+     */
+    @ExceptionHandler({org.springframework.dao.ConcurrencyFailureException.class,
+            org.springframework.dao.QueryTimeoutException.class,
+            org.springframework.transaction.CannotCreateTransactionException.class})
+    ResponseEntity<Map<String, Object>> busy(Exception e, HttpServletRequest req) {
+        log.warn("Busy on {} {}: {}", req.getMethod(), req.getRequestURI(), e.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "2")
+                .body(body("BUSY", "The service is busy for a moment. Try again."));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> handle(Exception e, HttpServletRequest req) {
         // Spring's own web errors (404, 405, missing header ...) keep their real status.

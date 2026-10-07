@@ -12,8 +12,9 @@ import android.service.notification.StatusBarNotification
 
 /**
  * Instant: the UPI business app (PhonePe Business, Paytm for Business, Google
- * Pay...) shows "₹20.01 received from ..." a second or two after the payment,
- * pushed by its own servers. That notification is passed on at once.
+ * Pay for Business, BharatPe) shows "₹20.01 received from ..." a second or two
+ * after the payment, pushed by its own servers. That notification is passed on
+ * at once. Chat and SMS apps are never read.
  */
 class NotificationWatcher : NotificationListenerService() {
 
@@ -21,8 +22,7 @@ class NotificationWatcher : NotificationListenerService() {
         val p = Prefs(this)
         if (!p.notificationsOn) return
         val pkg = sbn.packageName
-        if (pkg == packageName || pkg in CreditFilter.MESSAGING_APPS) return
-        if (!p.allApps && pkg !in CreditFilter.UPI_APPS) return
+        if (pkg == packageName || !CreditFilter.appAllowed(pkg, p.allApps)) return
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
@@ -40,7 +40,11 @@ class NotificationWatcher : NotificationListenerService() {
     }
 }
 
-/** Backup: the bank's "credited" SMS (it can come later than the app's notification). */
+/**
+ * Backup: the bank's "credited" SMS (it can come later than the app's
+ * notification). Only an SMS sent under a sender name is read: one from a
+ * phone number is somebody's text, whatever it says, and stays on the phone.
+ */
 class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -50,6 +54,7 @@ class SmsReceiver : BroadcastReceiver() {
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         // One SMS can arrive in several parts: put each sender's parts together.
         val alerts = messages.groupBy { it.originatingAddress ?: "" }.mapNotNull { (from, parts) ->
+            if (CreditFilter.senderName(from) == null) return@mapNotNull null
             val text = parts.joinToString("") { it.messageBody ?: "" }
             if (CreditFilter.looksLikeCredit(text)) Alert.of("sms", from, text, parts.first().timestampMillis) else null
         }

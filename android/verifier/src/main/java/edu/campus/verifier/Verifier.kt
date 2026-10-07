@@ -69,8 +69,8 @@ object Verifier {
     const val RETRY_JOB = 2
 
     fun version(context: Context): String = runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-    }.getOrDefault("1.0.0")
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.0"
+    }.getOrDefault("1.1.0")
 
     /** A "money received" message arrived: keep it, and send it at once. */
     fun queue(context: Context, alert: Alert) {
@@ -84,9 +84,9 @@ object Verifier {
     fun send(context: Context): Flush {
         val p = Prefs(context)
         val cfg = p.config()
-        if (!cfg.ready) {
-            p.lastError = "Not set up: type the server address and the token."
-            return Flush(0, Outbox(p).size(), p.lastError)
+        cfg.problem?.let { why ->
+            p.lastError = why
+            return Flush(0, Outbox(p).size(), why)
         }
         synchronized(lock) {
             val outbox = Outbox(p)
@@ -106,7 +106,10 @@ object Verifier {
     fun heartbeat(context: Context): Answer {
         val p = Prefs(context)
         val cfg = p.config()
-        if (!cfg.ready) return Answer(0, "Not set up")
+        cfg.problem?.let { why ->
+            p.lastError = why
+            return Answer(0, why)
+        }
         val r = Sender(cfg, version(context)).heartbeat(smsAllowed(context) && p.smsOn,
             notificationsAllowed(context) && p.notificationsOn)
         if (r.ok) {
@@ -116,8 +119,8 @@ object Verifier {
             p.lastError = when (r.code) {
                 0 -> "No internet connection."
                 401 -> "The server refused the token. Copy UPI_ALERT_TOKEN again."
-                503 -> "The server has CampusPay bank messages switched off (PAYMENT_MODE=upi, UPI_ALERT_TOKEN)."
-                404 -> "No Campus Print server at this address."
+                503 -> "The server has XeoGo Pay bank messages switched off (PAYMENT_MODE=upi, UPI_ALERT_TOKEN)."
+                404 -> "No XeoGo server at this address."
                 else -> "The server answered ${r.code}."
             }
         }

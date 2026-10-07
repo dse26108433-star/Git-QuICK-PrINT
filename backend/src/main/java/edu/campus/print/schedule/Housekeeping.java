@@ -5,6 +5,7 @@ import edu.campus.print.domain.PrintOrder;
 import edu.campus.print.orders.OrderService;
 import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
+import edu.campus.print.repo.PreviewStore;
 import edu.campus.print.storage.SupabaseStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +19,10 @@ import java.util.UUID;
 /**
  * Background jobs:
  *   - recovery when the Xerox PC stops answering (every 30 s)
+ *   - giving up on Word files the Xerox PC did not prepare (every 10 s)
  *   - "was this actually paid?" checks with Razorpay (every minute)
- *   - expiring unpaid orders and deleting files nobody needs (every 5 min)
+ *   - expiring unpaid orders, deleting files and first-sheet pictures nobody
+ *     needs, and removing never-paid orders that ended two weeks ago (every 5 min)
  */
 @Component
 public class Housekeeping {
@@ -30,13 +33,17 @@ public class Housekeeping {
     private final OrderDocumentRepository documents;
     private final OrderService orderService;
     private final SupabaseStorage storage;
+    private final PreviewStore previews;
+    private final edu.campus.print.orders.WordFiles wordFiles;
 
     public Housekeeping(OrderRepository orders, OrderDocumentRepository documents, OrderService orderService,
-                        SupabaseStorage storage) {
+                        SupabaseStorage storage, PreviewStore previews, edu.campus.print.orders.WordFiles wordFiles) {
         this.orders = orders;
         this.documents = documents;
         this.orderService = orderService;
         this.storage = storage;
+        this.previews = previews;
+        this.wordFiles = wordFiles;
     }
 
     /**
@@ -59,6 +66,17 @@ public class Housekeeping {
             }
         } catch (Exception e) {
             log.error("Recovery check failed; will retry", e);
+        }
+    }
+
+    /** A Word file never waits for ever for the Xerox PC (see WordFiles.expire). */
+    @Scheduled(fixedDelay = 10_000, initialDelay = 20_000)
+    public void giveUpOnWordFiles() {
+        try {
+            int n = wordFiles.expire();
+            if (n > 0) log.warn("Gave up on {} Word file(s) the Xerox PC did not prepare", n);
+        } catch (Exception e) {
+            log.error("Word file check failed; will retry", e);
         }
     }
 
@@ -87,6 +105,11 @@ public class Housekeeping {
             for (OrderDocument d : documents.findFilesToDelete()) {
                 storage.delete(d.getStoragePath());
                 documents.markFileDeleted(d.getId());
+            }
+            previews.cleanUp();
+            int gone = orders.deleteDeadUnpaid();
+            if (gone > 0) {
+                log.info("Removed {} never-paid order(s) that ended two weeks ago", gone);
             }
         } catch (Exception e) {
             log.error("Clean-up failed; will retry", e);

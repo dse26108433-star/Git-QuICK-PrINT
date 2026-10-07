@@ -31,12 +31,15 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
 
     private val vm: PrintViewModel by viewModels()
 
-    /** Several files at once (PDF, JPG, PNG). */
+    /**
+     * Several files at once (PDF, Word, JPG, PNG). Old Word files (.doc) can be chosen too: the app then says
+     * how to save them in a form that can be printed, which is kinder than a file that cannot be tapped.
+     */
     private val picker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
         vm.addUris(uris)
     }
 
-    /** CampusPay: the UPI app closes and comes back here with its answer ("Status=SUCCESS&..."). */
+    /** XeoGo Pay: the UPI app closes and comes back here with its answer ("Status=SUCCESS&..."). */
     private val upiLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val data = r.data
         val answer = data?.getStringExtra("response")
@@ -45,16 +48,21 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_CampusPrint)            // the start screen's colours were only for the moment before this
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleShared(intent)
+        else vm.introAt(2)        // coming back to where one was (not a fresh start): no opening in the way
         setContent {
             CampusPrintApp(
                 vm = vm,
-                onChooseFiles = { picker.launch(arrayOf("application/pdf", "image/png", "image/jpeg")) },
+                onChooseFiles = {
+                    picker.launch(arrayOf("application/pdf", "image/png", "image/jpeg",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"))
+                },
                 onOpenCheckout = ::openCheckout,
                 upiApps = ::upiApps,
                 onOpenUpi = ::openUpi
@@ -123,7 +131,7 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
         val checkout = Checkout()
         checkout.setKeyID(start.keyId)
         val options = JSONObject().apply {
-            put("name", vm.session.state.value.shop?.centerName ?: "Campus Print")
+            put("name", vm.session.state.value.shop?.centerName ?: "XeoGo")
             put("description", start.description)
             put("order_id", start.gatewayOrderId)     // created by OUR backend, never by the app
             put("amount", start.amountPaise)

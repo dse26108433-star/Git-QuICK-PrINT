@@ -16,7 +16,7 @@ import java.util.Optional;
  * Prints one document on one printer, in two steps:
  *
  *   prepare()  everything that can go wrong before paper: read the file, lay the
- *              chosen pages out on the chosen paper (Imposer), put the pickup code
+ *              chosen pages out on the chosen paper (Imposer), put the order number
  *              on the first sheet, and check the printer can do every setting.
  *              A problem here means nothing printed: the document goes back to
  *              the queue (another printer may take it).
@@ -53,7 +53,7 @@ public class PrintEngine {
     }
 
     /**
-     * @param codeOnPage          print the pickup code on the first page of each document
+     * @param codeOnPage          print the order number on the first page of each document
      * @param coverSheetMinSheets also print a cover sheet for documents of at least this many
      *                            sheets (sheets x copies); 0 = never. Without the code on the
      *                            page, every document gets a cover sheet.
@@ -84,19 +84,19 @@ public class PrintEngine {
             boolean cover = job.pickupLabel() && !borderless && "A4".equals(job.paper().id()) && (!codeOnPage
                     || (coverSheetMinSheets > 0 && (long) sheetsPerCopy * job.copies() >= coverSheetMinSheets));
             if (!job.pickupLabel()) {
-                log.info("Order {}: pickup code switched off on the counter; printing the file only", job.pickupCode());
+                log.info("Order {}: the order-number label is switched off on the counter; printing the file only", job.pickupCode());
             } else if (borderless) {
-                log.info("Order {}: borderless, so no pickup code on the paper", job.pickupCode());
+                log.info("Order {}: borderless, so no label on the paper", job.pickupCode());
             }
             if (label) {
                 try {
                     PickupCodeStamp.Result r = PickupCodeStamp.apply(sheets, job, sheetsPerCopy);
-                    log.info("Order {}: pickup code printed on the first page ({})", job.pickupCode(),
+                    log.info("Order {}: order number printed on the first page ({})", job.pickupCode(),
                             r == PickupCodeStamp.Result.IN_MARGIN ? "in the blank margin"
                                     : "page shrunk slightly to make room");
                 } catch (Exception e) {
                     // Never lose a document over the label: lay it out again and give it a cover sheet instead.
-                    log.warn("Order {}: could not put the pickup code on the page ({}); cover sheet instead",
+                    log.warn("Order {}: could not put the order number on the page ({}); cover sheet instead",
                             job.pickupCode(), e.toString());
                     imposed.close();
                     imposed = layOut(file, job);

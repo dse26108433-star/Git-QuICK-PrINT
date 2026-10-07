@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * CampusPay reads the bank's "money received" messages. Each bank words them
+ * XeoGo Pay reads the bank's "money received" messages. Each bank words them
  * differently; these are the shapes Indian banks and UPI business apps send.
  * What must never happen: money going OUT, an OTP, or a payment request read
  * as money received.

@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Campus Print - the Xerox center print service.
+ * XeoGo - the Xerox center print service.
  *
  * One Spring Boot application with clear internal modules:
  *

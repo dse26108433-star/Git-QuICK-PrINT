@@ -1,5 +1,5 @@
 <#
-  Installs the Campus Print agent as a Windows service on the Xerox center PC.
+  Installs the XeoGo agent as a Windows service on the Xerox center PC.
   It then starts by itself whenever the PC starts, even if nobody logs in.
 
   HOW TO RUN

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The paper sizes Campus Print knows. A printer's driver may report many
+ * The paper sizes XeoGo knows. A printer's driver may report many
  * more (envelopes, odd photo sizes); only these can be offered to students,
  * because the whole chain (website preview, price, printing) knows them.
  *

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="ic_launcher_background">#02124A</color>
     <color name="paper">#F5F6F3</color>
     <color name="ink">#0E1A2B</color>
     <style name="Theme.Verifier" parent="android:Theme.Material.Light.NoActionBar">

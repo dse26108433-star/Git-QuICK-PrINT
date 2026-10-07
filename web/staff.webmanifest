@@ -1,0 +1,17 @@
+{
+  "id": "xeogo-staff",
+  "name": "XeoGo Staff - QuICK PrINT",
+  "short_name": "XeoGo Staff",
+  "description": "Free printing for college staff: sign in with your staff ID, send your files, collect by showing them.",
+  "start_url": "./staff.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F6F3",
+  "theme_color": "#0E1A2B",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

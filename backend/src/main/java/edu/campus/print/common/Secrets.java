@@ -6,7 +6,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
 
-/** Random keys, hashes and pickup codes. */
+/** Random keys, hashes and order numbers. */
 public final class Secrets {
 
     private static final SecureRandom RANDOM = new SecureRandom();

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="ic_launcher_background">#02124A</color>
     <color name="paper">#EDEEE9</color>
     <color name="ink">#14263B</color>
     <style name="Theme.CampusPrint" parent="android:Theme.Material.Light.NoActionBar">
@@ -7,5 +8,16 @@
         <item name="android:statusBarColor">@color/paper</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:colorAccent">@color/ink</item>
+    </style>
+
+    <!-- While the app starts (before its first picture): the night blue of the logo, and nothing else. The
+         opening (ui/Intro.kt) then begins on exactly this colour, so the logo lands once, without a jump.
+         MainActivity switches to Theme.CampusPrint as soon as it starts. The staff app, which has no
+         opening, starts on the usual paper colour (src/staff/res). -->
+    <style name="Theme.CampusPrint.Launch" parent="Theme.CampusPrint">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@color/ic_launcher_background</item>
+        <item name="android:navigationBarColor">@color/ic_launcher_background</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

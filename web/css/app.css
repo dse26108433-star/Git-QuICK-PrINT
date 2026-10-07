@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Campus Print - student website
+   XeoGo - student website
    Design: Vedant Pravin Surve. Ink navy + paper white; the green "ready"
    lamp of a copier is the only accent colour.
 
@@ -107,6 +107,7 @@ label.btn { position: relative; }
 .steps li.done { color: var(--accent); border-color: var(--accent); }
 body[data-step="choose"] .steps { display: none; }
 .alert { border-radius: 12px; padding: 12px 16px; font-size: 14.5px; margin: 16px 0 0; border: 1px solid #F0C9C2; background: var(--danger-soft); color: #7C2A1F; }
+.alert.calm { border-color: #EDD8B4; background: var(--warn-soft); color: #6D4411; }   /* "the service is waking up": not an error */
 .notice { border-radius: 12px; padding: 11px 14px; font-size: 14px; border: 1px solid #EDD8B4; background: var(--warn-soft); color: #6D4411; margin: 12px 0 0; }
 .notice.stop { border-color: #F0C9C2; background: var(--danger-soft); color: #7C2A1F; }
 
@@ -151,7 +152,8 @@ body[data-step="choose"] .steps { display: none; }
 .recent-item { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line);
                border-radius: 14px; padding: 14px 16px; cursor: pointer; box-shadow: var(--shadow-sm); transition: border-color .15s, transform .06s; }
 .recent-item:hover { border-color: var(--line-2); }
-.recent-item .code { font-family: var(--mono); font-weight: 650; font-size: 17px; letter-spacing: .12em; }
+.recent-item .when { font-family: var(--mono); font-weight: 600; font-size: 13.5px; color: var(--ink-2); white-space: nowrap;
+                     font-variant-numeric: tabular-nums; min-width: 62px; }
 .recent-item .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .recent-item .file { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .recent-item .stage { font-size: 13.5px; }
@@ -395,20 +397,65 @@ details.group .field { padding: 10px 0 14px 15px; border-bottom: 0; }
 .secure svg { width: 14px; height: 14px; }
 .change { text-align: center; margin-top: 10px; }
 
-/* ================================================================== collect */
-.ticket { max-width: 480px; margin: 26px auto 40px; background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; }
-.ticket-top { background: var(--ink); color: #fff; text-align: center; padding: 28px 24px 34px;
-              background-image: radial-gradient(420px 180px at 50% -40%, rgba(47, 163, 107, .35), transparent 70%); }
-.ticket-top .label { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: #9FB0C3; font-weight: 600; }
-.ticket-top .code { font-family: var(--mono); font-size: clamp(52px, 17vw, 78px); font-weight: 650; letter-spacing: .14em; line-height: 1.05; margin: 10px 0 6px; padding-left: .14em; }
-.ticket-top .sub { font-size: 13.5px; color: #B5C2D0; }
-.perf { position: relative; height: 0; border-top: 2px dashed var(--line-2); margin: 0 26px; }
-.perf::before, .perf::after { content: ""; position: absolute; top: -13px; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); }
-.perf::before { left: -39px; } .perf::after { right: -39px; }
-.ticket-body { padding: 22px 24px 26px; }
+/* ================================================================== collect: your files, shown at the counter */
+.pass { max-width: 520px; margin: 22px auto 40px; background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden;
+        scroll-margin-top: calc(var(--top) + 14px); }
+.pass-top { background: var(--ink); color: #fff; text-align: center; padding: 20px 22px 18px;
+            background-image: radial-gradient(420px 160px at 50% -50%, rgba(47, 163, 107, .35), transparent 70%); }
+.pass-top .label { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #9FB0C3; font-weight: 600; margin-bottom: 8px; }
+.pass-top .state { font-size: 20px; }
+.pass-when { font-size: 14.5px; color: #C9D3DE; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.pass-when:empty { display: none; }
+.pass.done .pass-top { background: var(--accent); background-image: none; }
+.pass.done .pass-top .label, .pass.done .pass-when { color: #E3F3EA; }
+.pass.done .pass-top .lamp { background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .3); }
+
+/* "I'm at the counter": a live strip (running clock) the staff can tell from a screenshot */
+.pass-here { display: flex; align-items: center; gap: 12px; background: var(--accent); color: #fff; padding: 12px 18px; }
+.pass-here .tick { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, .22); display: grid; place-items: center;
+                   flex: none; animation: pulse 1.6s ease-in-out infinite; }
+.pass-here b { display: block; font-size: 16px; line-height: 1.3; }
+.pass-here div span { display: block; font-size: 13.5px; opacity: .94; line-height: 1.35; }
+.pass-here .clock { margin-left: auto; font-family: var(--mono); font-size: 14.5px; font-weight: 600; white-space: nowrap;
+                    font-variant-numeric: tabular-nums; }
+.pass-here.offline { background: var(--warn); }
+
+/* the files themselves: one large sheet at a time */
+.pass-view { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; background: #2A3340; padding: 16px 6px; }
+.pass-view .icon-btn { color: #fff; }
+.pass-view .icon-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+.pass-sheet { margin: 0; grid-column: 2; display: grid; place-items: center; min-height: 220px; }
+.pass-sheet img { display: block; max-width: 100%; max-height: min(56vh, 500px); background: #fff; border-radius: 3px;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.pass-sheet.bw img, .pass-thumb.bw img { filter: grayscale(1); }
+.pass-blank { width: 150px; aspect-ratio: 210 / 297; background: #fff; border-radius: 3px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+              display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; color: var(--muted); padding: 12px; }
+.pass-blank svg { width: 34px; height: 34px; color: var(--faint); }
+.pass-blank b { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.pass-blank span { font-size: 12px; line-height: 1.35; }
+.pass-cap { padding: 12px 20px 0; display: grid; gap: 2px; text-align: center; }
+.pass-cap b { word-break: break-word; font-weight: 650; }
+.pass-cap > span { font-size: 13.5px; color: var(--muted); }
+.pass-cap .pass-chip { justify-self: center; margin-top: 6px; font-size: 12.5px; font-weight: 600; padding: 3px 11px; border-radius: 999px;
+                       background: var(--warn-soft); color: #6D4411; }
+.pass-cap .pass-chip.ready { background: var(--accent-soft); color: #14613B; }
+.pass-cap .pass-chip.stop { background: var(--danger-soft); color: #7C2A1F; }
+.pass-thumbs { display: flex; gap: 8px; overflow-x: auto; padding: 12px 20px 2px; }
+.pass-thumbs > :first-child { margin-left: auto; } .pass-thumbs > :last-child { margin-right: auto; }
+.pass-thumb { position: relative; width: 46px; height: 58px; flex: none; border-radius: 6px; border: 2px solid var(--line); background: var(--sunk);
+              display: grid; place-items: center; padding: 0; cursor: pointer; overflow: hidden; color: var(--faint); }
+.pass-thumb.on { border-color: var(--ink); }
+.pass-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; background: #fff; }
+.pass-thumb .n { position: absolute; right: 2px; bottom: 2px; font-size: 10px; font-weight: 700; line-height: 15px; padding: 0 4px;
+                 border-radius: 4px; background: var(--ink); color: #fff; }
+.pass-body { padding: 16px 22px 24px; }
+.pass-body .msg { text-align: center; color: var(--muted); font-size: 14.5px; }
+.pass-body .msg:empty { display: none; }
+.pass-body #hereBtn { margin-top: 16px; min-height: 58px; font-size: 18px; }
+.pass-body #leaveBtn { display: block; margin: 12px auto 0; }
+body.at-counter .pass-sheet img { max-height: min(62vh, 620px); }
+body.at-counter .pass { box-shadow: 0 0 0 3px var(--accent), var(--shadow); }
 .state { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 18px; font-weight: 650; text-align: center; }
-.ticket-body .msg { text-align: center; color: var(--muted); margin-top: 6px; font-size: 14.5px; }
-.ticket-body .msg:empty { display: none; }
 .track { list-style: none; padding: 0; margin: 20px 0 0; }
 .track li { position: relative; display: flex; gap: 12px; align-items: center; padding: 8px 0; color: var(--faint); font-weight: 500; }
 .track li:not(:last-child)::after { content: ""; position: absolute; left: 3.5px; top: 25px; bottom: -8px; width: 1px; background: var(--line-2); }
@@ -428,7 +475,7 @@ details.group .field { padding: 10px 0 14px 15px; border-bottom: 0; }
 .notify-note { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
 .notify-note:empty { display: none; }
 
-/* ================================================================== pay with UPI (CampusPay) */
+/* ================================================================== pay with UPI (XeoGo Pay) */
 .pay { max-width: 480px; margin: 26px auto 40px; }
 .pay-card { background: var(--surface); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; }
 .pay-top { background: var(--ink); color: #fff; text-align: center; padding: 26px 22px 24px;
@@ -588,3 +635,28 @@ body[data-step="setup"] .footer { display: none; }
   .seg button { font-size: 13.5px; padding: 8px 4px; }
   .copies .seg { min-width: 130px; }
 }
+
+/* ---------------------------------------------------------------- the staff website (staff.html: the same page, for college staff) */
+/* Words that differ are in the page twice; only the ones for this page show. */
+html:not([data-app="staff"]) .for-staff { display: none !important; }
+html[data-app="staff"] .for-student { display: none !important; }
+
+.staffbar { background: var(--ink); color: #fff; font-size: 14px; }
+.staffbar .container { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; min-height: 40px; padding-top: 6px; padding-bottom: 6px; }
+.staffbar .who { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.staffbar .left { margin-left: auto; font-variant-numeric: tabular-nums; background: rgba(255, 255, 255, .13); border-radius: 999px; padding: 3px 11px; white-space: nowrap; }
+.staffbar .left.low { background: #B4382A; }
+.staffbar .linkish { color: #C9D3DF; padding: 4px 0; }
+.staffbar .linkish:hover { color: #fff; }
+
+.login { max-width: 420px; margin: 28px auto 60px; padding: 26px 24px; display: grid; gap: 8px; }
+.login h1 { font-size: 26px; margin: 0; }
+.login .sub { margin: 0 0 10px; color: var(--muted); }
+.login .field-label { margin-top: 6px; }
+.text-input { width: 100%; height: 50px; border: 1px solid var(--line-2); border-radius: 12px; padding: 0 14px; font: inherit; font-size: 16px; background: #fff; color: var(--ink); }
+.text-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px rgba(59, 111, 240, .15); }
+.login .btn { margin-top: 12px; }
+.login .notice { margin: 6px 0 0; }
+.login-help { font-size: 13.5px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+html[data-app="staff"] body[data-step="login"] .steps,
+html[data-app="staff"] body[data-step="login"] #printerChip { display: none; }

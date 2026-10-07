@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * How the student pays: CampusPay (direct UPI to the Xerox center, "upi"),
+ * How the student pays: XeoGo Pay (direct UPI to the Xerox center, "upi"),
  * Razorpay, or Demo while testing.
  */
 public interface PaymentGateway {
@@ -14,7 +14,7 @@ public interface PaymentGateway {
     /** "upi", "razorpay" or "demo". Sent to the apps so they know which payment screen to show. */
     String name();
 
-    /** What the app needs to open the payment screen. upi: only for CampusPay. */
+    /** What the app needs to open the payment screen. upi: only for XeoGo Pay. */
     record Checkout(String provider, String keyId, String gatewayOrderId,
                     int amountPaise, String currency, String description, UpiCheckout upi) {
 
@@ -25,7 +25,7 @@ public interface PaymentGateway {
     }
 
     /**
-     * CampusPay: pay this amount to this UPI ID with any UPI app.
+     * XeoGo Pay: pay this amount to this UPI ID with any UPI app.
      *
      * uri        the upi://pay link: opens the UPI app chooser on Android, and is the QR code
      * tagPaise   the few paise added to the price so the bank's message points to this order

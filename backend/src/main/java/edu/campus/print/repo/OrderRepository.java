@@ -96,6 +96,19 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
             """, nativeQuery = true)
     int backToEditing(@Param("id") UUID id);
 
+    /**
+     * The student's phone says "I am at the counter" (or, with here = false,
+     * "not any more"). Only for a paid order that was not handed over yet.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            update orders set arrived_at = case when :here then now() else null end
+             where id = :id and paid_at is not null and collected_at is null
+               and status in ('QUEUED', 'PRINTING', 'COMPLETED', 'FAILED')
+            """, nativeQuery = true)
+    int markArrived(@Param("id") UUID id, @Param("here") boolean here);
+
     // ------------------------------------------------------------ counter side
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -106,6 +119,33 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
                and collected_at is null
             """, nativeQuery = true)
     int markCollected(@Param("id") UUID id);
+
+    /** Students standing at the counter now: they opened their paid order there in the last few minutes. */
+    @Query(value = """
+            select * from orders
+             where arrived_at > now() - make_interval(secs => :withinSeconds)
+               and collected_at is null and paid_at is not null and status <> 'CANCELLED'
+             order by arrived_at
+             limit 30
+            """, nativeQuery = true)
+    List<PrintOrder> findAtCounter(@Param("withinSeconds") int withinSeconds);
+
+    /**
+     * Staff look for an order by its number or by a file's name (for a student
+     * whose phone has no internet at the counter). Paid orders of the last two
+     * weeks; not yet handed over first.
+     */
+    @Query(value = """
+            select o.* from orders o
+             where o.paid_at is not null and o.created_at > now() - interval '14 days'
+               and (upper(o.pickup_code) = upper(:text)
+                    or exists (select 1 from order_documents d
+                                where d.order_id = o.id
+                                  and position(lower(:text) in lower(d.file_name)) > 0))
+             order by (o.collected_at is not null), o.paid_at desc
+             limit 20
+            """, nativeQuery = true)
+    List<PrintOrder> search(@Param("text") String text);
 
     // ------------------------------------------------------------ housekeeping
 
@@ -134,7 +174,7 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
     /**
      * Drafts nobody touched for 2 hours, and priced orders not paid within
      * 24 hours. Their documents are cancelled by the caller, then cleaned up.
-     * A CampusPay order whose student said "I have paid" waits 7 days for
+     * A XeoGo Pay order whose student said "I have paid" waits 7 days for
      * staff to check it: the money may really be in the bank.
      */
     @Query(value = """
@@ -152,7 +192,22 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
     @Transactional
     List<UUID> expireUnpaid();
 
-    // ------------------------------------------------------------ CampusPay (direct UPI) at the counter
+    /**
+     * Orders that were never paid and ended long ago (expired, cancelled, or a
+     * file that could not be used): nobody needs them, and they must not pile
+     * up. Their files are gone already; their documents and history go with them.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            delete from orders o
+             where o.paid_at is null and o.status in ('EXPIRED', 'CANCELLED', 'FAILED')
+               and o.updated_at < now() - interval '14 days'
+               and not exists (select 1 from order_documents d where d.order_id = o.id and not d.file_deleted)
+            """, nativeQuery = true)
+    int deleteDeadUnpaid();
+
+    // ------------------------------------------------------------ XeoGo Pay (direct UPI) at the counter
 
     /** The student said "I have paid" and no bank message proved it yet: staff check these, oldest first. */
     @Query(value = """
@@ -173,7 +228,7 @@ public interface OrderRepository extends JpaRepository<PrintOrder, UUID> {
             """, nativeQuery = true)
     List<PrintOrder> findUpiWaiting();
 
-    /** Paid through CampusPay today (bank message or staff), newest first. */
+    /** Paid through XeoGo Pay today (bank message or staff), newest first. */
     @Query(value = """
             select * from orders
              where payment_provider = 'upi' and paid_at > now() - interval '24 hours'

@@ -66,9 +66,16 @@ public class BackendClient {
     // ---------------------------------------------------------------- calls
 
     public HeartbeatResult heartbeat(List<PrinterReport> reports) throws IOException {
+        return heartbeat(reports, false, "");
+    }
+
+    /** wordFiles: this PC's Microsoft Word passed its test, so it can turn Word files into PDFs. wordNote: which Word, or why not. */
+    public HeartbeatResult heartbeat(List<PrinterReport> reports, boolean wordFiles, String wordNote) throws IOException {
         ObjectNode n = JSON.createObjectNode()
                 .put("agentVersion", AgentVersion.VALUE)
-                .put("hostName", hostName());
+                .put("hostName", hostName())
+                .put("wordFiles", wordFiles)
+                .put("wordNote", wordNote == null ? "" : wordNote);
         n.set("printers", JSON.valueToTree(reports));
         HttpResponse<String> res = authed(() -> post("/agent/v1/heartbeat", n));
         requireOk(res);
@@ -142,9 +149,66 @@ public class BackendClient {
         return JSON.readTree(res.body()).path("status").asText("");
     }
 
+    /**
+     * A small JPEG of the first sheet as it prints. The counter shows it next to
+     * the order, so pages are handed over by looking, not by a pickup code.
+     */
+    public void sendPreview(String jobId, String claimToken, byte[] jpeg) throws IOException {
+        HttpResponse<String> res = authed(() -> base("/agent/v1/jobs/" + jobId + "/preview")
+                .header("Content-Type", "image/jpeg")
+                .header("X-Claim-Token", claimToken)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(jpeg)).build());
+        requireOk(res);
+    }
+
     public void renewLease(String jobId, String claimToken) throws IOException {
         ObjectNode n = JSON.createObjectNode().put("claimToken", claimToken);
         HttpResponse<String> res = authed(() -> post("/agent/v1/jobs/" + jobId + "/lease", n));
+        requireOk(res);
+    }
+
+    // ---------------------------------------------------------------- Word files
+
+    /** The next Word file to turn into a PDF. Empty = none is waiting. */
+    public Optional<ConversionJob> claimConversion() throws IOException {
+        HttpResponse<String> res = authed(() -> post("/agent/v1/conversions/claim", JSON.createObjectNode()));
+        if (res.statusCode() == 204) return Optional.empty();
+        requireOk(res);
+        return Optional.of(JSON.readValue(res.body(), ConversionJob.class));
+    }
+
+    /** Sends a file to the storage link the server gave (the same way a student's browser does). */
+    public void uploadTo(String signedUrl, Path file, String contentType) throws IOException {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(signedUrl)).timeout(Duration.ofMinutes(5))
+                .header("Content-Type", contentType == null || contentType.isBlank() ? "application/pdf" : contentType)
+                .PUT(HttpRequest.BodyPublishers.ofFile(file)).build();
+        HttpResponse<String> res;
+        try {
+            res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new OfflineException("Upload interrupted", e);
+        } catch (IOException e) {
+            throw new OfflineException("Upload failed: " + e.getMessage(), e);
+        }
+        if (res.statusCode() / 100 != 2) {
+            throw new RejectedException(res.statusCode(), "Storage answered " + res.statusCode());
+        }
+    }
+
+    /** The PDF is where the server said. Returns READY, or REJECTED when the server could not use it. */
+    public String conversionDone(String documentId) throws IOException {
+        HttpResponse<String> res = authed(() -> post("/agent/v1/conversions/" + documentId + "/done", JSON.createObjectNode()));
+        requireOk(res);
+        return JSON.readTree(res.body()).path("status").asText("");
+    }
+
+    /** This PC could not do it. code: PASSWORD, TOO_SLOW, TOO_LARGE, CHANGED, FAILED or ENGINE. */
+    public void conversionFailed(String documentId, String code, String message) throws IOException {
+        ObjectNode n = JSON.createObjectNode()
+                .put("code", code == null ? "FAILED" : code)
+                .put("message", truncate(message == null ? "" : message, 500));
+        HttpResponse<String> res = authed(() -> post("/agent/v1/conversions/" + documentId + "/failed", n));
         requireOk(res);
     }
 

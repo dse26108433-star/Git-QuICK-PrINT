@@ -16,7 +16,15 @@ public final class AgentDtos {
     /** What the PC saw for one printer: READY, MISSING (not in Windows) or ERROR. */
     public record PrinterReport(UUID printerId, String status, String detail) {}
 
-    public record HeartbeatRequest(String agentVersion, String hostName, List<PrinterReport> printers) {}
+    /**
+     * wordFiles: this PC's Microsoft Word made a test PDF, so it can prepare Word files (null from a Station
+     * that does not know about them). wordNote: which Word, or why not.
+     */
+    public record HeartbeatRequest(String agentVersion, String hostName, List<PrinterReport> printers,
+                                   Boolean wordFiles, String wordNote) {}
+
+    /** The PC could not turn a Word file into a PDF. code: PASSWORD, TOO_SLOW, CHANGED, FAILED or ENGINE. */
+    public record ConversionProblem(String code, String message) {}
 
     /**
      * A printer the PC should run, as set up in the database.
@@ -61,7 +69,7 @@ public final class AgentDtos {
             PrintSettings settings,
             Paper paper,
             ImageInfo image,       // pictures only
-            boolean stampCode,     // print the pickup code on the first page (counter switch)
+            boolean stampCode,     // print the order number on the first page (counter switch)
             int attempt,
             int maxAttempts,
             int leaseSeconds

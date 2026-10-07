@@ -1,4 +1,4 @@
-# Campus Print agent - settings for the Xerox center PC.
+# XeoGo agent - settings for the Xerox center PC.
 # The install script writes a real copy of this file next to print-agent.jar.
 # The PRINTERS are not listed here: they are in the database (seed.sql step 2).
 

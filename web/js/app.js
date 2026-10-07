@@ -1,5 +1,5 @@
 /*
- * Campus Print - the student website.
+ * XeoGo (QuICK PrINT) - the student website, and the staff website.
  *
  *   add files  ->  each is checked on the phone (what it really is, pages), then
  *                  uploaded straight to private storage and checked by the server
@@ -9,22 +9,38 @@
  *   review     ->  the server checks every choice against the real files and printers
  *                  and fixes the price; the summary shows the server's answer, which
  *                  is exactly what the Xerox PC prints
- *   pay, collect with one pickup code
+ *   pay        ->  the files go to the printer, and stay visible on this phone with
+ *                  the times (paid, ready at about, collected)
+ *   collect    ->  at the counter: "I'm at the counter" puts the order, with pictures of
+ *                  its files, on the staff's screen; the student shows the same files
+ *                  and takes the pages. No pickup code is shown or typed.
+ *
+ * staff.html is this same page for college staff (data-app="staff" on <html>):
+ * they sign in with a staff ID made at the Xerox center (a username and a
+ * password), and "pay" becomes "Print": free, counted against their pages for
+ * the month. No payment of any kind happens there, and their orders are on
+ * every device they are signed in on.
  */
 "use strict";
 (function () {
   const C = window.PrintCore;
   const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
-  const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
-  const PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";
-  const RAZORPAY_JS = "https://checkout.razorpay.com/v1/checkout.js";
-  const QR_JS = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
+  // PDF.js 4.4.168 and qrcode-generator 1.4.4 are part of the site (web/vendor): no other website's
+  // script runs on these pages, where the keys of the student's orders are kept.
+  const PDFJS = new URL("vendor/pdfjs/pdf.min.mjs", document.baseURI).href;
+  const PDFJS_WORKER = new URL("vendor/pdfjs/pdf.worker.min.mjs", document.baseURI).href;
+  const RAZORPAY_JS = "https://checkout.razorpay.com/v1/checkout.js";       // only when the shop uses Razorpay
+  const QR_JS = "vendor/qrcode.js";
   const UPI = window.UpiPay;
   const FINAL = ["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"];
   const PARALLEL_UPLOADS = 3;
   const PARALLEL_READS = 2;
-  const STORE = "campusprint.orders";
-  const DRAFT = "campusprint.draft";
+  const STAFF = document.documentElement.dataset.app === "staff";    // the staff website (staff.html)
+  const NS = STAFF ? "campusprint.staff." : "campusprint.";          // the two pages keep their things apart
+  const STORE = NS + "orders";
+  const DRAFT = NS + "draft";
+  const VIEW = NS + "view.";    // + order id: the order as this device last saw it (shown when offline)
+  const SESSION = "campusprint.staff.session";                       // the staff sign-in token (never the password)
 
   const $ = (id) => document.getElementById(id);
   const state = {
@@ -37,8 +53,12 @@
     pvTab: "preview",
     order: null,               // the server's view after pricing / payment
     poll: null,
-    upi: null,                 // CampusPay: { ref, checkout, poll } while the UPI payment screen is open
-    reviewing: false
+    upi: null,                 // XeoGo Pay: { ref, checkout, poll } while the UPI payment screen is open
+    reviewing: false,
+    shown: null,               // the order on the "your prints" screen, as the server last described it
+    pictures: null,            // pictures of the files are being drawn for that screen (a promise)
+    skew: 0,                   // the server's clock minus this device's (ms)
+    staff: null                // staff website: who is signed in, and their free pages this month
   };
   let nextLocal = 1;
 
@@ -67,6 +87,7 @@
   }
   function showError(msg) {
     const box = $("globalError");
+    box.classList.remove("calm");
     if (!msg) { box.classList.add("hidden"); return; }
     box.textContent = msg;
     box.classList.remove("hidden");
@@ -74,8 +95,9 @@
   }
   function show(step) {
     state.step = step;
-    ["choose", "setup", "review", "pay", "status"].forEach(s => $("s-" + s).classList.toggle("hidden", s !== step));
+    ["login", "choose", "setup", "review", "pay", "status"].forEach(s => $("s-" + s).classList.toggle("hidden", s !== step));
     if (step !== "pay") stopUpiPoll();
+    if (step !== "status") leaveCounter(true);
     const order = ["setup", "review", "status"];
     document.querySelectorAll(".steps li").forEach(li => {
       const i = order.indexOf(li.dataset.s), me = order.indexOf(step === "pay" ? "review" : step);
@@ -87,10 +109,18 @@
     window.scrollTo({ top: 0 });
   }
 
-  async function api(method, path, body, key) {
+  /** The order's key (students), and the staff member's sign-in on the staff website. */
+  function authHeaders(key) {
     const headers = {};
-    if (body !== undefined && body !== null) headers["Content-Type"] = "application/json";
     if (key) headers["X-Order-Key"] = key;
+    const session = STAFF ? storageGet(SESSION, null) : null;
+    if (session) headers["X-Staff-Session"] = session;
+    return headers;
+  }
+
+  async function api(method, path, body, key) {
+    const headers = authHeaders(key);
+    if (body !== undefined && body !== null) headers["Content-Type"] = "application/json";
     let res;
     try {
       res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body) });
@@ -107,6 +137,10 @@
       err.code = data && data.error;
       err.status = res.status;
       err.data = data;
+      // Staff: the sign-in ran out, the Xerox center made a new password, or switched the ID off.
+      if (STAFF && (err.code === "STAFF_SIGNED_OUT" || err.code === "STAFF_OFF") && path !== "/api/v1/staff/login") {
+        signedOut(err.message);
+      }
       throw err;
     }
     return data;
@@ -142,9 +176,37 @@
 
   // ================================================================== the shop: prices, printers, what they can do
 
+  /**
+   * The print service sleeps after a quiet time and takes a minute or two to wake up: meanwhile its host
+   * answers "not up yet" (502, 503, 504), or nothing for a long while. That is said calmly, not as an
+   * error, and the page keeps asking until the service is there.
+   */
+  const WAKING = "The print service is waking up. This takes a minute or two after a quiet time. " +
+    "Files you choose now are added as soon as it is up.";
+  const wake = { timer: null, tries: 0, said: false };
+  function wakingUp(e) { return !!e && (e.status === 502 || e.status === 503 || e.status === 504); }
+  function sayWaking(on) {
+    const box = $("globalError");
+    if (on) {
+      $("printerChip").innerHTML = '<span class="lamp work"></span><span class="pill-text">Waking up the service&hellip;</span>';
+      box.textContent = WAKING;
+      box.classList.add("calm");
+      box.classList.remove("hidden");
+      wake.said = true;
+    } else if (wake.said) {
+      wake.said = false;
+      if (box.classList.contains("calm")) { box.classList.remove("calm"); box.classList.add("hidden"); }
+    }
+  }
+
   async function loadShop() {
+    clearTimeout(wake.timer);
+    // no answer for a while, the first time: it is probably waking up
+    const slow = state.shop ? null : setTimeout(() => sayWaking(true), 6000);
     try {
       const s = await api("GET", "/api/v1/shop");
+      wake.tries = 0;
+      sayWaking(false);
       // What printers can do (not whether they are online right now): a change means new options.
       const features = (sh) => JSON.stringify(Object.assign({}, sh.printing,
         { printers: sh.printing.printers.map(p => Object.assign({}, p, { online: null })) }));
@@ -152,6 +214,7 @@
       state.shop = s;
       (s.printing.paperSizes || []).forEach(p => { KNOWN_PAPER[p.id] = p; });
       state.printers = C.candidates(s);
+      if (STAFF && state.staff && !state.staff.colorAllowed) state.printers = plainOnly(state.printers);
       state.offered = C.offered(state.printers);
       if (before && before !== features(s)) printersChanged();
       state.limits = { maxCopies: s.maxCopies, maxPages: s.maxPages };
@@ -168,9 +231,26 @@
         el("span", "pill-text", (online ? "Printers online" : "Printers offline") +
           (s.ordersWaiting ? " · " + s.ordersWaiting + " in queue" : "")));
     } catch (e) {
-      $("printerChip").innerHTML = '<span class="lamp stop"></span><span class="pill-text">Service unreachable</span>';
-      showError(e.message);
+      if (!state.shop && wakingUp(e) && wake.tries++ < 60) {
+        sayWaking(true);
+        wake.timer = setTimeout(loadShop, 5000);
+      } else {
+        sayWaking(false);
+        $("printerChip").innerHTML = '<span class="lamp stop"></span><span class="pill-text">Service unreachable</span>';
+        showError(e.message);
+      }
+    } finally {
+      clearTimeout(slow);
     }
+  }
+
+  /**
+   * Free staff printing where colour is not part of it: only what the printers
+   * do in black & white on the usual paper is offered (the server checks the same).
+   */
+  function plainOnly(printers) {
+    return printers.filter(p => p.bw).map(p => Object.assign({}, p, { color: false,
+      features: Object.assign({}, p.features, { mediaTypes: [] }) }));
   }
 
   /**
@@ -206,22 +286,34 @@
 
   const KNOWN_PAPER = {};          // every size seen, so a size that disappears still has its name and dimensions
   function paper(id) {
-    const p = (state.shop.printing.paperSizes || []).find(x => x.id === id) || KNOWN_PAPER[id];
+    const sizes = (state.shop && state.shop.printing && state.shop.printing.paperSizes) || [];
+    const p = sizes.find(x => x.id === id) || KNOWN_PAPER[id];
     return p || { id: id || "A4", label: id || "A4", widthMm: 210, heightMm: 297 };
   }
-  const finishingLabel = (id) => (state.shop.printing.finishing || {})[id] || id;
-  const mediaLabel = (id) => (state.shop.printing.mediaTypes || {})[id] || id;
+  const printingWords = (kind) => (state.shop && state.shop.printing && state.shop.printing[kind]) || {};
+  const finishingLabel = (id) => printingWords("finishing")[id] || id;
+  const mediaLabel = (id) => printingWords("mediaTypes")[id] || id;
 
   // ================================================================== orders remembered on this device
 
   function recent() { return storageGet(STORE, []); }
-  function forget(orderId) { storageSet(STORE, recent().filter(x => x.orderId !== orderId)); }
+  function forget(orderId) {
+    storageSet(STORE, recent().filter(x => x.orderId !== orderId));
+    storageSet(VIEW + orderId, null);
+    sweepPictures();
+  }
   function remember(o) {
     const list = recent().filter(x => x.orderId !== o.orderId);
     list.unshift(o);
+    list.slice(15).forEach(x => storageSet(VIEW + x.orderId, null));
     storageSet(STORE, list.slice(0, 15));
   }
+  /** Pictures of files are kept only for the orders this device still lists. */
+  function sweepPictures() {
+    passStore.sweep(recent().map(x => x.orderId));
+  }
   async function renderRecent() {
+    if (STAFF) return renderStaffRecent();
     const list = recent();
     $("recentBox").classList.toggle("hidden", list.length === 0);
     const box = $("recentList");
@@ -232,7 +324,7 @@
       const lamp = el("span", "lamp");
       const grow = el("span", "grow");
       grow.append(el("span", "file", o.fileName), el("span", "small muted stage", "…"));
-      b.append(lamp, el("span", "code", o.code), grow);
+      b.append(lamp, el("span", "when", o.at ? clock(o.at) : ""), grow);
       b.onclick = () => openStatus(o);
       box.appendChild(b);
       api("GET", "/api/v1/orders/" + o.orderId, null, o.key).then(v => {
@@ -242,6 +334,145 @@
     }
   }
 
+  /**
+   * Staff: what this staff ID sent to print lately, from the server, so it is
+   * the same on the office computer and on the phone at the counter. An order
+   * needs no key there: the sign-in opens it.
+   */
+  async function renderStaffRecent() {
+    let list;
+    try {
+      list = await api("GET", "/api/v1/staff/orders");
+    } catch (e) {
+      list = null;                                   // offline: what this device listed last time
+    }
+    if (list) {
+      const mine = list.map(x => ({ orderId: x.orderId, key: null, code: x.pickupCode, fileName: x.name,
+        at: x.paidAt ? new Date(x.paidAt).getTime() : null, stage: x.stage, status: x.status, collected: !!x.collectedAt }));
+      // an order reviewed here but not sent yet is not on the server's list: keep it
+      const unsent = recent().filter(x => x.unsent && !mine.some(m => m.orderId === x.orderId) && Date.now() - (x.at || 0) < 24 * 3600 * 1000);
+      recent().filter(x => !mine.concat(unsent).some(m => m.orderId === x.orderId)).forEach(x => storageSet(VIEW + x.orderId, null));
+      storageSet(STORE, unsent.concat(mine));
+      sweepPictures();
+    }
+    const shown = recent().filter(x => !x.unsent);
+    $("recentBox").classList.toggle("hidden", shown.length === 0);
+    const box = $("recentList");
+    box.innerHTML = "";
+    for (const o of shown) {
+      const b = el("button", "recent-item");
+      b.type = "button";
+      const lamp = el("span", "lamp " + (o.collected || o.status === "COMPLETED" ? "ready"
+        : o.status === "FAILED" ? "stop" : o.status === "CANCELLED" ? "" : "work"));
+      const grow = el("span", "grow");
+      grow.append(el("span", "file", o.fileName), el("span", "small muted stage", o.stage || ""));
+      b.append(lamp, el("span", "when", o.at ? clock(o.at) : ""), grow);
+      b.onclick = () => openStatus(o);
+      box.appendChild(b);
+    }
+  }
+
+  // ================================================================== college staff: sign in, free pages (staff.html)
+
+  function dayWords(isoDate) {
+    const d = new Date(isoDate + "T00:00:00");
+    return isNaN(d) ? isoDate : d.toLocaleDateString([], { day: "numeric", month: "long" });
+  }
+
+  /** Who is signed in and what is left this month: in the bar at the top and on the first page. */
+  function renderStaff() {
+    const s = state.staff;
+    $("staffBar").classList.toggle("hidden", !s);
+    if (!s) return;
+    $("staffWho").textContent = s.name;
+    $("staffLeft").textContent = s.leftPages + " of " + s.monthlyPages + " free pages left";
+    $("staffLeft").classList.toggle("low", s.leftPages <= 0);
+    $("staffLeft").title = s.month + ": they start again on " + dayWords(s.resetsOn);
+    $("staffLeftBig").textContent = String(s.leftPages);
+    $("staffOfBig").textContent = "of " + s.monthlyPages;
+    $("staffMonth").textContent = s.month + " · used " + s.usedPages;
+    $("staffRules").textContent = (s.colorAllowed ? "Colour and special paper are free too."
+      : "Free staff printing is black & white on the usual paper.") + " The pages start again on " + dayWords(s.resetsOn) + ".";
+    document.querySelectorAll("[data-staff-pages]").forEach(e => { e.textContent = s.monthlyPages; });
+  }
+
+  /** Fresh from the server (the free pages change with every print; the Xerox center may change the rules). */
+  async function loadStaff() {
+    const me = await api("GET", "/api/v1/staff/me");
+    if (me.token) storageSet(SESSION, me.token);          // a newer sign-in token: this device stays signed in
+    const colourBefore = state.staff && state.staff.colorAllowed;
+    state.staff = me.staff;
+    renderStaff();
+    if (colourBefore != null && colourBefore !== me.staff.colorAllowed && state.shop) loadShop();
+    return me.staff;
+  }
+
+  /** Stops asking the server about the order on screen (a later answer to a question already asked changes nothing). */
+  function stopStatusWatch() {
+    clearTimeout(state.poll);
+    state.pollRun = (state.pollRun || 0) + 1;
+    state.statusTick = null;
+  }
+
+  function showLogin(message) {
+    stopStatusWatch();
+    show("login");
+    $("loginError").textContent = message || "";
+    $("loginError").classList.toggle("hidden", !message);
+    $("loginBtn").disabled = false;
+    $("loginBtn").textContent = "Sign in";
+    $("loginPass").value = "";
+    ($("loginUser").value ? $("loginPass") : $("loginUser")).focus();
+  }
+
+  /** The sign-in is no longer good (run out, a new password, or the ID was switched off): sign in again. */
+  function signedOut(message) {
+    if (!storageGet(SESSION, null) && state.step === "login") return;
+    storageSet(SESSION, null);
+    state.staff = null;
+    renderStaff();
+    leaveCounter(false);
+    showLogin(message || "Please sign in again.");
+  }
+
+  async function signIn(e) {
+    if (e) e.preventDefault();
+    const username = $("loginUser").value.trim(), password = $("loginPass").value;
+    if (!username || !password) { showLogin("Type your username and your password."); return; }
+    $("loginBtn").disabled = true;
+    $("loginBtn").textContent = "Signing in…";
+    $("loginError").classList.add("hidden");
+    try {
+      const r = await api("POST", "/api/v1/staff/login", { username, password });
+      storageSet(SESSION, r.token);
+      state.staff = r.staff;
+      $("loginPass").value = "";
+      renderStaff();
+      await begin();
+    } catch (err) {
+      showLogin(err.message);
+    }
+  }
+
+  /** Signing out forgets everything about this staff member on this device (a shared computer in the staff room). */
+  function signOut() {
+    if (!confirm("Sign out of " + (state.staff ? state.staff.name + "'s" : "this") + " staff ID on this device?")) return;
+    stopStatusWatch();
+    leaveCounter(true);
+    recent().forEach(x => storageSet(VIEW + x.orderId, null));
+    storageSet(STORE, null);
+    clearDraft(true);
+    passStore.sweep([]);
+    storageSet(SESSION, null);
+    state.staff = null;
+    state.order = null;
+    state.shown = null;
+    renderStaff();
+    history.replaceState(null, "", location.pathname);
+    $("loginUser").value = "";
+    showLogin(null);
+  }
+
   // ================================================================== adding files
 
   /** What a file really is, from its first bytes (never trust the name). */
@@ -249,11 +480,21 @@
     const b = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
     if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "PNG";
     if (b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "JPEG";
+    // A Word file (.docx) is a ZIP inside. The server looks into it; the Xerox center's computer turns it into pages.
+    if (b.length >= 4 && b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04) {
+      return /\.docx$/i.test(file.name || "") ? "DOCX" : null;
+    }
+    // An old Office file (.doc, .xls, .ppt), or a new one locked with a password: said at once, nothing is sent.
+    if (b.length >= 8 && b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0) return "OLD_OFFICE";
     for (let i = 0; i + 4 < b.length; i++) {
       if (b[i] === 0x25 && b[i + 1] === 0x50 && b[i + 2] === 0x44 && b[i + 3] === 0x46 && b[i + 4] === 0x2D) return "PDF";
     }
     return null;
   }
+
+  const KINDS = "Only PDF, Word (.docx), JPG and PNG files can be printed.";
+  const WORD_OFF = "Word files are turned into pages by the Xerox center's computer, and it is not online right now. " +
+    "Save the file as PDF and add that, or try again when the center is open.";
 
   /**
    * Adds files to the order, all at once. Each shows up straight away; the
@@ -264,7 +505,12 @@
     const files = Array.from(fileList || []).filter(f => f && f.size >= 0);
     if (!files.length) return;
     showError(null);
-    if (!state.shop) await loadShop();
+    // The print service may be waking up (it sleeps after a quiet time): the files wait for it, a few minutes at most.
+    for (let i = 0; !state.shop && i < 40; i++) {
+      await loadShop();
+      if (state.shop || !wake.said) break;
+      await new Promise(r => setTimeout(r, 5000));
+    }
     if (!state.shop) return;
     if (state.step === "review") {
       toast("Tap “Change something” first to add more files.", "warn");
@@ -278,7 +524,7 @@
     let skipped = 0, over = 0;
     const added = [];
     for (const f of files) {
-      if (state.docs.some(d => d.file && d.file.name === f.name && d.file.size === f.size && d.file.lastModified === f.lastModified)) {
+      if (state.docs.some(d => d.picked && d.picked.name === f.name && d.picked.size === f.size && d.picked.lastModified === f.lastModified)) {
         skipped++;
         continue;
       }
@@ -300,7 +546,10 @@
   function newDoc(file) {
     return {
       local: nextLocal++, id: null, file, name: file.name || "file", size: file.size, type: null,
-      status: "reading",        // reading | queued | uploading | checking | ready | error | cancelled
+      // the file as it was chosen (a Word file's `file` becomes the PDF made from it)
+      picked: { name: file.name, size: file.size, lastModified: file.lastModified },
+      status: "reading",        // reading | queued | uploading | checking | converting | ready | error | cancelled
+      ahead: 0,                 // a Word file being turned into pages: how many are in line before it
       progress: 0, xhr: null, error: null, retry: false,
       pageCount: null, image: null, thumb: null, settings: null, sheet: 0,
       sizes: new Map(), thumbs: new Map(), serverError: null, removed: false
@@ -311,12 +560,30 @@
   async function prepare(d) {
     try {
       const type = await sniff(d.file);
-      if (!type) return fail(d, "Only PDF, JPG and PNG files can be printed.", false);
+      if (type === "OLD_OFFICE") {
+        return fail(d, /\.doc$/i.test(d.name)
+          ? "This is an older kind of Word file (.doc). Open it in Word, choose File \u2192 Save As \u2192 Word Document (.docx) or PDF, and add that."
+          : KINDS + " Save this file as PDF and add that.", false);
+      }
+      if (!type) return fail(d, KINDS, false);
       d.type = type;
       if (d.size > state.shop.maxFileSizeBytes) {
         return fail(d, "Too big: files can be up to " + Math.round(state.shop.maxFileSizeBytes / 1048576) + " MB.", false);
       }
       if (d.size === 0) return fail(d, "This file is empty.", false);
+      if (type === "DOCX") {
+        // A Word file cannot be shown here as it is: it is sent, and the Xerox center's computer turns it into pages.
+        // Is a computer with Word online? (Asked again on "Try again".)
+        if (!state.shop.wordFiles) await loadShop();
+        if (!state.shop || !state.shop.wordFiles) { d.type = null; return fail(d, WORD_OFF, true); }
+        if (d.removed) return;
+        d.status = "queued";
+        renderQueue();
+        renderCheckout();
+        if (state.selected === d) renderEditor();
+        upload(d);
+        return;
+      }
       renderQueue();
       await readSlot(() => (type === "PDF" ? readPdf(d) : readImage(d)));
       if (d.removed) return;
@@ -451,7 +718,22 @@
       await put(d, ticket.uploadUrl, ticket.uploadContentType);
       d.status = "checking";
       renderQueue();
-      const v = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/uploaded", null, o.key);
+      let v = null;
+      for (let tries = 0; !v; tries++) {
+        try {
+          v = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/uploaded", null, o.key);
+        } catch (e) {
+          // "many files are being checked right now": it is in line; ask again in a moment (five minutes at most)
+          if (e.code !== "BUSY" || tries >= 40 || d.removed) throw e;
+          await new Promise(r => setTimeout(r, 4000 + Math.random() * 4000));
+        }
+      }
+      if (v.status === "CONVERTING") {
+        d.status = "converting";
+        d.ahead = v.ahead || 0;
+        watchWord();
+        return;
+      }
       takeServerView(d, v);
     } catch (e) {
       if (d.removed) return;
@@ -479,6 +761,63 @@
     d.pageCount = v.pageCount;
     if (v.image) d.image = v.image;           // the server's measurements: used for "actual size"
     d.type = v.fileType;
+  }
+
+  /**
+   * Word files being turned into pages by the Xerox center's computer: ask the server about them every second and
+   * a half (every three after half a minute) until each one is ready or refused. One question covers them all.
+   */
+  const word = { timer: null, since: 0, hint: 0 };
+  function watchWord() {
+    if (word.timer) return;
+    word.since = Date.now();
+    const look = async () => {
+      word.timer = null;
+      const waiting = state.docs.filter(d => d.status === "converting" && !d.removed);
+      if (!waiting.length || !state.draft) return;
+      try {
+        const o = state.draft;
+        const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
+        word.hint = v.pollSeconds || 0;
+        for (const d of waiting) {
+          const sd = v.documents.find(x => x.id === d.id);
+          if (!sd) fail(d, "This file is no longer in your order. Add it again.", false);
+          else if (sd.status === "CONVERTING") d.ahead = sd.ahead || 0;
+          else await wordDone(d, sd);
+        }
+      } catch (e) {
+        if (e.status === 404) waiting.forEach(d => fail(d, "This order is no longer there. Add the file again.", false));
+        // anything else (no internet for a moment): asked again
+      }
+      renderQueue();
+      renderCheckout();
+      if (state.docs.some(d => d.status === "converting" && !d.removed)) {
+        word.timer = setTimeout(look, Math.max(Date.now() - word.since > 30000 ? 3000 : 1500, word.hint * 1000));
+      }
+    };
+    word.timer = setTimeout(look, 1000);
+  }
+
+  /** The Xerox center's computer is done with a Word file: from here on it is a PDF (or it was refused, with the reason). */
+  async function wordDone(d, sd) {
+    if (sd.status === "REJECTED") return fail(d, sd.problem || "This Word file cannot be printed.", false);
+    if (sd.status !== "READY") return fail(d, "The upload was interrupted. Remove it and add the file again.", false);
+    d.file = null;                     // the pages are fetched from the server, like a file from before a reload
+    d.type = sd.fileType;              // PDF
+    d.size = sd.sizeBytes || d.size;
+    d.pageCount = sd.pageCount;
+    d.sizes = new Map();
+    d.thumbs = new Map();
+    d.settings = startingSettings(d);
+    d.status = "ready";
+    d.error = null;
+    if (state.selected === d) renderEditor();
+    // the picture of the first page, for the list (the editor draws its own)
+    readSlot(async () => {
+      if (d.removed) return;
+      d.thumb = await pageThumb(d, 1, 120);
+      renderQueue();
+    }).catch(() => {});
   }
 
   function put(d, url, contentType) {
@@ -548,7 +887,7 @@
   }
 
   window.addEventListener("beforeunload", (e) => {
-    if (state.docs.some(d => ["reading", "queued", "uploading", "checking"].includes(d.status))) {
+    if (state.docs.some(busyStatus)) {
       e.preventDefault();
       e.returnValue = "";
     }
@@ -569,7 +908,7 @@
   async function source(d) {
     if (d.file) return d.file;
     // A file restored after a page reload: fetch the student's own copy back.
-    const o = state.draft;
+    const o = d.owner || state.draft;
     const r = await api("GET", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/file-url", null, o.key);
     const res = await fetch(r.url);
     if (!res.ok) throw new Error("The file could not be loaded again.");
@@ -664,8 +1003,16 @@
     return C.price(n.settings, n.plan, state.shop.priceBwPaise, state.shop.priceColorPaise, state.shop.printing.pricing);
   }
 
+  /** The printed sides a file takes (all copies): what counts against a staff member's free pages. */
+  const pagesOf = (n) => n.plan.sides * n.settings.copies;
+
+  /** What a file costs, in words: its price; on the staff website, the pages it takes. */
+  function costText(n, price) {
+    return STAFF ? plural(pagesOf(n), "page", "pages") : rupees(price.amount);
+  }
+
   function busyStatus(d) {
-    return ["reading", "queued", "uploading", "checking"].includes(d.status);
+    return ["reading", "queued", "uploading", "checking", "converting"].includes(d.status);
   }
 
   /** Short words for a file's settings, for its card. */
@@ -715,14 +1062,15 @@
       img.alt = "";
       th.appendChild(img);
     } else {
-      th.appendChild(icon(d.type === "PDF" || !d.type ? "file" : "image"));
+      th.appendChild(icon(d.type === "PDF" || d.type === "DOCX" || !d.type ? "file" : "image"));
     }
-    if (d.type) th.appendChild(el("span", "kind", d.type === "JPEG" ? "JPG" : d.type));
+    if (d.type) th.appendChild(el("span", "kind", d.type === "JPEG" ? "JPG" : d.type === "DOCX" ? "WORD" : d.type));
     const main = el("div", "qmain");
     main.append(el("div", "qname", d.name));
     const meta = [];
     if (d.type === "PDF" && d.pageCount != null) meta.push(plural(d.pageCount, "page", "pages"));
-    if (d.type && d.type !== "PDF") meta.push("Picture");
+    if (d.type === "DOCX") meta.push("Word file");
+    else if (d.type && d.type !== "PDF") meta.push("Picture");
     meta.push(C.fileSize(d.size));
     main.append(el("div", "qmeta", meta.join(" · ")));
     const st = el("div", "qstate");
@@ -753,6 +1101,10 @@
         break;
       }
       case "checking": st.append(el("div", "line", "Checking the file…")); break;
+      case "converting":
+        st.append(el("div", "line", "Turning it into pages at the Xerox center…" +
+          (d.ahead > 0 ? " " + plural(d.ahead, "file", "files") + " ahead" : "")));
+        break;
       case "cancelled":
         st.append(el("div", "line", "Upload cancelled"));
         act("Try again", "retry", () => retry(d));
@@ -783,7 +1135,7 @@
     if (acts.children.length) main.append(acts);
     const side = el("div", "qside");
     const price = n && !n.error ? docPrice(d, n) : null;
-    side.append(el("div", "qprice", price ? rupees(price.amount) : ""));
+    side.append(el("div", "qprice", price ? costText(n, price) : ""));
     const rm = el("button", "qremove");
     rm.type = "button";
     rm.setAttribute("aria-label", "Remove " + d.name);
@@ -855,15 +1207,21 @@
         if (d.status === "error" || d.status === "cancelled") continue;
         total += d.size;
         done += d.status === "uploading" ? d.size * d.progress
-          : d.status === "checking" || d.status === "ready" ? d.size : 0;
+          : d.status === "checking" || d.status === "converting" || d.status === "ready" ? d.size : 0;
       }
       const pct = total ? Math.round(done / total * 100) : 0;
       const row = el("div", "qt-row");
-      row.append(el("span", null, "Uploading " + plural(working.length, "file", "files") + " · " + pct + "%"));
-      const all = el("button", "linkish", "Cancel all");
-      all.type = "button";
-      all.onclick = () => working.forEach(cancelUpload);
-      row.append(all);
+      // everything is sent; only Word files are still being turned into pages
+      const onlyWord = working.every(d => d.status === "converting");
+      row.append(el("span", null, onlyWord
+        ? "Turning " + plural(working.length, "Word file", "Word files") + " into pages…"
+        : "Uploading " + plural(working.length, "file", "files") + " · " + pct + "%"));
+      if (!onlyWord) {
+        const all = el("button", "linkish", "Cancel all");
+        all.type = "button";
+        all.onclick = () => working.forEach(cancelUpload);
+        row.append(all);
+      }
       const bar = el("div", "bar");
       const fill = el("i");
       fill.style.width = pct + "%";
@@ -923,7 +1281,8 @@
     const i = state.docs.indexOf(d);
     $("edName").textContent = d.name;
     const meta = [];
-    meta.push(d.type === "JPEG" ? "JPG picture" : d.type === "PNG" ? "PNG picture" : d.type === "PDF" ? "PDF" : "File");
+    meta.push(d.type === "JPEG" ? "JPG picture" : d.type === "PNG" ? "PNG picture" : d.type === "PDF" ? "PDF"
+      : d.type === "DOCX" ? "Word file" : "File");
     if (d.type === "PDF" && d.pageCount != null) meta.push(plural(d.pageCount, "page", "pages"));
     meta.push(C.fileSize(d.size));
     $("edMeta").textContent = meta.join(" · ");
@@ -950,7 +1309,7 @@
     const n = d && norm(d);
     const p = n && !n.error ? docPrice(d, n) : null;
     const problem = !!(n && (n.error || d.serverError));
-    $("edPrice").textContent = p ? rupees(p.amount) : "–";
+    $("edPrice").textContent = p ? costText(n, p) : "–";
     $("edPriceSub").textContent = problem ? "needs a change" : n ? plural(n.plan.sheets * n.settings.copies, "sheet", "sheets") : "";
     $("edPriceSub").classList.toggle("warn-text", problem);
   }
@@ -1019,7 +1378,7 @@
         if (token !== previewToken) return;
         sheet = C.layoutSheet(k, pages.length, (j) => sizes.get(j), o);
       }
-      await paintSheet(canvas, stage, d, s, sheet, pages, token);
+      await paintSheet(canvas, stage, d, s, sheet, pages, () => token === previewToken);
       if (token !== previewToken) return;
       canvas.classList.remove("hidden");
       empty.classList.add("hidden");
@@ -1042,12 +1401,17 @@
     }
   }
 
-  /** Paper, margins, and the content placed exactly as the Xerox PC will place it. */
-  async function paintSheet(canvas, stage, d, s, sheet, pages, token) {
+  /**
+   * Paper, margins, and the content placed exactly as the Xerox PC will place it.
+   * alive(): false once this drawing is no longer wanted (the student moved on).
+   * opts: { guides: false } leaves the margin lines out; { dpr } fixes the sharpness.
+   */
+  async function paintSheet(canvas, stage, d, s, sheet, pages, alive, opts) {
+    opts = opts || {};
     const pad = 18;
     const boxW = Math.max(120, stage.clientWidth - pad * 2), boxH = Math.max(120, stage.clientHeight - pad * 2);
     const scale = Math.min(boxW / sheet.w, boxH / sheet.h);      // CSS px per point
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = opts.dpr || Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(sheet.w * scale), H = Math.round(sheet.h * scale);
     // draw off screen, then swap in (no flicker while pages render)
     const off = document.createElement("canvas");
@@ -1075,7 +1439,7 @@
       }
       if (d.type === "PDF") {
         const img = await drawPage(d, pages[cell.page], Math.max(40, w * dpr));
-        if (token !== previewToken) return;
+        if (!alive()) return;
         ctx.drawImage(img, x, y, w, h);
         if (sheet.cells.length > 1) {
           ctx.strokeStyle = "rgba(14,26,43,.15)";
@@ -1084,7 +1448,7 @@
         }
       } else {
         const img = d.img || await loadImg(d);
-        if (token !== previewToken) return;
+        if (!alive()) return;
         const turn = ((s.rotation || 0) % 360 + 360) % 360;
         ctx.translate(x + w / 2, y + h / 2);
         ctx.rotate(turn * Math.PI / 180);
@@ -1095,7 +1459,7 @@
     }
     ctx.restore();
     // margin guides
-    if (s.marginMm > 0) {
+    if (s.marginMm > 0 && opts.guides !== false) {
       const m = s.marginMm * C.MM * scale;
       ctx.save();
       ctx.setLineDash([4, 4]);
@@ -1110,6 +1474,7 @@
     canvas.style.height = H + "px";
     const c2 = canvas.getContext("2d");
     c2.drawImage(off, 0, 0);
+    return true;
   }
 
   function loadImg(d) {
@@ -1473,19 +1838,24 @@
     hint(f, "Type pages like 3, 7, 10-12 (the PDF's own page numbers), or pick them on the page pictures.");
     fillPagesSummary(d, n, summary, err);
     let t = null;
+    const apply = () => {
+      clearTimeout(t);
+      t = null;
+      d.settings.pages = input.value.trim() ? input.value : null;
+      input.placeholder = "All " + d.pageCount + " pages";
+      const m = norm(d);
+      input.classList.toggle("bad", !!(m.error && /page|number|Pages start|Write the pages/i.test(m.error)));
+      fillPagesSummary(d, m, $("pagesSummary"), $("pagesError"));
+      changed(d, { keepPanel: true });
+    };
     input.addEventListener("input", () => {
       d.pagesDraft = input.value;
       clearTimeout(t);
-      t = setTimeout(() => {
-        d.settings.pages = input.value.trim() ? input.value : null;
-        input.placeholder = "All " + d.pageCount + " pages";
-        const m = norm(d);
-        input.classList.toggle("bad", !!(m.error && /page|number|Pages start|Write the pages/i.test(m.error)));
-        fillPagesSummary(d, m, $("pagesSummary"), $("pagesError"));
-        changed(d, { keepPanel: true });
-      }, 250);
+      t = setTimeout(apply, 250);
     });
     input.addEventListener("blur", () => {
+      // Typed and left at once (say, straight to "Review order"): what was typed counts, not what was there before.
+      if (t) apply();
       const m = norm(d);
       if (!m.error || !/page|number|Pages start|Write the pages/i.test(m.error)) {
         d.pagesDraft = null;
@@ -1561,13 +1931,16 @@
     const shop = state.shop;
     const st = states("color", [false, true], s);
     if (st.length === 1) {
-      f.append(el("p", "field-hint", st[0].value ? "Colour printing only (" + rupees(shop.priceColorPaise) + " per side)."
+      f.append(el("p", "field-hint", STAFF
+        ? (st[0].value ? "Colour printing only." : state.staff && !state.staff.colorAllowed
+            ? "Black & white: free staff printing is not in colour here." : "Black & white only. Colour printing is not available.")
+        : st[0].value ? "Colour printing only (" + rupees(shop.priceColorPaise) + " per side)."
         : "Black & white only (" + rupees(shop.priceBwPaise) + " per side). Colour printing is not available."));
       return f;
     }
     f.append(seg(st.map(a => ({
       label: a.value ? "Colour" : "Black & white",
-      sub: conflictSub(a) || rupees(a.value ? shop.priceColorPaise : shop.priceBwPaise) + " / side",
+      sub: conflictSub(a) || (STAFF ? "" : rupees(a.value ? shop.priceColorPaise : shop.priceBwPaise) + " / side"),
       on: s.color === a.value, conflict: !a.available,
       pick: () => pick(d, APPLY.color(a.value), a)
     })), false, "Colour"));
@@ -1793,7 +2166,7 @@
       f.append(sel);
       if ((grp === "STAPLE" || grp === "BIND") && n.plan.sheets < 2) hint(f, "Needs at least 2 sheets of paper.");
       const fp = ((state.shop.printing.pricing || {}).finishingPaise || {})[grp];
-      if (fp > 0 && s[key]) hint(f, rupees(fp) + " per copy.");
+      if (fp > 0 && s[key] && !STAFF) hint(f, rupees(fp) + " per copy.");
       g.append(f);
     }
     return g;
@@ -1820,7 +2193,7 @@
       };
       f.append(sel);
       const pct = s.mediaType ? ((state.shop.printing.pricing || {}).mediaTypePercent || {})[s.mediaType] : null;
-      if (pct != null && pct !== 100) hint(f, "This paper costs " + pct + " % of the normal price per side.");
+      if (pct != null && pct !== 100 && !STAFF) hint(f, "This paper costs " + pct + " % of the normal price per side.");
       g.append(f);
     }
     if (state.offered.highQuality || s.quality === "HIGH") {
@@ -1847,12 +2220,13 @@
       const s = n.settings;
       const words = (d.type === "PDF" ? plural(n.plan.printPages, "page", "pages") + " → " : "") +
         plural(n.plan.sheets, "sheet", "sheets") + (s.copies > 1 ? " × " + s.copies + " copies" : "") +
-        " · " + rupees(p.perSide) + " per side" + (p.finishing ? " + " + rupees(p.finishing) + " finishing" : "");
+        (STAFF ? " · " + plural(n.plan.sides, "printed side", "printed sides") + (s.copies > 1 ? " each" : "")
+          : " · " + rupees(p.perSide) + " per side" + (p.finishing ? " + " + rupees(p.finishing) + " finishing" : ""));
       left.append(el("small", null, words));
     } else {
-      left.append(el("small", null, n.error ? "Fix the choice above to see the price." : ""));
+      left.append(el("small", null, n.error ? (STAFF ? "Fix the choice above." : "Fix the choice above to see the price.") : ""));
     }
-    box.append(left, el("b", null, p ? rupees(p.amount) : "–"));
+    box.append(left, el("b", null, p ? costText(n, p) : "–"));
     wrap.append(box);
     if (state.docs.filter(x => x !== d && x.settings).length) {
       const b = el("button", "btn ghost sm apply-all");
@@ -1901,17 +2275,28 @@
       const n = (d.status === "ready" || busyStatus(d)) ? norm(d) : null;
       if (!n) continue;
       if (n.error || d.serverError) { invalid.push(d); continue; }
-      total += docPrice(d, n).amount;
+      total += STAFF ? pagesOf(n) : docPrice(d, n).amount;
       sheets += n.plan.sheets * n.settings.copies;
     }
     let why = "";
     if (!docs.length) why = "Add a file to print.";
-    else if (busy.length) why = "Wait until every file is uploaded.";
+    else if (busy.length) {
+      why = busy.every(d => d.status === "converting")
+        ? "Wait until the Word " + (busy.length === 1 ? "file is" : "files are") + " turned into pages."
+        : "Wait until every file is uploaded.";
+    }
     else if (bad.length) why = (bad.length === 1 ? "One file needs" : bad.length + " files need") + " attention: try again or remove.";
     else if (invalid.length) why = (invalid.length === 1 ? "One file needs" : invalid.length + " files need") + " a change.";
-    $("cbTotal").textContent = docs.length ? rupees(total) : "–";
+    // Staff: more pages than are left this month cannot be printed; say so here already.
+    const left = STAFF && state.staff ? state.staff.leftPages : null;
+    const over = left != null && total > left;
+    if (!why && over) {
+      why = left <= 0 ? "No free pages left this month." : "Only " + plural(left, "free page is", "free pages are") + " left this month.";
+    }
+    $("cbTotal").textContent = !docs.length ? "–" : STAFF ? plural(total, "page", "pages") : rupees(total);
+    $("cbTotal").classList.toggle("warn-text", over);
     $("cbDetail").textContent = docs.length ? plural(docs.length, "file", "files") + " · " + plural(sheets, "sheet", "sheets") +
-      (busy.length ? " · uploading…" : "") : "";
+      (left != null ? " · " + left + " free left" : "") + (busy.length ? " · uploading…" : "") : "";
     // tapping the reason opens the first file that needs something
     const needs = bad[0] || invalid[0];
     $("cbWhy").textContent = why;
@@ -1934,7 +2319,7 @@
       const body = { documents: state.docs.map(d => ({ id: d.id, settings: norm(d).settings })) };
       const v = await api("POST", "/api/v1/orders/" + o.orderId + "/review", body, o.key);
       takeServerSettings(v);
-      remember({ orderId: o.orderId, key: o.key, code: o.code, fileName: orderName(v), at: Date.now() });
+      remember({ orderId: o.orderId, key: o.key, code: o.code, fileName: orderName(v), at: Date.now(), unsent: STAFF || undefined });
       if (v.status !== "AWAITING_PAYMENT") {         // nothing to pay (free shop)
         clearDraft(false);
         return openStatus(recent()[0], v, true);
@@ -2016,6 +2401,7 @@
   function showReview(v) {
     state.order = v;
     show("review");
+    if (state.draft) keepPictures(state.draft);      // what the student will show at the counter after paying
     const box = $("rvDocs");
     box.innerHTML = "";
     let pages = 0, sheets = 0, sum = 0;
@@ -2033,7 +2419,8 @@
       for (const [k, val] of settingRows(sd)) dl.append(el("dt", null, k), el("dd", null, val));
       main.append(dl);
       const price = el("div", "rv-price");
-      price.append(el("b", null, rupees(sd.amountPaise)));
+      price.append(el("b", null, STAFF ? plural((sd.sides || 0) * (sd.settings ? sd.settings.copies : 1), "page", "pages")
+        : rupees(sd.amountPaise)));
       c.append(th, main, price);
       box.append(c);
       pages += (sd.printPages || 0) * (sd.settings ? sd.settings.copies : 1);
@@ -2046,26 +2433,58 @@
     line("Files", String(v.documents.filter(x => x.status !== "CANCELLED").length));
     line("Pages printed", String(pages));
     line("Sheets of paper", String(sheets));
-    const tag = (v.payment && v.payment.provider === "upi" && v.payment.tagPaise) || 0;
-    if (v.amountPaise - tag > sum) line("Minimum online payment", rupees(v.amountPaise - tag - sum));
-    if (tag) line("UPI payment tag", "+" + rupees(tag));
-    $("rvTotal").textContent = rupees(v.amountPaise);
-    $("rvNote").textContent = tag ? "The few paise tell the bank's message which payment is yours."
-      : v.amountPaise > sum ? "Online payments start at ₹1." : "";
-    const mode = state.shop && state.shop.paymentMode;
-    const demo = mode === "demo";
-    $("demoNote").classList.toggle("hidden", !demo);
-    $("payBtn").textContent = (demo ? "Pay (test) " : "Pay ") + rupees(v.amountPaise) + (mode === "upi" ? " with UPI" : "");
-    $("secureText").textContent = mode === "upi"
-      ? "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app"
-      : "Secure payment by Razorpay · UPI, cards, wallets";
-    $("payBtn").disabled = false;
     $("payError").classList.add("hidden");
+    if (STAFF) {
+      staffReview(v);
+    } else {
+      const tag = (v.payment && v.payment.provider === "upi" && v.payment.tagPaise) || 0;
+      if (v.amountPaise - tag > sum) line("Minimum online payment", rupees(v.amountPaise - tag - sum));
+      if (tag) line("UPI payment tag", "+" + rupees(tag));
+      $("rvTotal").textContent = rupees(v.amountPaise);
+      $("rvNote").textContent = tag ? "The few paise tell the bank's message which payment is yours."
+        : v.amountPaise > sum ? "Online payments start at ₹1." : "";
+      const mode = state.shop && state.shop.paymentMode;
+      const demo = mode === "demo";
+      $("demoNote").classList.toggle("hidden", !demo);
+      $("payBtn").textContent = (demo ? "Pay (test) " : "Pay ") + rupees(v.amountPaise) + (mode === "upi" ? " with UPI" : "");
+      $("secureText").textContent = mode === "upi"
+        ? "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app"
+        : mode === "closed" ? "Online payment is not set up at this Xerox center yet"
+        : "Secure payment by Razorpay · UPI, cards, wallets";
+      $("payBtn").disabled = false;
+    }
     $("editBtn").classList.toggle("hidden", !v.editable);
     const s = state.shop;
     const online = s && (s.bwOnline || s.colorOnline);
     $("offlineNote").textContent = "The printers are offline at the moment. You can still order: it prints as soon as they are back.";
     $("offlineNote").classList.toggle("hidden", !!online);
+  }
+
+  /**
+   * Staff: nothing to pay. The order takes pages from the month's free pages;
+   * "Print" is only offered when those cover it (the server checks again when
+   * it is pressed, in one step with sending it to the printers).
+   */
+  function staffReview(v) {
+    const pages = v.freePages || 0;
+    const paint = () => {
+      if (state.step !== "review" || !state.order || state.order.orderId !== v.orderId) return;
+      const s = state.staff;
+      const left = s ? s.leftPages : null;
+      const over = left != null && pages > left;
+      $("rvTotal").textContent = plural(pages, "page", "pages");
+      $("rvNote").textContent = left == null ? "" : over
+        ? "You have " + (left <= 0 ? "no free pages" : "only " + plural(left, "free page", "free pages")) + " left for " + s.month +
+          " (they start again on " + dayWords(s.resetsOn) + "). Go back and print fewer pages or copies."
+        : "After this you have " + (left - pages) + " of your " + s.monthlyPages + " free pages left for " + s.month + ".";
+      $("rvNote").classList.toggle("warn-text", over);
+      $("payBtn").textContent = over ? "Not enough free pages" : "Print now · free";
+      $("payBtn").disabled = over;
+    };
+    $("demoNote").classList.add("hidden");
+    $("secureText").textContent = "Free staff printing · nothing to pay";
+    paint();
+    loadStaff().then(paint).catch(() => {});          // the pages left, fresh from the server
   }
 
   async function editOrder() {
@@ -2098,9 +2517,29 @@
       (state.draft && state.draft.orderId === v.orderId ? Object.assign({ fileName: orderName(v) }, state.draft) : null));
   }
 
+  /** Staff: send the order to the printers. Free; the server takes its pages from the month in the same step. */
+  async function staffPrint(o) {
+    $("payBtn").disabled = true;
+    $("payBtn").textContent = "Sending…";
+    $("payError").classList.add("hidden");
+    try {
+      const v = await api("POST", "/api/v1/orders/" + o.orderId + "/staff-print");
+      clearDraft(false);
+      const sent = Object.assign({}, o, { unsent: undefined, at: Date.now() });
+      remember(sent);
+      loadStaff().catch(() => {});
+      openStatus(sent, v, true);
+    } catch (e) {
+      if (state.step !== "review") return;               // signed out meanwhile: the sign-in screen says why
+      payError(e.message);
+      if (state.order) staffReview(state.order);         // the pages left may have changed: show them fresh
+    }
+  }
+
   async function pay() {
     const o = currentOrderRef();
     if (!o) return;
+    if (STAFF) return staffPrint(o);
     $("payBtn").disabled = true;
     $("payError").classList.add("hidden");
     try {
@@ -2118,7 +2557,7 @@
       await loadScript(RAZORPAY_JS);
       const rzp = new window.Razorpay({
         key: c.keyId, amount: c.amountPaise, currency: c.currency,
-        name: state.shop ? state.shop.centerName : "Campus Print",
+        name: state.shop ? state.shop.centerName : "XeoGo",
         description: c.description, order_id: c.gatewayOrderId, theme: { color: "#14263B" },
         handler: async (r) => {
           clearDraft(false);
@@ -2153,7 +2592,7 @@
     resetToStart();
   }
 
-  // ================================================================== CampusPay: pay the Xerox center with any UPI app
+  // ================================================================== XeoGo Pay: pay the Xerox center with any UPI app
 
   /**
    * The UPI payment screen. The server fixed the amount (the price plus a few
@@ -2206,7 +2645,7 @@
     $("upQrToggle").append(icon("qr"), "Pay from another phone (QR code)");
     renderUpiQr(u.uri);
 
-    // Automatic (the Xerox center's CampusPay Verifier is on): nothing to press, the bank confirms it.
+    // Automatic (the Xerox center's XeoGo Pay Verifier is on): nothing to press, the bank confirms it.
     // Otherwise "I have paid" tells the counter, who checks the payment.
     const auto = !!u.autoConfirm;
     state.upi.auto = auto;
@@ -2324,9 +2763,10 @@
     const u = state.upi;
     if (!u) return;
     const ref = UPI.cleanRef($("upRef").value);
-    if (!UPI.refOk(ref)) {
+    if (!UPI.refOk(ref) || (u.auto && !ref)) {
       $("upRef").classList.add("bad");
-      $("upError").textContent = "A UPI reference number has 12 digits. Check it on your UPI app's receipt, or leave it empty.";
+      $("upError").textContent = "A UPI reference number has 12 digits. Check it on your UPI app's receipt" +
+        (u.auto ? " (UTR / UPI Ref No.)." : ", or leave it empty.");
       $("upError").classList.remove("hidden");
       $("upRef").focus();
       return;
@@ -2346,7 +2786,7 @@
     }
   }
 
-  /** From the pickup-code page: show the UPI details again (send the reference again, or pay). */
+  /** From the "your prints" page: show the UPI details again (send the reference again, or pay). */
   async function resumeUpi(o) {
     try {
       const c = await api("POST", "/api/v1/orders/" + o.orderId + "/payment", null, o.key);
@@ -2356,7 +2796,7 @@
     }
   }
 
-  // ================================================================== status and pickup code
+  // ================================================================== your prints: times, the files, and collecting them
 
   function lampFor(v) {
     if (v.status === "COMPLETED") return "ready";
@@ -2369,16 +2809,84 @@
     return "work";
   }
 
-  function renderStatus(v) {
+  /** This device's clock, set right by the server's: a phone with a wrong clock still shows the times right. */
+  function now() { return Date.now() + (state.skew || 0); }
+
+  /** "10:42 am", with the day when that is not today. */
+  function clock(when) {
+    if (!when) return "";
+    const d = new Date(when);
+    if (isNaN(d.getTime())) return "";
+    const t = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return d.toDateString() === new Date(now()).toDateString() ? t
+      : d.toLocaleDateString([], { day: "numeric", month: "short" }) + ", " + t;
+  }
+
+  const collected = (v) => !!(v.collectedAt || v.collected);
+  const liveDocs = (v) => (v.documents || []).filter(d => d.status !== "CANCELLED");
+
+  /** "Paid 10:42 am  ·  Ready at about 10:47 am" */
+  function whenLine(v) {
+    if (!v.paidAt) return "";
+    const out = [(v.freePages != null ? "Sent " : "Paid ") + clock(v.paidAt)];
+    if (collected(v)) {
+      out.push("Collected" + (v.collectedAt ? " " + clock(v.collectedAt) : ""));
+    } else if (v.status === "COMPLETED") {
+      out.push("Ready since " + clock(v.completedAt));
+    } else if (v.status === "QUEUED" || v.status === "PRINTING") {
+      if (v.estimatedReadyAt) {
+        // an estimate: shown to the next full minute
+        out.push("Ready at about " + clock(Math.ceil(new Date(v.estimatedReadyAt).getTime() / 60000) * 60000));
+      } else if (v.serverTime) {
+        out.push("Prints as soon as a printer is back online");
+      }
+    }
+    return out.join("  ·  ");
+  }
+
+  function passMessage(v) {
+    if (collected(v)) return "Handed over at the counter. Thank you!";
+    if (counter.on && counter.order === v.orderId) {
+      return "Staff give you the pages that look like these. This screen turns to Collected when they do.";
+    }
+    if (v.status === "COMPLETED") {
+      return "At the Xerox counter, tap the green button and show this screen. Staff see the same files and hand you the pages.";
+    }
+    if (v.paidAt && (v.status === "QUEUED" || v.status === "PRINTING") && !v.message) {
+      return "Your files are going to the printer. At the counter, tap the green button and show this screen.";
+    }
+    return v.message || "";
+  }
+
+  /** "pages 3, 7 · 2 copies · Colour · A4 · 4 sheets" */
+  function docSummary(sd) {
+    const s = sd.settings, out = [];
+    if (!s) return sd.fileType === "PDF" ? (sd.pageCount ? plural(sd.pageCount, "page", "pages") : "") : "Picture";
+    out.push(sd.fileType !== "PDF" ? "Picture" : s.pages ? "pages " + sd.pagesText : sd.pagesText);
+    if (s.copies > 1) out.push(s.copies + " copies");
+    out.push(s.color ? "Colour" : "B/W");
+    if (s.duplex !== "ONE_SIDED") out.push("two-sided");
+    out.push(s.paperSize === "A4" ? "A4" : paper(s.paperSize).id.replace("PHOTO_", "").replace("X", "×"));
+    if (s.pagesPerSheet > 1) out.push(s.pagesPerSheet + " per sheet");
+    out.push(plural((sd.sheets || 0) * s.copies, "sheet", "sheets"));
+    return out.filter(Boolean).join(" · ");
+  }
+
+  function renderStatus(v, o) {
+    o = o || currentStatusRef();
+    state.shown = v;
+    if (v.serverTime) state.skew = new Date(v.serverTime).getTime() - Date.now();
     watchReady(v);
     $("tStage").dataset.status = v.status;
-    $("tCode").textContent = v.pickupCode;
-    $("tLamp").className = "lamp " + lampFor(v);
+    $("tLamp").className = "lamp " + (collected(v) ? "ready" : lampFor(v));
     $("tStage").textContent = v.stage;
-    $("tMessage").textContent = v.message || "";
+    $("tWhen").textContent = whenLine(v);
+    $("tMessage").textContent = passMessage(v);
+    $("pass").classList.toggle("done", collected(v));
     const paid = !!v.paidAt;
     const printing = ["PRINTING", "COMPLETED"].includes(v.status);
-    const steps = [["Paid", paid], ["Printing", v.status === "COMPLETED"], ["Ready at the counter", v.status === "COMPLETED"]];
+    const steps = [[STAFF ? "Sent" : "Paid", paid], ["Printing", v.status === "COMPLETED"], ["Ready at the counter", v.status === "COMPLETED"],
+      ["Collected", collected(v)]];
     const nowIndex = steps.findIndex(s => !s[1]);
     const ul = $("track");
     ul.innerHTML = "";
@@ -2386,29 +2894,29 @@
       steps.forEach((s, i) => {
         const li = el("li", s[1] ? "done" : (i === nowIndex ? "now" : ""));
         li.append(el("span", "lamp " + (s[1] ? "ready" : (i === nowIndex && (i !== 1 || printing || v.status === "QUEUED") ? "work" : ""))),
-          el("span", null, i === 1 && !s[1] && v.status === "QUEUED" ? "Waiting for a printer" : s[0]));
+          el("span", null, i === 1 && !s[1] && v.status === "QUEUED" ? "Waiting for a printer"
+            : i === 3 && !s[1] && i === nowIndex ? "Collect at the counter" : s[0]));
         ul.appendChild(li);
       });
     }
     const docs = $("tDocs");
     docs.innerHTML = "";
     const list = (v.documents || []);
-    if (list.length) {
+    if (list.length > 1) {
       for (const sd of list) {
         const li = el("li");
         const text = el("div");
-        const stage = v.status === "AWAITING_PAYMENT" && sd.status === "READY" ? "Prints after payment" : sd.stage;
-        text.append(el("b", null, sd.position + ". " + sd.fileName),
-          el("span", null, stage + (sd.settings ? " · " + (sd.settings.color ? "colour" : "B/W") +
-            " · " + plural((sd.sheets || 0) * sd.settings.copies, "sheet", "sheets") : "")));
+        text.append(el("b", null, sd.position + ". " + sd.fileName), el("span", null, docStage(v, sd) +
+          (sd.printedAt ? " · " + clock(sd.printedAt) : "")));
         li.append(el("span", "lamp " + docLamp(sd)), text);
         docs.append(li);
       }
     }
     const sheets = v.totalSheets;
-    $("tDetails").textContent = plural(list.filter(x => x.status !== "CANCELLED").length || 1, "file", "files") +
-      (sheets ? " · " + plural(sheets, "sheet", "sheets") : "") + (v.amountPaise != null ? " · " + rupees(v.amountPaise) : "");
-    // CampusPay: while the payment is not confirmed, the UPI details stay one tap away.
+    $("tDetails").textContent = "Order " + v.pickupCode + " · " + plural(liveDocs(v).length || 1, "file", "files") +
+      (sheets ? " · " + plural(sheets, "sheet", "sheets") : "") +
+      (v.freePages != null ? " · free (" + plural(v.freePages, "page", "pages") + ")" : v.amountPaise != null ? " · " + rupees(v.amountPaise) : "");
+    // XeoGo Pay: while the payment is not confirmed, the UPI details stay one tap away.
     const upiOpen = v.status === "AWAITING_PAYMENT" && v.payment && v.payment.provider === "upi";
     $("tPayBtn").classList.toggle("hidden", !upiOpen);
     if (upiOpen) {
@@ -2416,53 +2924,428 @@
         : v.payment.claimedAt ? "Show payment details" : "Pay now";
       $("tPayBtn").classList.toggle("ghost", !!v.payment.claimedAt && !v.payment.note);
     }
+    if (o) renderPass(v, o);
+    renderCounter(v);
+  }
+
+  function docStage(v, sd) {
+    return v.status === "AWAITING_PAYMENT" && sd.status === "READY" ? (STAFF ? "Prints when you press Print" : "Prints after payment")
+      : (sd.stage || "");
+  }
+
+  // ------------------------------------------------------------------ the files, as pictures (what the student shows)
+
+  /**
+   * A picture of each file's first sheet is kept on this device (drawn here
+   * before paying, as it will print). If this device has none, the Xerox PC's
+   * picture of the sheet it printed is fetched once and kept.
+   */
+  const passStore = (function () {
+    const NAME = STAFF ? "campusprint-staff" : "campusprint", STORE_NAME = "previews";
+    let opening = null;
+    function open() {
+      if (!opening) {
+        opening = new Promise((resolve, reject) => {
+          let req;
+          try { req = indexedDB.open(NAME, 1); } catch (e) { reject(e); return; }
+          req.onupgradeneeded = () => { req.result.createObjectStore(STORE_NAME, { keyPath: "id" }); };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+          req.onblocked = () => reject(new Error("blocked"));
+        });
+        opening.catch(() => { opening = null; });
+      }
+      return opening;
+    }
+    function run(mode, fn) {
+      return open().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, mode);
+        const req = fn(tx.objectStore(STORE_NAME));
+        tx.oncomplete = () => resolve(req && req.result);
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      }));
+    }
+    return {
+      put: (rec) => run("readwrite", s => s.put(rec)).catch(() => {}),
+      get: (id) => run("readonly", s => s.get(id)).catch(() => null),
+      /** Forgets the pictures of orders this device no longer lists. */
+      sweep: (keepOrders) => run("readwrite", s => {
+        const cursor = s.openCursor();
+        cursor.onsuccess = () => {
+          const c = cursor.result;
+          if (!c) return;
+          if (!keepOrders.includes(c.value.order)) c.delete();
+          c.continue();
+        };
+      }).catch(() => {})
+    };
+  })();
+
+  /** The first sheet of a file as it will print: a JPEG (data URL), or null. */
+  async function sheetPicture(d, n) {
+    const s = n.settings;
+    const pages = chosenPages(d, s);
+    if (!pages.length) return null;
+    const isPic = d.type !== "PDF";
+    const o = C.layoutOptions(s, paper(s.paperSize), isPic);
+    let sheet;
+    if (isPic) {
+      const size = C.pictureSize(d.image || d.localImage, s.rotation);
+      sheet = C.layoutSheet(0, 1, () => size, o);
+    } else {
+      const per = s.pagesPerSheet > 1 ? s.pagesPerSheet : 1;
+      const sizes = new Map();
+      for (let j = 0; j < Math.min(pages.length, per); j++) sizes.set(j, await pageSize(d, pages[j]));
+      sheet = C.layoutSheet(0, pages.length, (j) => sizes.get(j), o);
+    }
+    const canvas = document.createElement("canvas");
+    const box = { clientWidth: 760 + 36, clientHeight: 1000 + 36 };        // about 760 x 1000 px: sharp on a phone, small to keep
+    const drawn = await paintSheet(canvas, box, d, s, sheet, pages, () => true, { guides: false, dpr: 1 });
+    return drawn ? canvas.toDataURL("image/jpeg", 0.8) : null;
+  }
+
+  /**
+   * Keeps a picture of every file's first sheet on this device. Done when the
+   * order is reviewed, so the pictures are there after paying even if the
+   * phone reloads the page on the way back from the UPI app.
+   */
+  function keepPictures(o) {
+    const docs = state.docs.filter(d => d.id && d.status === "ready");
+    const job = (async () => {
+      for (const d of docs) {
+        // A file this device would have to download again (after a reload): the Xerox PC's picture is used instead.
+        if (!d.file && d.size >= 15 * 1048576) continue;
+        try {
+          d.owner = d.owner || o;
+          const n = norm(d);
+          if (!n || n.error) continue;
+          const sig = JSON.stringify(n.settings);
+          const old = await passStore.get(d.id);
+          if (old && old.url && old.sig === sig) continue;
+          const url = await readSlot(() => sheetPicture(d, n));
+          if (url) await passStore.put({ id: d.id, order: o.orderId, url, sig, at: Date.now() });
+        } catch (e) { /* no picture from this device: the Xerox PC's is used */ }
+      }
+    })();
+    state.pictures = job;
+    job.then(() => { if (state.pictures === job) state.pictures = null; });
+    return job;
+  }
+
+  /** The Xerox PC's picture of the sheet it printed, as a data URL. */
+  async function fetchPreview(o, docId) {
+    const res = await fetch(API + "/api/v1/orders/" + o.orderId + "/documents/" + docId + "/preview",
+      { headers: authHeaders(o.key) });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!/^image\//.test(blob.type)) return null;
+    return new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  }
+
+  const pass = { key: "", order: null, index: 0, urls: new Map(), loading: new Set() };
+
+  async function loadPicture(o, sd) {
+    if (pass.urls.has(sd.id) || pass.loading.has(sd.id)) return;
+    pass.loading.add(sd.id);
+    try {
+      let rec = await passStore.get(sd.id);
+      if (!(rec && rec.url) && sd.hasPreview) {
+        const url = await fetchPreview(o, sd.id);
+        if (url) {
+          rec = { id: sd.id, order: o.orderId, url, at: Date.now() };
+          passStore.put(rec);
+        }
+      }
+      if (rec && /^data:image\//.test(rec.url || "")) pass.urls.set(sd.id, rec.url);
+    } catch (e) { /* no picture: the file's name and settings are shown */ }
+    pass.loading.delete(sd.id);
+    if (state.shown && state.shown.orderId === o.orderId && state.step === "status") paintPass(state.shown);
+  }
+
+  /** The files of the order: one large sheet at a time, and small ones to choose from. */
+  function renderPass(v, o) {
+    const docs = liveDocs(v);
+    $("passView").classList.toggle("hidden", !docs.length);
+    $("passCap").classList.toggle("hidden", !docs.length);
+    const key = v.orderId + "|" + docs.map(d => d.id + (d.hasPreview ? "+" : "")).join(",");
+    if (key !== pass.key) {
+      if (pass.order !== v.orderId) { pass.index = 0; $("passSheet").dataset.shown = ""; }
+      pass.key = key;
+      pass.order = v.orderId;
+      const thumbs = $("passThumbs");
+      thumbs.innerHTML = "";
+      thumbs.classList.toggle("hidden", docs.length < 2);
+      docs.forEach((sd, i) => {
+        const b = el("button", "pass-thumb");
+        b.type = "button";
+        b.dataset.doc = sd.id;
+        b.setAttribute("aria-label", "File " + (i + 1) + ": " + sd.fileName);
+        b.onclick = () => { pass.index = i; if (state.shown) paintPass(state.shown); };
+        b.append(icon(sd.fileType === "PDF" ? "file" : "image"), el("span", "n", String(i + 1)));
+        thumbs.append(b);
+      });
+      docs.forEach(sd => loadPicture(o, sd));
+    }
+    paintPass(v);
+  }
+
+  function paintPass(v) {
+    const docs = liveDocs(v);
+    if (!docs.length) return;
+    pass.index = Math.max(0, Math.min(pass.index, docs.length - 1));
+    const sd = docs[pass.index];
+    const box = $("passSheet");
+    const url = pass.urls.get(sd.id);
+    const want = sd.id + (url ? "|picture" : pass.loading.has(sd.id) ? "|loading" : "|none");
+    if (box.dataset.shown !== want) {
+      box.dataset.shown = want;
+      box.innerHTML = "";
+      if (url) {
+        const img = el("img");
+        img.src = url;
+        img.alt = "First sheet of " + sd.fileName;
+        box.append(img);
+      } else {
+        const blank = el("div", "pass-blank");
+        blank.append(icon(sd.fileType === "PDF" ? "file" : "image"),
+          el("b", null, sd.fileType === "JPEG" ? "JPG" : sd.fileType),
+          el("span", null, pass.loading.has(sd.id) ? "Getting the picture…" : "The picture shows once it is printed"));
+        box.append(blank);
+      }
+    }
+    box.classList.toggle("bw", !!(sd.settings && !sd.settings.color));
+    const many = docs.length > 1;
+    $("passPrev").classList.toggle("hidden", !many);
+    $("passNext").classList.toggle("hidden", !many);
+    $("passPrev").disabled = pass.index <= 0;
+    $("passNext").disabled = pass.index >= docs.length - 1;
+    const cap = $("passCap");
+    cap.innerHTML = "";
+    const chip = el("span", "pass-chip " + docLamp(sd), docStage(v, sd));
+    cap.append(el("b", null, (many ? (pass.index + 1) + " of " + docs.length + " · " : "") + sd.fileName),
+      el("span", null, docSummary(sd)), chip);
+    document.querySelectorAll("#passThumbs .pass-thumb").forEach((b, i) => {
+      b.classList.toggle("on", i === pass.index);
+      const u = pass.urls.get(b.dataset.doc);
+      if (u && !b.querySelector("img")) {
+        const img = el("img");
+        img.src = u;
+        img.alt = "";
+        b.querySelector("svg").replaceWith(img);
+      }
+      const d = docs[i];
+      b.classList.toggle("bw", !!(d && d.settings && !d.settings.color));
+    });
+  }
+
+  // ------------------------------------------------------------------ at the counter (no pickup code)
+
+  /**
+   * "I'm at the counter": tells the server from this device, which holds the
+   * order's key. The order then shows on the staff's screen with pictures of
+   * its files; the student shows this screen, staff hand over the pages and
+   * press "Handed over", and this screen turns to "Collected". A screenshot,
+   * or the same PDF on someone else's phone, cannot do that.
+   */
+  const counter = { on: false, order: null, repeat: null, tick: null, lock: null, offline: false, said: 0, old: false };
+
+  function canCollect(v) {
+    return !!v.paidAt && !collected(v) && ["QUEUED", "PRINTING", "COMPLETED", "FAILED"].includes(v.status);
+  }
+
+  function renderCounter(v) {
+    const can = canCollect(v);
+    if (counter.on && (counter.order !== v.orderId || !can)) {
+      const done = counter.order === v.orderId && collected(v);
+      leaveCounter(false);
+      if (done) {
+        if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+        toast("Collected. Thank you!", "ok");
+      }
+    }
+    $("tMessage").textContent = passMessage(v);
+    $("hereBtn").classList.toggle("hidden", !can || counter.on);
+    $("leaveBtn").classList.toggle("hidden", !counter.on);
+    $("hereBox").classList.toggle("hidden", !counter.on);
+    $("hereBox").classList.toggle("offline", counter.offline);
+    const mark = $("hereBox").querySelector(".tick use");
+    if (mark) mark.setAttribute("href", counter.offline ? "#i-warn" : "#i-check");
+    document.body.classList.toggle("at-counter", counter.on);
+    if (!counter.on) return;
+    const docs = liveDocs(v);
+    $("hereText").textContent = counter.offline
+      ? "This phone is offline: tell the staff a file's name, and they find your order."
+      : v.status === "COMPLETED" ? "They can see your order on their screen now."
+      : v.status === "FAILED" ? "They can see your order. One file had a problem: they will sort it out."
+      : "They can see you are here. Still printing: " + (v.documentsDone || 0) + " of " + docs.length + " done.";
+  }
+
+  async function sayHere(o) {
+    counter.said = Date.now();
+    try {
+      const v = await api("POST", "/api/v1/orders/" + o.orderId + "/arrive", { here: true }, o.key);
+      counter.offline = false;
+      if (counter.on && counter.order === o.orderId && state.step === "status") renderStatus(v, o);
+    } catch (e) {
+      if (!counter.on || counter.order !== o.orderId) return;
+      if (e.network) {
+        counter.offline = true;
+        if (state.shown) renderCounter(state.shown);
+      } else if (e.status === 404 && e.code !== "NOT_FOUND" || e.status === 405) {
+        counter.old = true;                 // an older server has no "at the counter": the screen is shown all the same
+      } else {
+        leaveCounter(false);
+        if (state.shown) renderCounter(state.shown);
+        toast(e.message, "bad");
+      }
+    }
+  }
+
+  /** Back online at the counter, or the arrival wore off while the phone slept: tell the staff's screen at once. */
+  function sayHereAgain(v, o) {
+    if (!counter.on || counter.order !== v.orderId || counter.old || !canCollect(v)) return;
+    if ((counter.offline || !v.arrivedAt) && Date.now() - counter.said > 8000) sayHere(o);
+  }
+
+  function atCounter(o) {
+    if (!state.shown || !canCollect(state.shown)) return;
+    counter.on = true;
+    counter.order = o.orderId;
+    counter.offline = false;
+    counter.old = false;
+    renderCounter(state.shown);
+    sayHere(o);
+    clearInterval(counter.repeat);
+    counter.repeat = setInterval(() => { if (!document.hidden) sayHere(o); }, 45000);
+    const tick = () => {
+      $("hereClock").textContent = new Date(now()).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    };
+    tick();
+    clearInterval(counter.tick);
+    counter.tick = setInterval(tick, 1000);          // a running clock: this is the live screen, not a screenshot
+    if (navigator.wakeLock && navigator.wakeLock.request) {
+      navigator.wakeLock.request("screen").then(l => { counter.lock = l; }).catch(() => { /* the screen may dim: fine */ });
+    }
+    $("pass").scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  /** tell: also take the order off the staff's screen (the student closed this, or went elsewhere). */
+  function leaveCounter(tell) {
+    if (!counter.on) return;
+    const id = counter.order;
+    counter.on = false;
+    counter.order = null;
+    clearInterval(counter.repeat);
+    clearInterval(counter.tick);
+    if (counter.lock) { try { counter.lock.release(); } catch (e) { /* gone already */ } counter.lock = null; }
+    document.body.classList.remove("at-counter");
+    const o = tell && recent().find(x => x.orderId === id);
+    if (o) api("POST", "/api/v1/orders/" + id + "/arrive", { here: false }, o.key).catch(() => { /* it wears off by itself */ });
   }
 
   /** afterPayment: the student has just paid (or tried to): never offer the Pay button again from here. */
   async function openStatus(o, first, afterPayment) {
-    clearInterval(state.poll);
+    stopStatusWatch();
+    const run = state.pollRun;               // this watch; opening another order (or leaving) ends it
     show("status");
     location.hash = "order=" + o.orderId;
     let firstTick = true;
+    let again = true;                        // false: nothing more can change on this screen
+    // The server says how soon to ask again: soon while it prints or the student stands at the counter, seldom
+    // while nothing can change, less often for everybody when it is busy. A page nobody looks at asks rarely.
+    const schedule = (seconds) => {
+      clearTimeout(state.poll);
+      if (!again || run !== state.pollRun || state.step !== "status") return;
+      state.poll = setTimeout(tick, (document.hidden ? Math.max(seconds, 30) : seconds) * 1000);
+    };
     const tick = async () => {
+      let wait = 3;
       try {
         const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
         const upi = v.payment && v.payment.provider === "upi";
+        wait = Math.max(3, v.pollSeconds || 3);
         if (v.status === "AWAITING_PAYMENT" && firstTick && !afterPayment && !(upi && (v.payment.claimedAt || v.payment.note))) {
-          clearInterval(state.poll);
+          again = false;
           state.order = v;
           if (upi) return resumeUpi(o);            // the UPI payment screen was open: show it again
           return showReview(v);
         }
         if (v.status === "AWAITING_UPLOAD" && firstTick) {
-          clearInterval(state.poll);
+          again = false;
           if (await restoreDraft(true)) return;
         }
         firstTick = false;
-        renderStatus(v);
-        if (v.status === "AWAITING_PAYMENT" && !upi) $("tMessage").textContent = "Checking your payment with the bank. This can take a minute.";
-        if (FINAL.includes(v.status) && v.status !== "COMPLETED") clearInterval(state.poll);
-        if (v.status === "COMPLETED" && v.collected) clearInterval(state.poll);
+        if (state.step !== "status" || location.hash.indexOf(o.orderId) < 0) return;      // the student moved on meanwhile
+        if (v.paidAt) storageSet(VIEW + o.orderId, { v, at: Date.now() });
+        $("tOffline").classList.add("hidden");
+        renderStatus(v, o);
+        sayHereAgain(v, o);
+        if (v.status === "AWAITING_PAYMENT" && !upi && !STAFF) $("tMessage").textContent = "Checking your payment with the bank. This can take a minute.";
+        if (FINAL.includes(v.status) && v.status !== "COMPLETED") again = false;
+        if (v.status === "COMPLETED" && collected(v)) again = false;
       } catch (e) {
-        if (e.status === 404) { clearInterval(state.poll); forget(o.orderId); showError("This order no longer exists."); }
+        if (e.status === 404) { again = false; forget(o.orderId); showError("This order no longer exists."); }
+        else if (e.network) {
+          offlineStatus(o);
+          // what this device last saw is final: nothing to wait for
+          const st = $("tStage").dataset.status || "";
+          if (FINAL.includes(st) && st !== "COMPLETED") again = false;
+        }
+      } finally {
+        schedule(wait);
       }
     };
-    if (first) renderStatus(first);
-    else $("tCode").textContent = o.code;
+    state.statusTick = tick;
+    if (first) renderStatus(first, o);
+    else showSaved(o);
     await tick();
-    const st = $("tStage").dataset.status || "";
-    if (state.step === "status" && !(FINAL.includes(st) && st !== "COMPLETED")) state.poll = setInterval(tick, 3000);
+  }
+
+  /** While the first answer is on its way: what this device last saw of the order (nothing, for a new one). */
+  function showSaved(o) {
+    const saved = storageGet(VIEW + o.orderId, null);
+    if (saved && saved.v && saved.v.orderId === o.orderId) {
+      renderStatus(saved.v, o);
+    } else {
+      $("tStage").textContent = "Opening your order…";
+      $("tStage").dataset.status = "";
+      $("tLamp").className = "lamp work";
+      ["tWhen", "tMessage", "tDetails"].forEach(id => { $(id).textContent = ""; });
+      ["track", "tDocs", "passThumbs", "passCap", "passSheet"].forEach(id => { $(id).innerHTML = ""; });
+      $("passSheet").dataset.shown = "";
+      ["passView", "hereBtn", "leaveBtn", "hereBox", "tPayBtn"].forEach(id => $(id).classList.add("hidden"));
+      pass.key = "";
+    }
+  }
+
+  /** No internet (a dead spot at the counter): the files are still shown, from what this device kept. */
+  function offlineStatus(o) {
+    const saved = storageGet(VIEW + o.orderId, null);
+    if (state.step !== "status") return;
+    if (saved && saved.v && (!state.shown || state.shown.orderId !== o.orderId)) renderStatus(saved.v, o);
+    const note = $("tOffline");
+    note.textContent = "No internet right now: this shows your order as this phone last saw it" +
+      (saved && saved.at ? " (" + clock(saved.at) + ")" : "") + ". At the counter, tell the staff a file's name.";
+    note.classList.remove("hidden");
+    if (counter.on) { counter.offline = true; if (state.shown) renderCounter(state.shown); }
   }
 
   function resetToStart() {
-    clearInterval(state.poll);
+    stopStatusWatch();
     document.title = BASE_TITLE;
     $("notifyNote").textContent = "";
     state.order = null;
+    state.shown = null;
     history.replaceState(null, "", location.pathname);
     show("choose");
     renderRecent();
     loadShop();
+    if (STAFF) loadStaff().catch(() => {});          // the free pages left, fresh
   }
 
   // ================================================================== keeping a draft across a page reload
@@ -2477,16 +3360,31 @@
   let saveTimer = null;
   function saveDraftSoon() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveDraft, 400);
+    saveTimer = setTimeout(() => { saveTimer = null; saveDraft(); }, 400);
   }
+  /** Leaving the page (another app, a reload, the tab put to sleep): what was just changed is written at once. */
+  function flushDraft() {
+    if (!saveTimer) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    saveDraft();
+  }
+  // Back on the page (the phone was in the pocket on the way to the counter): the order is looked at at once.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.step === "status" && state.statusTick) state.statusTick();
+  });
+  window.addEventListener("pagehide", flushDraft);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) flushDraft(); });
   function clearDraft(dropFiles) {
     storageSet(DRAFT, null);
-    for (const d of state.docs) {
+    const docs = state.docs;
+    for (const d of docs) {
       if (dropFiles) d.removed = true;
       if (d.xhr) d.xhr.abort();
-      if (d.imgUrl) URL.revokeObjectURL(d.imgUrl);
-      closePdf(d);
     }
+    // The pictures for the counter may still be drawn from these files: let that finish, then let go of them.
+    const release = () => docs.forEach(d => { if (d.imgUrl) URL.revokeObjectURL(d.imgUrl); closePdf(d); });
+    if (state.pictures && !dropFiles) state.pictures.then(release, release); else release();
     uploads.waiting.length = 0;
     state.draft = null;
     state.docs = [];
@@ -2528,9 +3426,13 @@
       d.type = sd.fileType;
       d.pageCount = sd.pageCount;
       d.image = sd.image;
-      d.settings = Object.assign(C.defaults(sd.fileType !== "PDF"), (mine && mine.settings) || sd.settings || {});
+      d.picked = null;
+      d.settings = Object.assign(C.defaults(sd.fileType !== "PDF" && sd.fileType !== "DOCX"), (mine && mine.settings) || sd.settings || {});
       if (sd.status === "READY") {
         d.status = "ready";
+      } else if (sd.status === "CONVERTING") {
+        d.status = "converting";       // a Word file the Xerox center's computer is still turning into pages
+        d.ahead = sd.ahead || 0;
       } else if (sd.status === "REJECTED") {
         d.status = "error"; d.error = sd.problem || "This file cannot be printed."; d.retry = false;
       } else {
@@ -2547,6 +3449,7 @@
     }
     renderQueue();
     renderCheckout();
+    if (state.docs.some(d => d.status === "converting")) watchWord();
     if (!quiet && state.docs.length) toast("Your files from before are still here.", "ok");
     // pictures of the first pages, a couple at a time (this downloads the files again)
     state.docs.filter(d => d.status === "ready" && d.size < 15 * 1048576).forEach(d => readSlot(async () => {
@@ -2566,8 +3469,8 @@
   function watchReady(v) {
     const before = alerts.last[v.orderId];
     alerts.last[v.orderId] = v.status;
-    const ready = v.status === "COMPLETED" && !v.collected;
-    document.title = ready ? "✅ Ready · " + v.pickupCode + " — Campus Print" : BASE_TITLE;
+    const ready = v.status === "COMPLETED" && !collected(v);
+    document.title = ready ? "✅ Your prints are ready — XeoGo" : BASE_TITLE;
     const canAsk = "Notification" in window && !FINAL.includes(v.status) && Notification.permission !== "denied";
     $("notifyBtn").classList.toggle("hidden", !canAsk || alerts.on);
     if (ready && before && before !== "COMPLETED") {
@@ -2577,7 +3480,8 @@
   }
   function notifyReady(v) {
     const title = "Your prints are ready";
-    const opts = { body: "Show code " + v.pickupCode + " at the counter.", icon: "icon-192.png", tag: v.orderId };
+    const opts = { body: "Open XeoGo at the counter and show your files.", icon: "icon-192.png", tag: v.orderId,
+      data: { page: STAFF ? "staff.html" : "./" } };
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
       navigator.serviceWorker.ready.then(r => r.showNotification(title, opts)).catch(() => {});
     } else {
@@ -2595,7 +3499,7 @@
   };
   $("shareBtn").onclick = async () => {
     const url = location.origin + location.pathname.replace(/index\.html$/, "");
-    const data = { title: "Campus Print", text: "Print from your phone and skip the Xerox queue:", url };
+    const data = { title: "XeoGo", text: "Print from your phone and skip the Xerox queue:", url };
     try {
       if (navigator.share) { await navigator.share(data); return; }
       await navigator.clipboard.writeText(url);
@@ -2693,6 +3597,26 @@
     catch (e) { toast("UPI ID: " + $("upVpa").textContent); }
   };
   $("tPayBtn").onclick = () => { const o = currentStatusRef(); if (o) resumeUpi(o); };
+  $("hereBtn").onclick = () => { const o = currentStatusRef(); if (o) atCounter(o); };
+  $("leaveBtn").onclick = () => { leaveCounter(true); if (state.shown) renderCounter(state.shown); };
+  $("passPrev").onclick = () => { pass.index--; if (state.shown) paintPass(state.shown); };
+  $("passNext").onclick = () => { pass.index++; if (state.shown) paintPass(state.shown); };
+  // swipe between the files, like turning the printed pages
+  let swipeX = null;
+  $("passView").addEventListener("touchstart", (e) => { swipeX = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+  $("passView").addEventListener("touchend", (e) => {
+    if (swipeX == null || !state.shown) return;
+    const dx = e.changedTouches[0].clientX - swipeX;
+    swipeX = null;
+    if (Math.abs(dx) < 45) return;
+    pass.index += dx < 0 ? 1 : -1;
+    paintPass(state.shown);
+  }, { passive: true });
+  // Back on this page at the counter: say "here" again at once.
+  document.addEventListener("visibilitychange", () => {
+    const o = !document.hidden && counter.on && recent().find(x => x.orderId === counter.order);
+    if (o) sayHere(o);
+  });
   // Back from a UPI app: look at once instead of waiting for the next check.
   document.addEventListener("visibilitychange", () => { if (!document.hidden) backFromUpiApp(); });
   window.addEventListener("pageshow", () => backFromUpiApp());
@@ -2716,20 +3640,44 @@
     history.replaceState(null, "", location.hash.replace(/&missing=[a-z]+/, ""));
   }
 
-  /** The order on the pickup-code page. */
+  /** The order on the "your prints" page. */
   function currentStatusRef() {
     const m = location.hash.match(/order=([0-9a-f-]{36})/);
     return m && recent().find(o => o.orderId === m[1]);
   }
 
-  (async function start() {
-    if (!API) { showError("config.js has no apiBase. Open config.js and set it."); return; }
+  /** The shop, then: the order in the address, an unfinished order, or the first page. */
+  async function begin() {
     missingApp();
+    sweepPictures();
     await loadShop();
+    if (STAFF && !storageGet(SESSION, null)) return;         // signed out while loading: the sign-in screen is showing
     const m = location.hash.match(/order=([0-9a-f-]{36})/);
     const saved = m && recent().find(o => o.orderId === m[1]);
     if (saved) { openStatus(saved); return; }
     if (await restoreDraft(false)) return;
+    if (state.step !== "choose") show("choose");
     renderRecent();
+  }
+
+  (async function start() {
+    if (!API) { showError("config.js has no apiBase. Open config.js and set it."); return; }
+    if (STAFF) {
+      document.querySelectorAll("a.brand").forEach(a => { a.setAttribute("href", "staff.html"); });
+      $("loginForm").addEventListener("submit", signIn);
+      $("signOutBtn").onclick = signOut;
+      // coming back to the page: the free pages may have changed on another device
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && state.staff && state.step !== "login") loadStaff().catch(() => {});
+      });
+      if (!storageGet(SESSION, null)) { loadShop(); showLogin(null); return; }
+      try {
+        await loadStaff();
+      } catch (e) {
+        if (state.step === "login") return;                  // not signed in any more: the sign-in screen says why
+        // no internet: carry on with what this device has (a sent order still opens, with its files)
+      }
+    }
+    await begin();
   })();
 })();

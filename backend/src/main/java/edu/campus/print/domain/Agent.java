@@ -20,6 +20,8 @@ public class Agent {
     @Column(name = "last_seen_at") private Instant lastSeenAt;
     @Column(name = "agent_version") private String agentVersion;
     @Column(name = "host_name") private String hostName;
+    @Column(name = "word_ready", nullable = false) private boolean wordReady;   // its Microsoft Word made a test PDF
+    @Column(name = "word_note") private String wordNote;                        // "Microsoft Word 2016", or why not
 
     public boolean isOnline(Duration within) {
         return !revoked && lastSeenAt != null && lastSeenAt.isAfter(Instant.now().minus(within));
@@ -32,4 +34,6 @@ public class Agent {
     public Instant getLastSeenAt() { return lastSeenAt; }
     public String getAgentVersion() { return agentVersion; }
     public String getHostName() { return hostName; }
+    public boolean isWordReady() { return wordReady; }
+    public String getWordNote() { return wordNote; }
 }

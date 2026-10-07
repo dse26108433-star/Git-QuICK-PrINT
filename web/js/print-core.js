@@ -1,5 +1,5 @@
 /*
- * Campus Print - the printing rules, shared with the server and the Xerox PC.
+ * XeoGo - the printing rules, shared with the server and the Xerox PC.
  *
  * Everything here has a twin that decides what really prints, and a shared
  * test (spec/cases/*.json, run by spec/web-core.test.js) keeps them equal:

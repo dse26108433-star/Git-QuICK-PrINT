@@ -5,6 +5,11 @@
 server:
   port: ${PORT:8080}
   forward-headers-strategy: framework   # correct https:// behind a hosting proxy
+  tomcat:
+    threads:
+      max: ${HTTP_THREADS:100}          # requests answered at the same time; more wait their turn...
+    accept-count: 400                   # ...this many, instead of being turned away
+    connection-timeout: 20s
   error:
     include-message: never
   shutdown: graceful
@@ -24,13 +29,13 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     hikari:
-      maximum-pool-size: 5              # the free Supabase pooler has few slots
+      maximum-pool-size: ${DB_POOL_SIZE:5}   # the free Supabase pooler has few slots; a paid one takes 10-20
       connection-timeout: 20000
 
   jpa:
     hibernate:
-      # db/setup.sql owns the schema. Hibernate never creates or checks tables,
-      # so a harmless type-name difference can never stop the server starting.
+      # db/setup.sql owns the schema (the server runs it itself at start: DatabaseSetup). Hibernate never
+      # creates or checks tables, so a harmless type-name difference can never stop the server starting.
       ddl-auto: none
     open-in-view: false
     properties:
@@ -41,6 +46,11 @@ spring:
       enabled: false          # PDFs go straight to storage, never through us
 
 campus:
+  database:
+    # The server brings the database up to date by itself when it starts (db/setup.sql, a copy is inside the
+    # server). false: you run db/setup.sql by hand in Supabase before every update.
+    auto-setup: ${DB_AUTO_SETUP:true}
+
   supabase:
     url: ${SUPABASE_URL}
     # Secret key (sb_secret_...) or legacy service_role key. Server only.
@@ -51,19 +61,25 @@ campus:
     download-url-ttl-seconds: 300
 
   payment:
-    # demo     = no real money (testing only)
-    # upi      = CampusPay: students pay your UPI ID from any UPI app (docs/campuspay-upi.md)
+    # demo     = no real money (testing only: orders print WITHOUT payment)
+    # upi      = XeoGo Pay: students pay your UPI ID from any UPI app (docs/campuspay-upi.md)
     # razorpay = payments through Razorpay
-    mode: ${PAYMENT_MODE:demo}
+    # Not set, or anything else: paying is switched off (never free printing by mistake).
+    mode: ${PAYMENT_MODE:}
     razorpay-key-id: ${RAZORPAY_KEY_ID:}
     razorpay-key-secret: ${RAZORPAY_KEY_SECRET:}
-    # CampusPay (mode upi). Your UPI ID, or the text of your shop's UPI QR code.
+    # XeoGo Pay (mode upi). Your UPI ID, or the text of your shop's UPI QR code.
     upi-id: ${UPI_ID:}
     upi-name: ${UPI_NAME:}
     upi-merchant-code: ${UPI_MERCHANT_CODE:}
     # Secret the phone that forwards the bank's SMS sends (24+ characters). Empty = staff confirm payments.
     upi-alert-token: ${UPI_ALERT_TOKEN:}
     upi-match-minutes: ${UPI_MATCH_MINUTES:60}
+    # Bank SMS sender names to believe besides the well-known banks, e.g. "SVCBNK, TJSBBK".
+    # (Staff can also confirm their bank's sender once on the counter.) Never a phone number.
+    upi-sms-senders: ${UPI_SMS_SENDERS:}
+    # More UPI app packages whose "money received" notifications are believed (business apps without chat).
+    upi-trusted-apps: ${UPI_TRUSTED_APPS:}
 
   counter:
     # Password for web/counter.html (the Xerox center staff screen).
@@ -82,11 +98,21 @@ campus:
     max-file-pages: 2000            # most pages a PDF may have; students choose the pages they need
     max-copies: 50
     max-documents: 25               # most documents (files) in one order
-    max-parallel-checks: 3          # uploaded files checked at once; each is read into memory (up to 50 MB)
+    max-parallel-checks: 4          # small uploaded files checked at once
+    check-memory-mb: 64             # megabytes of uploads being checked at once, all together: a big file
+                                    # takes as many as it is big, so big ones are checked one after the other
+    shop-cache-millis: ${SHOP_CACHE_MILLIS:3000}   # the shop's details (prices, printers) are read at most this often
+
+  staff:
+    # Free printing for college staff. The month (and its free pages) starts again
+    # at midnight on the 1st, in this time zone.
+    time-zone: ${SHOP_TIME_ZONE:Asia/Kolkata}
+    session-days: 90                # a device stays signed in this long without being used
 
   ratelimit:
-    orders-per-minute: 60
-    orders-per-hour: 600
+    orders-per-minute: 1000         # new orders from one network address (a whole campus shares one,
+    orders-per-hour: 10000          # and 500 students may order in the same break); stops only a runaway script
+    staff-logins-per-10-minutes: 30 # sign-in attempts from one network address
 
   cors:
     # Where the web pages are opened from. Comma separated, no trailing slash.

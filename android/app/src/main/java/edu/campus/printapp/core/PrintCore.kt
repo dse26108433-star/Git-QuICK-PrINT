@@ -8,7 +8,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /*
- * Campus Print - the printing rules, the app's copy.
+ * XeoGo - the printing rules, the app's copy.
  *
  * The same rules as the website (web/js/print-core.js), line for line, and
  * each has a twin that decides what really prints:
@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
  */
 
 /** A problem the student can fix; the message is shown as it is. */
-class UserError(message: String) : Exception(message)
+class UserError(message: String, val retry: Boolean = false) : Exception(message)
 
 const val MM = 72.0 / 25.4
 const val GAP = 3 * MM

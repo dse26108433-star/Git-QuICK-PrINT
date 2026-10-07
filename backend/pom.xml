@@ -14,7 +14,7 @@
     <groupId>edu.campus</groupId>
     <artifactId>print-server</artifactId>
     <version>1.0.0</version>
-    <name>Campus Print Server</name>
+    <name>XeoGo Server</name>
     <description>Campus Xerox center print service: orders, payment, and the print PC API.</description>
 
     <properties>

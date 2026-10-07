@@ -31,8 +31,9 @@ data class EditorUi(
 
 /**
  * Connects the order (flow/OrderSession, plain Kotlin) to Android: picked and
- * shared files, drawing pages, keeping the printers' options up to date, and
- * Razorpay's screen (opened by MainActivity).
+ * shared files, drawing pages (and the picture of each file that is shown at
+ * the counter), keeping the printers' options up to date, and Razorpay's
+ * screen (opened by MainActivity).
  */
 class PrintViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -40,18 +41,31 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
     private val work = File(app.filesDir, "work").apply { mkdirs() }
 
     val images = PageImages()
-    val session = OrderSession(PrintApi(AppConfig.API_BASE), viewModelScope, PageImages.reader, stores, stores, workDir = work,
-        log = { what, e -> android.util.Log.w("CampusPrint", what, e) })
+    val session = OrderSession(PrintApi(AppConfig.API_BASE, staffToken = { if (AppConfig.STAFF) stores.token() else null }),
+        viewModelScope, PageImages.reader, stores, stores, workDir = work,
+        log = { what, e -> android.util.Log.w("CampusPrint", what, e) },
+        pictures = PhonePictures(app), painter = edu.campus.printapp.ui.SheetPictureMaker(images),
+        staffStore = if (AppConfig.STAFF) stores else null)
 
     private val _ui = MutableStateFlow(EditorUi())
     val ui: StateFlow<EditorUi> = _ui.asStateFlow()
+
+    /**
+     * The opening animation of the student app (ui/Intro.kt): 0 = playing, 1 = the app shows through and its
+     * first page arrives, 2 = over. Kept here so turning the phone does not play it again. The staff app has none.
+     */
+    private val _intro = MutableStateFlow(if (AppConfig.STAFF) 2 else 0)
+    val intro: StateFlow<Int> = _intro.asStateFlow()
+
+    fun introAt(stage: Int) = _intro.update { maxOf(it, stage) }
 
     private var refresher: Job? = null
 
     init {
         viewModelScope.launch {
+            session.refreshStaff()                        // the staff app: who is signed in, and the pages left
             session.loadShop()
-            val restored = session.restoreDraft()
+            val restored = session.signedIn && session.restoreDraft()
             if (!restored) cleanWorkFiles()
             session.refreshRecent()
         }
@@ -145,7 +159,7 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
             s.step == Step.REVIEW -> { if (!s.paymentStarted && s.order?.editable == true) session.edit() else session.toHome(); true }
             s.step == Step.PAY -> { session.backFromPay(); true }
             s.step == Step.STATUS -> { session.toHome(); true }
-            else -> false
+            else -> false                                  // HOME, and the staff app's sign-in screen
         }
     }
 
@@ -153,12 +167,14 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
 
     /** While the app is on screen: every minute, and at once when it comes back. */
     fun onScreen(visible: Boolean) {
+        session.onScreen(visible)
         refresher?.cancel()
         if (!visible) return
         refresher = viewModelScope.launch {
             while (isActive) {
-                session.loadShop()
-                delay(60_000)
+                session.refreshStaff()
+                val shop = session.loadShop()
+                delay(if (shop == null) 6_000 else 60_000)      // not there yet (it may be waking up): soon again
             }
         }
     }

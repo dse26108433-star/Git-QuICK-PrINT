@@ -15,9 +15,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * One sheet printed on top of each order, with the pickup code in huge
- * letters. In a busy Xerox center this is how staff match a pile of paper to
- * the student standing at the counter.
+ * One sheet printed on top of a file, with the order's number in huge
+ * letters (only when asked for: agent.yml coverSheetMinSheets, or when the
+ * small label could not be put on the page). It separates thick piles of
+ * paper; the counter screen shows the same number next to the order.
  *
  * Drawn with plain Java graphics, so file names in any language print fine.
  */
@@ -53,7 +54,7 @@ public final class CoverSheet {
             int width = (int) pf.getImageableWidth() - 72;
 
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
-            g.drawString("CAMPUS PRINT  -  PICKUP CODE", x, y);
+            g.drawString("CAMPUS PRINT  -  ORDER", x, y);
 
             g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 110));
             y += 120;
@@ -84,7 +85,7 @@ public final class CoverSheet {
 
             y += 60;
             g.setFont(new Font(Font.SANS_SERIF, Font.ITALIC, 14));
-            g.drawString("Staff: hand these pages to the student who shows code " + s.pickupCode() + ".", x, y);
+            g.drawString("Staff: these pages are order " + s.pickupCode() + ". The student shows the same files on their phone.", x, y);
             return PAGE_EXISTS;
         }
 

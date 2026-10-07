@@ -1,17 +1,20 @@
 ; ---------------------------------------------------------------------------
-; Campus Print Station - the Windows installer (Inno Setup 6).
+; XeoGo Station - the Windows installer (Inno Setup 6).
 ; Do not build this by hand: run build-installer.ps1, which first makes
-; build\app-image\Campus Print Station (the app with its own Java inside).
+; build\app-image\XeoGo Station (the app with its own Java inside).
 ;
 ; The result installs without administrator rights, needs nothing else on
 ; the PC (no Java), adds Start menu + desktop shortcuts and an uninstaller,
 ; and opens the app on the last page so the setup wizard can start.
 ; ---------------------------------------------------------------------------
 #ifndef AppVersion
-  #define AppVersion "4.2.0"
+  #define AppVersion "4.3.0"
 #endif
-#define AppName "Campus Print Station"
-#define AppExe  "Campus Print Station.exe"
+#define AppName "XeoGo Station"
+#define AppExe  "XeoGo Station.exe"
+; What the program was called before version 4.3 (an update removes that copy; its settings are kept).
+#define OldName "Campus Print Station"
+#define OldExe  "Campus Print Station.exe"
 
 [Setup]
 ; Never change AppId: it is how an update finds the installed copy.
@@ -23,15 +26,17 @@ AppPublisher=Vedant Pravin Surve
 AppCopyright=(c) 2026 Vedant Pravin Surve
 AppComments=Prints paid student orders on the Xerox center printers.
 DefaultDirName={localappdata}\Programs\{#AppName}
-DefaultGroupName=Campus Print
+; Always the folder above (never the old program's folder, which is removed below).
+UsePreviousAppDir=no
+DefaultGroupName=XeoGo
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 DisableReadyPage=yes
 DisableWelcomePage=no
 PrivilegesRequired=lowest
 OutputDir=out
-OutputBaseFilename=CampusPrintStation-Setup-{#AppVersion}
-SetupIconFile=campus-print.ico
+OutputBaseFilename=XeoGoStation-Setup-{#AppVersion}
+SetupIconFile=xeogo.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 WizardStyle=modern
@@ -53,14 +58,22 @@ VersionInfoCompany=Vedant Pravin Surve
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel1=Campus Print Station
-WelcomeLabel2=Designed and developed by Vedant Pravin Surve.%n%nThis installs the Xerox center app on this PC.%n%nAfter installing, it opens by itself: connect it to your Campus Print server, tick the printers to use, and paid orders from the student website start printing here automatically.%n%nNothing else needs to be installed.
-FinishedHeadingLabel=Campus Print Station is installed
-FinishedLabelNoIcons=Campus Print Station is installed.
-FinishedLabel=Campus Print Station is installed. It opens now, so you can connect this PC and choose the printers.
+WelcomeLabel1=XeoGo Station
+WelcomeLabel2=Designed and developed by Vedant Pravin Surve.%n%nThis installs the Xerox center app on this PC.%n%nAfter installing, it opens by itself: connect it to your XeoGo server, tick the printers to use, and paid orders from the student website start printing here automatically.%n%nNothing else needs to be installed.
+FinishedHeadingLabel=XeoGo Station is installed
+FinishedLabelNoIcons=XeoGo Station is installed.
+FinishedLabel=XeoGo Station is installed. It opens now, so you can connect this PC and choose the printers.
 
 [Tasks]
-Name: "desktopicon"; Description: "Put a Campus Print icon on the desktop"
+Name: "desktopicon"; Description: "Put a XeoGo icon on the desktop"
+
+[InstallDelete]
+; The copy from before the program was renamed, and anything an older version left in the new folder.
+Type: filesandordirs; Name: "{localappdata}\Programs\{#OldName}"
+Type: files; Name: "{autoprograms}\{#OldName}.lnk"
+Type: files; Name: "{autodesktop}\{#OldName}.lnk"
+Type: filesandordirs; Name: "{app}\app"
+Type: filesandordirs; Name: "{app}\runtime"
 
 [Files]
 Source: "build\app-image\{#AppName}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -74,7 +87,20 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "CampusPrintStation"; ValueType: none; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Open Campus Print Station now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "Open XeoGo Station now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ""{#AppExe}"""; Flags: runhidden; RunOnceId: "StopStation"
+
+[Code]
+// The program keeps running next to the clock, and holds its files open. Stop it (under its new and its
+// old name) before the files are replaced; it is started again on the last page.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#AppExe}"', '', SW_HIDE, ewWaitUntilTerminated, code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM "{#OldExe}"', '', SW_HIDE, ewWaitUntilTerminated, code);
+  Sleep(800);
+  Result := '';
+end;

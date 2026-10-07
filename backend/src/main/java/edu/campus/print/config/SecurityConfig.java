@@ -5,6 +5,7 @@ import edu.campus.print.repo.AgentRepository;
 import edu.campus.print.security.AgentAuthenticationFilter;
 import edu.campus.print.security.AgentTokenService;
 import edu.campus.print.security.CounterAuthFilter;
+import edu.campus.print.security.CounterSessions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -32,12 +33,16 @@ import java.util.List;
  * Three kinds of caller, kept apart:
  *
  *   /agent/**            the Xerox center PC, with its enrolled secret
- *   /api/v1/counter/**   Xerox center staff, with the counter password
+ *   /api/v1/counter/**   Xerox center staff: the counter password to sign in,
+ *                        then a sign-in token (CounterSessions)
  *   /api/v1/shop,
  *   /api/v1/orders/**    students. No login: each order has a private key
  *                        that only the student's device holds.
+ *   /api/v1/staff/**     college staff who print for free: a username and a
+ *                        password to sign in, then a sign-in token
+ *                        (StaffSessions), checked by StaffService itself.
  *   /api/v1/payments/upi/alerts   the Xerox center's phone forwarding bank
- *                        SMS (CampusPay), with its own secret token.
+ *                        SMS (XeoGo Pay), with its own secret token.
  */
 @Configuration
 @EnableWebSecurity
@@ -66,8 +71,8 @@ public class SecurityConfig {
     /** Students (public, no login) and counter staff (password). */
     @Bean
     @Order(2)
-    SecurityFilterChain apiChain(HttpSecurity http, RateLimitFilter rateLimit, CounterProperties counter)
-            throws Exception {
+    SecurityFilterChain apiChain(HttpSecurity http, RateLimitFilter rateLimit, CounterProperties counter,
+                                 CounterSessions sessions) throws Exception {
         http.csrf(c -> c.disable())
             .cors(Customizer.withDefaults())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -76,10 +81,11 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health/**").permitAll()
                     .requestMatchers("/api/v1/counter/**").hasAuthority("ROLE_COUNTER")
                     .requestMatchers("/api/v1/shop", "/api/v1/orders", "/api/v1/orders/**").permitAll()
-                    // CampusPay bank messages: UpiAlertController checks UPI_ALERT_TOKEN itself.
+                    .requestMatchers("/api/v1/staff/login", "/api/v1/staff/me", "/api/v1/staff/orders").permitAll()
+                    // XeoGo Pay bank messages: UpiAlertController checks UPI_ALERT_TOKEN itself.
                     .requestMatchers(HttpMethod.POST, "/api/v1/payments/upi/alerts", "/api/v1/payments/upi/heartbeat").permitAll()
                     .anyRequest().denyAll())
-            .addFilterBefore(new CounterAuthFilter(counter), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new CounterAuthFilter(counter, sessions), UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(rateLimit, UsernamePasswordAuthenticationFilter.class)
             .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .headers(h -> h
@@ -112,7 +118,8 @@ public class SecurityConfig {
             c.setAllowedOrigins(list);
         }
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        c.setAllowedHeaders(List.of("Content-Type", "X-Order-Key", "X-Counter-Password"));
+        c.setAllowedHeaders(List.of("Content-Type", "X-Order-Key", "X-Counter-Password", "X-Counter-Session",
+                "X-Staff-Session"));
         c.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/api/**", c);

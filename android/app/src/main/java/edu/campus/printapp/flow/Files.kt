@@ -15,13 +15,23 @@ fun interface FileReader {
 class IncomingFile(val name: String, val size: Long, val fetch: suspend () -> File)
 
 object FileTypes {
-    /** PDF, PNG or JPEG from the first bytes (the name can lie), or null. */
+    /**
+     * PDF, PNG or JPEG from the first bytes (the name can lie), or null. Also:
+     * DOCX for a ZIP file (which is what a Word .docx is: the server looks
+     * inside, and the Xerox center's computer turns it into pages), and
+     * OLD_OFFICE for an old Office file (.doc, .xls, .ppt) or a new one locked
+     * with a password, which are not accepted.
+     */
     fun detect(file: File): String? {
         val head = ByteArray(1024)
         val n = file.inputStream().use { it.read(head) }
         if (n >= 8 && head[0] == 0x89.toByte() && head[1] == 'P'.code.toByte() &&
             head[2] == 'N'.code.toByte() && head[3] == 'G'.code.toByte()) return "PNG"
         if (n >= 3 && head[0] == 0xFF.toByte() && head[1] == 0xD8.toByte() && head[2] == 0xFF.toByte()) return "JPEG"
+        if (n >= 4 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() && head[2] == 3.toByte() &&
+            head[3] == 4.toByte()) return "DOCX"
+        if (n >= 8 && head[0] == 0xD0.toByte() && head[1] == 0xCF.toByte() && head[2] == 0x11.toByte() &&
+            head[3] == 0xE0.toByte()) return "OLD_OFFICE"
         var i = 0
         while (i + 4 < n) {
             if (head[i] == '%'.code.toByte() && head[i + 1] == 'P'.code.toByte() && head[i + 2] == 'D'.code.toByte() &&

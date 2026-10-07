@@ -2,7 +2,7 @@
 -- First-time setup. Run AFTER setup.sql.
 -- Do ONE STEP AT A TIME: select the lines of a step, then press Run.
 --
--- With Campus Print Station (the usual way) only STEP 1 is needed, and even
+-- With XeoGo Station (the usual way) only STEP 1 is needed, and even
 -- that can be done in the Station (Settings). The Station adds the printers
 -- itself, reads what each can do (paper sizes, two-sided, stapling...) and
 -- lets staff choose what students may pick.

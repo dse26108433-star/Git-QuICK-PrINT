@@ -31,6 +31,12 @@ public class StationConfig {
     public String pcName = "";
     /** The counter password, so staff do not have to type it on this PC every time. */
     public String counterPassword = "";
+    /**
+     * The counter sign-in the server gave this PC for that password (30 days,
+     * renewed by itself). With it the counter keeps working even while the
+     * server pauses new sign-ins because someone keeps guessing the password.
+     */
+    public String counterSession = "";
 
     /** Everything the app keeps: settings, logs, and files while they print. */
     public static Path dir() {

@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Campus Print · Print from your phone, skip the queue</title>
-<meta name="description" content="Send PDFs and photos, choose pages, sides, paper and copies for each, pay with UPI and collect your prints at the campus Xerox center with a pickup code. No login, no waiting in line.">
+<title>XeoGo · QuICK PrINT · Print from your phone, skip the queue</title>
+<meta name="description" content="Send PDFs, Word files and photos, choose pages, sides, paper and copies for each, pay with UPI and collect your prints at the campus Xerox center by showing your files on your phone. No login, no code, no waiting in line.">
 <meta name="theme-color" content="#0E1A2B">
 <meta name="author" content="Vedant Pravin Surve">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Campus Print · Skip the Xerox queue">
-<meta property="og:description" content="Print from your phone. Pay with UPI. Collect with a pickup code.">
+<meta property="og:title" content="XeoGo · QuICK PrINT · Skip the Xerox queue">
+<meta property="og:description" content="Print from your phone. Pay with UPI. Show your files at the counter and take your prints.">
 <meta property="og:image" content="icon-512.png">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Campus Print">
+<meta name="apple-mobile-web-app-title" content="XeoGo">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@500..700&display=swap" rel="stylesheet">
@@ -42,15 +42,16 @@
     <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h2v2h-2zM18.5 18.5h2v2h-2zM14.5 20.5h2M20.5 14.5v2"/></symbol>
   </defs>
 </svg>
 
 <header class="topbar">
   <div class="container">
-    <a class="brand" href="./" aria-label="Campus Print home">
-      <img src="icon.svg" alt="">
-      <span><b>Campus Print</b><small id="centerName">Xerox Center</small></span>
+    <a class="brand" href="./" aria-label="XeoGo home">
+      <img src="logo.png" alt="">
+      <span><b>XeoGo<span class="for-staff"> Staff</span></b><small id="centerName">Xerox Center</small></span>
     </a>
     <div class="top-actions">
       <button class="btn ghost sm hidden" id="installBtn" type="button"><svg><use href="#i-upload"/></svg>Install app</button>
@@ -59,26 +60,58 @@
   </div>
 </header>
 
+<!-- College staff (staff.html): who is signed in, and the free pages left this month -->
+<div class="staffbar for-staff hidden" id="staffBar">
+  <div class="container">
+    <span class="who" id="staffWho"></span>
+    <span class="left" id="staffLeft" aria-live="polite"></span>
+    <button class="linkish" id="signOutBtn" type="button">Sign out</button>
+  </div>
+</div>
+
 <main class="container">
   <ol class="steps" aria-label="Steps">
-    <li data-s="setup">1. Add &amp; set up</li><li data-s="review">2. Review &amp; pay</li><li data-s="status">3. Collect</li>
+    <li data-s="setup">1. Add &amp; set up</li><li data-s="review">2. Review &amp; <span class="for-student">pay</span><span class="for-staff">print</span></li><li data-s="status">3. Collect</li>
   </ol>
 
   <div id="globalError" class="alert hidden" role="alert"></div>
+
+  <!-- ============================== STAFF SIGN-IN (staff.html only) ============================== -->
+  <section id="s-login" class="hidden">
+    <form class="card login" id="loginForm" autocomplete="on">
+      <h1>Staff sign in</h1>
+      <p class="sub">Free printing for college staff at <span data-center>Xerox Center</span>. Sign in with the staff ID
+        the Xerox center gave you.</p>
+      <label class="field-label" for="loginUser">Username</label>
+      <input class="text-input" id="loginUser" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="60" required>
+      <label class="field-label" for="loginPass">Password</label>
+      <input class="text-input" id="loginPass" name="password" type="password" autocomplete="current-password" maxlength="60" required>
+      <p id="loginError" class="notice stop hidden" role="alert"></p>
+      <button class="btn lg block" id="loginBtn" type="submit">Sign in</button>
+      <p class="login-help">No staff ID yet, or forgot the password? Ask at the Xerox center: they make one in a minute.<br>
+        Not college staff? <a href="./">Open the student page</a>.</p>
+    </form>
+  </section>
 
   <!-- ============================== LANDING ============================== -->
   <section id="s-choose">
     <div class="hero">
       <div>
         <span class="eyebrow"><span class="lamp ready"></span><span><span data-center>Xerox Center</span> &middot; online printing</span></span>
-        <h1>Print from your phone.<br><span>Skip the queue.</span></h1>
-        <p class="lead">Add all your PDFs and photos at once, choose pages, sides, paper and copies for each, pay with UPI,
-          and collect everything with one pickup code.</p>
+        <h1 class="for-student">Print from your phone.<br><span>Skip the queue.</span></h1>
+        <h1 class="for-staff">Staff printing.<br><span>Free, from your desk.</span></h1>
+        <p class="lead for-student">Add all your PDFs, Word files and photos at once, choose pages, sides, paper and copies for each, and pay with UPI.
+          Your files stay on your phone: show them at the counter and take your prints.</p>
+        <p class="lead for-staff">Add all your PDFs, Word files and photos at once, choose pages, sides, paper and copies for each, and press
+          Print. Nothing to pay: it comes from your free pages for the month. Show your files at the counter and take your prints.</p>
         <ul class="trust">
           <li><svg><use href="#i-check"/></svg>Many files in one order</li>
-          <li><svg><use href="#i-check"/></svg>See every page before paying</li>
-          <li><svg><use href="#i-check"/></svg>Pay only for the pages you pick</li>
-          <li><svg><use href="#i-check"/></svg>No account &middot; files deleted after printing</li>
+          <li class="for-student"><svg><use href="#i-check"/></svg>See every page before paying</li>
+          <li class="for-staff"><svg><use href="#i-check"/></svg>See every page before printing</li>
+          <li class="for-student"><svg><use href="#i-check"/></svg>Pay only for the pages you pick</li>
+          <li class="for-staff"><svg><use href="#i-check"/></svg><span data-staff-pages>Free</span> free pages every month</li>
+          <li class="for-student"><svg><use href="#i-check"/></svg>No account &middot; files deleted after printing</li>
+          <li class="for-staff"><svg><use href="#i-check"/></svg>Only your staff ID &middot; files deleted after printing</li>
         </ul>
       </div>
 
@@ -88,18 +121,20 @@
           <strong>Add files to print</strong>
           <span class="muted">Drop them here, or choose several at once</span>
           <span class="btn fake-btn">Choose files</span>
-          <span class="chips"><span class="chip">PDF</span><span class="chip">JPG</span><span class="chip">PNG</span><span class="chip-note">up to <span data-maxmb>50</span> MB each</span></span>
-          <input id="fileInput" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+          <span class="chips"><span class="chip">PDF</span><span class="chip">Word</span><span class="chip">JPG</span><span class="chip">PNG</span><span class="chip-note">up to <span data-maxmb>50</span> MB each</span></span>
+          <input id="fileInput" type="file" class="sr-only" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
         </label>
         <div class="upload-foot">
           <span><svg><use href="#i-lock"/></svg>Private: only the Xerox center can print them</span>
-          <span>You see the price before paying</span>
+          <span class="for-student">You see the price before paying</span>
+          <span class="for-staff">You see the pages it takes before printing</span>
         </div>
       </div>
     </div>
 
     <div class="section hidden" id="recentBox">
-      <div class="section-head"><div><h2>Your orders</h2><p class="sub">On this device. Tap one to see its status and pickup code.</p></div></div>
+      <div class="section-head"><div><h2><span class="for-student">Your orders</span><span class="for-staff">Your prints</span></h2>
+        <p class="sub"><span class="for-student">On this device. Tap one to see how far it is, and to collect it.</span><span class="for-staff">On every device signed in with your staff ID. Tap one to see how far it is, and to collect it.</span></p></div></div>
       <div class="recent-list" id="recentList"></div>
     </div>
 
@@ -111,14 +146,25 @@
           <h3>Add your files</h3><p>All of them at once. For each: which pages, copies, colour or B/W, one- or two-sided, paper size and more.</p></div>
         <div class="card"><span class="n">02</span>
           <div class="ico"><svg><use href="#i-lock"/></svg></div>
-          <h3>Check &amp; pay</h3><p>See a preview of every sheet and the exact price, then pay with UPI, card or wallet.</p></div>
+          <h3><span class="for-student">Check &amp; pay</span><span class="for-staff">Check &amp; print</span></h3>
+          <p class="for-student">See a preview of every sheet and the exact price, then pay with UPI, card or wallet.</p>
+          <p class="for-staff">See a preview of every sheet and how many of your free pages it takes, then press Print.</p></div>
         <div class="card"><span class="n">03</span>
           <div class="ico"><svg><use href="#i-check"/></svg></div>
-          <h3>Collect</h3><p>When your order says Ready, show your pickup code at the counter and take your pages.</p></div>
+          <h3>Collect</h3><p>When your order says Ready, open it at the counter and show your files. Staff see the same files and hand you the pages.</p></div>
       </div>
     </div>
 
-    <div class="section">
+    <div class="section for-staff">
+      <div class="section-head"><div><h2>Your free pages</h2><p class="sub">One printed side is one page: a two-sided sheet is two pages.
+        They start again on the 1st of every month.</p></div></div>
+      <div class="prices">
+        <div class="card price"><span class="swatch bw"></span><span class="what">Left this month<span id="staffMonth">&nbsp;</span></span><b id="staffLeftBig">&ndash;</b><small id="staffOfBig"></small></div>
+      </div>
+      <p class="price-extra" id="staffRules"></p>
+    </div>
+
+    <div class="section for-student">
       <div class="section-head"><div><h2>Prices</h2><p class="sub">Per printed side. A two-sided sheet is two sides. No hidden charges.</p></div></div>
       <div class="prices">
         <div class="card price"><span class="swatch bw"></span><span class="what">Black &amp; white<span>Notes, assignments, forms</span></span><b id="priceBw">&ndash;</b><small>/side</small></div>
@@ -131,11 +177,15 @@
       <div class="section-head"><div><h2>Questions</h2></div></div>
       <div class="card faq">
         <details><summary>Can I print several files in one order?</summary>
-          <p>Yes. Add as many PDFs and photos as you like, at once or one after another, and set each one up on its own:
+          <p>Yes. Add as many PDFs, Word files and photos as you like, at once or one after another, and set each one up on its own:
             which pages, how many copies, colour or black &amp; white, one- or two-sided, paper size, pages per sheet and more.
-            You pay once and collect everything with one pickup code.</p></details>
+            <span class="for-student">You pay once and collect everything together.</span><span class="for-staff">You press Print once and collect everything together.</span></p></details>
+        <details class="for-staff"><summary>How many pages can I print?</summary>
+          <p>Your free pages for the month are shown at the top. One printed side is one page, so a two-sided sheet counts as
+            two. The count starts again on the 1st of every month. Pages that did not print, or that the Xerox center cancelled,
+            are not counted.</p></details>
         <details><summary>Can I print only some pages of a big PDF?</summary>
-          <p>Yes. Tap the pages you want on the thumbnails, or type them, for example <code>3, 7, 10-12</code>. You only pay for those pages.</p></details>
+          <p>Yes. Tap the pages you want on the thumbnails, or type them, for example <code>3, 7, 10-12</code>. <span class="for-student">You only pay for those pages.</span><span class="for-staff">Only those pages are counted.</span></p></details>
         <details><summary>Why are some options missing or marked?</summary>
           <p>You only see what the printers at the Xerox center can really do right now. If an option only works with another
             choice (for example two-sided only in black &amp; white), it says so, and picking it changes the other choice for you.</p></details>
@@ -143,14 +193,30 @@
           <p>Never. Photos keep their proportions: <b>Fit</b> shows the whole photo, <b>Fill</b> covers the page and trims the edges.
             The preview shows exactly what the paper will look like.</p></details>
         <details><summary>How do I collect my prints?</summary>
-          <p>Wait until your order says <b>Ready</b>, then show the pickup code at the counter. The code is also printed small on the
-            corner of the first page of each file, so staff find your pages in seconds.</p></details>
-        <details><summary>Do I need to sign up?</summary>
-          <p>No. Your order is saved on this phone or laptop. Keep this page, or note your pickup code.</p></details>
+          <p><span class="for-student">After you pay</span><span class="for-staff">After you press Print</span>, your order shows a picture of every file and the time it will be ready. At the counter, open the order
+            on <span class="for-student">this phone</span><span class="for-staff">your phone</span> and tap <b>I&rsquo;m at the counter</b>: your files appear on the Xerox center&rsquo;s screen and they hand you the
+            pages that look the same. There is no code to remember or type.</p></details>
+        <details class="for-student"><summary>Can a friend collect for me?</summary>
+          <p>The order opens only on the phone that made it. Give that phone to your friend, or collect later:
+            your prints wait for you at the counter.</p></details>
+        <details class="for-staff"><summary>I sent it from the computer. Can I collect with my phone?</summary>
+          <p>Yes. Sign in with the same staff ID on your phone (this page, or the staff app): everything you sent is under
+            <b>Your prints</b>. Keep your staff ID to yourself: every page printed with it counts as yours.</p></details>
+        <details><summary>What if my phone has no internet at the counter?</summary>
+          <p>Your order still opens and shows your files. Tell the staff the file&rsquo;s name: they find the order on their
+            screen and hand you the pages.</p></details>
+        <details class="for-student"><summary>Do I need to sign up?</summary>
+          <p>No. Your order is saved on this phone or laptop: open this page again on the same device to see it.</p></details>
+        <details class="for-staff"><summary>How do I get a staff ID, or a new password?</summary>
+          <p>At the Xerox center. They make your staff ID: a username and a password, nothing else. Forgot the password?
+            They make a new one in a minute; the old one then stops working everywhere.</p></details>
         <details><summary>Are my files private?</summary>
-          <p>Files are stored privately, can only be downloaded by the Xerox center printer, and are deleted after printing.</p></details>
-        <details><summary>Something went wrong after I paid?</summary>
-          <p>Your payment is safe. Show your pickup code at the counter: staff will print it again or refund you.</p></details>
+          <p>Files are stored privately, can only be downloaded by the Xerox center printer, and are deleted after printing.
+            Until you collect, a small picture of each file&rsquo;s first page is kept so staff can match your pages.</p></details>
+        <details class="for-student"><summary>Something went wrong after I paid?</summary>
+          <p>Your payment is safe. Show your order at the counter: staff will print it again or refund you.</p></details>
+        <details class="for-staff"><summary>Something went wrong with a print?</summary>
+          <p>Show your order at the counter: they will print it again. Pages that did not print are not counted.</p></details>
       </div>
     </div>
   </section>
@@ -163,7 +229,7 @@
         <p class="sub" id="wsSub">Set up each file, then review your order.</p>
       </div>
       <label class="btn ghost" for="addInput"><svg><use href="#i-plus"/></svg>Add files
-        <input id="addInput" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+        <input id="addInput" type="file" class="sr-only" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>
     </div>
 
     <div class="workspace">
@@ -171,7 +237,7 @@
         <div class="queue-top" id="queueTop" aria-live="polite"></div>
         <div class="queue-list" id="queueList"></div>
         <label class="queue-add" for="addInput2"><svg><use href="#i-plus"/></svg><span>Add more files<small>or drop them anywhere</small></span>
-          <input id="addInput2" type="file" class="sr-only" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+          <input id="addInput2" type="file" class="sr-only" multiple accept=".pdf,.docx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>
       </aside>
 
       <div class="editor" id="editor" aria-label="File settings">
@@ -238,7 +304,7 @@
   <section id="s-review" class="hidden">
     <div class="rv-head">
       <div>
-        <h1>Review and pay</h1>
+        <h1><span class="for-student">Review and pay</span><span class="for-staff">Review and print</span></h1>
         <p class="sub">Checked by the Xerox center. This is exactly what will be printed.</p>
       </div>
       <button class="btn ghost" id="editBtn" type="button"><svg><use href="#i-left"/></svg>Change something</button>
@@ -246,9 +312,9 @@
     <div class="review">
       <div class="rv-docs" id="rvDocs"></div>
       <aside class="card rv-pay">
-        <h2>Order total</h2>
+        <h2><span class="for-student">Order total</span><span class="for-staff">This order</span></h2>
         <div class="rv-lines" id="rvLines"></div>
-        <div class="rv-total"><span>Total</span><b id="rvTotal">&ndash;</b></div>
+        <div class="rv-total"><span><span class="for-student">Total</span><span class="for-staff">From your free pages</span></span><b id="rvTotal">&ndash;</b></div>
         <p id="rvNote" class="rv-note"></p>
         <p id="offlineNote" class="notice hidden"></p>
         <p id="demoNote" class="notice hidden">Test mode: no real money is taken.</p>
@@ -260,7 +326,7 @@
     </div>
   </section>
 
-  <!-- ============================== PAY WITH UPI (CampusPay) ============================== -->
+  <!-- ============================== PAY WITH UPI (XeoGo Pay) ============================== -->
   <section id="s-pay" class="hidden">
     <div class="pay">
       <div class="pay-card">
@@ -304,31 +370,44 @@
         </div>
       </div>
       <div class="pay-foot">
-        <div class="secure"><svg><use href="#i-lock"/></svg>CampusPay &middot; straight to the Xerox center's account</div>
+        <div class="secure"><svg><use href="#i-lock"/></svg>XeoGo Pay &middot; straight to the Xerox center's account</div>
         <button class="linkish" id="upBack" type="button">Back to the summary</button>
       </div>
     </div>
   </section>
 
-  <!-- ============================== COLLECT ============================== -->
+  <!-- ============================== COLLECT: your files, shown at the counter ============================== -->
   <section id="s-status" class="hidden">
-    <div class="ticket">
-      <div class="ticket-top">
-        <div class="label">Your pickup code</div>
-        <div class="code" id="tCode">-----</div>
-        <div class="sub">Show this at the counter &middot; <span data-center>Xerox Center</span></div>
-      </div>
-      <div class="perf" aria-hidden="true"></div>
-      <div class="ticket-body">
+    <div class="pass" id="pass">
+      <div class="pass-top">
+        <div class="label"><span data-center>Xerox Center</span> &middot; your prints</div>
         <div class="state" aria-live="polite"><span class="lamp" id="tLamp"></span><span id="tStage"></span></div>
+        <p class="pass-when" id="tWhen"></p>
+      </div>
+      <div class="pass-here hidden" id="hereBox" role="status">
+        <span class="tick"><svg><use href="#i-check"/></svg></span>
+        <div><b>Show this screen to the staff</b><span id="hereText">They can see your order on their screen now.</span></div>
+        <span class="clock" id="hereClock" aria-hidden="true"></span>
+      </div>
+      <div class="pass-view" id="passView" aria-label="Your files">
+        <button class="icon-btn" id="passPrev" type="button" aria-label="Previous file"><svg><use href="#i-left"/></svg></button>
+        <figure class="pass-sheet" id="passSheet"></figure>
+        <button class="icon-btn" id="passNext" type="button" aria-label="Next file"><svg><use href="#i-right"/></svg></button>
+      </div>
+      <div class="pass-cap" id="passCap"></div>
+      <div class="pass-thumbs" id="passThumbs"></div>
+      <div class="pass-body">
         <p class="msg" id="tMessage"></p>
+        <p class="notice hidden" id="tOffline"></p>
+        <button class="btn lg block go hidden" id="hereBtn" type="button">I&rsquo;m at the counter</button>
+        <button class="linkish hidden" id="leaveBtn" type="button">I&rsquo;m not at the counter any more</button>
         <ul class="track" id="track"></ul>
         <ul class="t-docs" id="tDocs"></ul>
         <p class="details" id="tDetails"></p>
         <div class="ticket-actions">
           <button class="btn block hidden" id="tPayBtn" type="button">Show payment details</button>
           <button class="btn ghost hidden" id="notifyBtn" type="button">Notify me when ready</button>
-          <button class="btn ghost" id="shareBtn" type="button">Tell a friend</button>
+          <button class="btn ghost for-student" id="shareBtn" type="button">Tell a friend</button>
           <button class="btn block" id="newBtn" type="button">Print more files</button>
         </div>
         <p class="notify-note" id="notifyNote"></p>
@@ -339,13 +418,13 @@
 
 <footer class="footer">
   <div class="container">
-    <a class="brand" href="./"><img src="icon.svg" alt=""><span><b>Campus Print</b><small data-center>Xerox Center</small></span></a>
+    <a class="brand" href="./"><img src="logo.png" alt=""><span><b>XeoGo</b><small data-center>Xerox Center</small></span></a>
     <span class="credit">Designed &amp; developed by <b>Vedant Pravin Surve</b><span class="dot"></span><span style="white-space:nowrap">&copy; <span id="year">2026</span></span></span>
   </div>
 </footer>
 
 <div class="drop-overlay hidden" id="dropOverlay" aria-hidden="true">
-  <div><svg><use href="#i-upload"/></svg><b>Drop to add</b><span>PDF, JPG and PNG files</span></div>
+  <div><svg><use href="#i-upload"/></svg><b>Drop to add</b><span>PDF, Word, JPG and PNG files</span></div>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 

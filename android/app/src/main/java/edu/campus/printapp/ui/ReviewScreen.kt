@@ -77,7 +77,7 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
     val docs = v.live
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 760.dp).align(Alignment.CenterHorizontally).padding(16.dp)) {
-            Text("Review and pay", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(if (st.staffApp) "Review and print" else "Review and pay", fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Text("Checked by the Xerox center. This is exactly what will be printed.", fontSize = 14.sp, color = CP.Muted)
             if (v.editable && !st.paymentStarted) {
                 Spacer(Modifier.size(12.dp))
@@ -101,7 +101,8 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
                             }
                         }
                     }
-                    Text(rupees(sd.amountPaise), fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                    Text(if (st.staffApp) plural((sd.sides ?: 0) * (sd.settings?.copies ?: 1), "page", "pages") else rupees(sd.amountPaise),
+                        fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 }
             }
             // the total
@@ -111,7 +112,9 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
             val total = v.amountPaise ?: sum
             val tag = if (v.payment?.provider == "upi") v.payment.tagPaise ?: 0 else 0
             val upiMode = st.shop?.paymentMode == "upi"
-            CardBox(Modifier.padding(top = 4.dp)) {
+            if (st.staffApp) {
+                StaffTotal(st, session, docs.size, pages, sheets) { askCancel = true }
+            } else CardBox(Modifier.padding(top = 4.dp)) {
                 Text("Order total", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.size(8.dp))
                 TotalLine("Files", docs.size.toString())
@@ -155,10 +158,56 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
         AlertDialog(
             onDismissRequest = { askCancel = false },
             title = { Text("Cancel this order?") },
-            text = { Text("Your files will be deleted. Nothing has been paid.") },
+            text = { Text(if (st.staffApp) "Your files will be deleted. Nothing was printed, and no pages were counted."
+                else "Your files will be deleted. Nothing has been paid.") },
             confirmButton = { TextButton(onClick = { askCancel = false; session.cancelOrder() }) { Text("Cancel order", color = CP.Danger) } },
             dismissButton = { TextButton(onClick = { askCancel = false }) { Text("Keep it") } }
         )
+    }
+}
+
+/**
+ * The staff app: nothing to pay. The order takes pages from the month's free
+ * pages; "Print" is offered when those cover it (the server checks again when
+ * it is pressed, in one step with sending it to the printers).
+ */
+@Composable
+private fun StaffTotal(st: SessionState, session: OrderSession, files: Int, printed: Int, sheets: Int, onCancel: () -> Unit) {
+    val v = st.order ?: return
+    val takes = v.freePages ?: 0
+    val s = st.staff
+    val left = s?.leftPages
+    val over = left != null && takes > left
+    CardBox(Modifier.padding(top = 4.dp)) {
+        Text("This order", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.size(8.dp))
+        TotalLine("Files", files.toString())
+        TotalLine("Pages printed", printed.toString())
+        TotalLine("Sheets of paper", sheets.toString())
+        Spacer(Modifier.size(8.dp))
+        Divider()
+        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("From your free pages", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Text(plural(takes, "page", "pages"), fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("rvTotal"))
+        }
+        if (s != null && left != null) {
+            if (over) ErrorLine("You have " + (if (left <= 0) "no free pages" else "only " + plural(left, "free page", "free pages")) +
+                " left for ${s.month}. Go back and print fewer pages or copies.", Modifier.testTag("overLimit"))
+            else Hint("After this you have ${left - takes} of your ${s.monthlyPages} free pages left for ${s.month}.")
+        }
+        val shop = st.shop
+        if (shop != null && !shop.bwOnline && !shop.colorOnline) {
+            Hint("The printers are offline at the moment. You can still send it: it prints as soon as they are back.")
+        }
+        Spacer(Modifier.size(8.dp))
+        PrimaryButton(if (st.paying) "Sending…" else if (over) "Not enough free pages" else "Print now · free",
+            { session.pay() }, Modifier.fillMaxWidth().testTag("payBtn"), enabled = !st.paying && !over)
+        st.payError?.let { ErrorLine(it) }
+        Text("Free staff printing · nothing to pay", fontSize = 12.5.sp, color = CP.Muted, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Cancel this order", color = CP.Muted)
+        }
     }
 }
 

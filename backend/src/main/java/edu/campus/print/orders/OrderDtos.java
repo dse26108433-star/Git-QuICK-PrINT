@@ -76,14 +76,14 @@ public final class OrderDtos {
 
     public record ConfirmPaymentRequest(String paymentId, String signature) {}
 
-    /** CampusPay: "I have paid". reference: the 12-digit UPI reference number (UTR), if the student has it. */
+    /** XeoGo Pay: "I have paid". reference: the 12-digit UPI reference number (UTR), if the student has it. */
     public record ClaimPaymentRequest(@Size(max = 40) String reference) {}
 
     /**
      * How the order is (being) paid.
-     * provider    "upi" (CampusPay), "razorpay", "demo" or "free"
-     * tagPaise    CampusPay: the paise added to the price so the payment can be recognised
-     * reference   CampusPay: this order's payment reference
+     * provider    "upi" (XeoGo Pay), "razorpay", "demo", "free", or "staff" (a college staff member's free pages)
+     * tagPaise    XeoGo Pay: the paise added to the price so the payment can be recognised
+     * reference   XeoGo Pay: this order's payment reference
      * claimRef    the UPI reference number the student typed, while it is being checked
      * note        why the Xerox center could not find the payment yet
      * verifiedBy  "bank-alert" (a bank message proved it) or "counter" (staff checked it)
@@ -111,9 +111,18 @@ public final class OrderDtos {
             Integer sides,           // printed sides, per copy
             Integer sheets,          // sheets of paper, per copy
             Integer amountPaise,
-            String printerName
+            String printerName,
+            Instant printedAt,       // when this file finished printing
+            boolean hasPreview,      // a picture of its first printed sheet can be fetched (.../preview)
+            String sourceType,       // "DOCX": the student sent a Word file; what prints is the PDF made from it
+            Integer ahead            // a Word file being prepared (status CONVERTING): how many are in line before it
     ) {}
 
+    /**
+     * pickupCode is the order's short number. It is no longer something the
+     * student shows or staff type: the student shows the files on their phone
+     * (see OrderService.arrive), and staff see the same files on their screen.
+     */
     public record OrderView(
             UUID orderId,
             String pickupCode,
@@ -142,8 +151,23 @@ public final class OrderDtos {
             int documentsDone,
             Integer totalSheets,     // all documents, all copies
             Integer refundDuePaise,  // documents cancelled at the counter after payment
-            PaymentView payment      // null until a payment screen was opened
+            PaymentView payment,     // null until a payment screen was opened
+            // Collecting by showing the files (no pickup code):
+            Instant collectedAt,       // handed over at the counter
+            Instant arrivedAt,         // the phone said "I am at the counter" a moment ago; null once that is stale
+            Instant estimatedReadyAt,  // about when everything will be printed; null when not known
+            Instant serverTime,        // the server's clock, so a phone with a wrong clock still shows times right
+            // Free printing for college staff: not null = a staff order (nothing is paid), and the printed
+            // sides it takes from the staff member's free pages for the month.
+            Integer freePages,
+            // How soon the device should ask about this order again, in seconds: soon while something is about
+            // to change, seldom while nothing can, and less often for everybody while the server is busy.
+            // 0: nothing can change any more.
+            int pollSeconds
     ) {}
+
+    /** "I am at the counter" (here = true, or nothing) / "not any more" (here = false). */
+    public record ArriveRequest(Boolean here) {}
 
     /** Everything the website needs to show only what the printers can really do. */
     public record ShopView(
@@ -156,13 +180,14 @@ public final class OrderDtos {
             int maxFilePages,      // most pages a PDF may have (choose fewer to print)
             int maxCopies,
             int maxDocuments,      // most documents in one order
-            String paymentMode,    // "upi" (CampusPay), "razorpay" or "demo"
+            String paymentMode,    // "upi" (XeoGo Pay), "razorpay" or "demo"
             boolean bwAvailable,
             boolean colorAvailable,
             boolean bwOnline,
             boolean colorOnline,
             long ordersWaiting,
-            Printing printing
+            Printing printing,
+            boolean wordFiles      // Word files (.docx) can be added right now: a Xerox PC with Word is online
     ) {}
 
     /**

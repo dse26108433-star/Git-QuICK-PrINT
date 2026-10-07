@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import edu.campus.print.common.ApiException;
 import edu.campus.print.config.AgentProperties;
 import edu.campus.print.domain.*;
+import edu.campus.print.orders.OrderService;
 import edu.campus.print.payment.PaymentGateway;
 import edu.campus.print.payment.UpiGateway;
 import edu.campus.print.payment.UpiLedger;
@@ -17,11 +18,17 @@ import edu.campus.print.printing.SettingsText;
 import edu.campus.print.repo.AgentRepository;
 import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
+import edu.campus.print.repo.PreviewStore;
 import edu.campus.print.repo.PrinterRepository;
 import edu.campus.print.repo.ShopSettingsRepository;
+import edu.campus.print.security.CounterSessions;
+import edu.campus.print.staff.StaffService;
 import edu.campus.print.storage.SupabaseStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -29,14 +36,19 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
- * The Xerox center staff screen (the Campus Print Station app, or web/counter.html).
+ * The Xerox center staff screen (the XeoGo Station app, or web/counter.html).
  * Protected by the counter password. Shows what is printing, what is ready to
  * hand over, and what went wrong; lets staff switch printers on/off, choose what
- * students may pick on each printer, set prices, and switch the pickup-code
+ * students may pick on each printer, set prices, and switch the order-number
  * label on/off. The Station app also uses it to register its PC and printers.
- * With CampusPay (direct UPI) staff also confirm payments no bank message proved.
+ * With XeoGo Pay (direct UPI) staff also confirm payments no bank message proved.
+ *
+ * Handing over needs no pickup code: a student who opens their paid order at
+ * the counter shows up in "atCounter" (summary), with a picture of each file's
+ * first printed sheet; staff give them those pages and press Handed over.
  */
 @RestController
 @RequestMapping("/api/v1/counter")
@@ -53,11 +65,15 @@ public class CounterController {
     private final PaymentGateway gateway;
     private final UpiLedger upi;
     private final AgentProperties agentProps;
+    private final PreviewStore previews;
+    private final CounterSessions sessions;
+    private final StaffService staff;
     private final JdbcTemplate jdbc;
 
     public CounterController(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
                              AgentRepository agents, ShopSettingsRepository settings, SupabaseStorage storage,
-                             PaymentGateway gateway, UpiLedger upi, AgentProperties agentProps, JdbcTemplate jdbc) {
+                             PaymentGateway gateway, UpiLedger upi, AgentProperties agentProps,
+                             PreviewStore previews, CounterSessions sessions, StaffService staff, JdbcTemplate jdbc) {
         this.orders = orders;
         this.documents = documents;
         this.printers = printers;
@@ -67,15 +83,31 @@ public class CounterController {
         this.gateway = gateway;
         this.upi = upi;
         this.agentProps = agentProps;
+        this.previews = previews;
+        this.sessions = sessions;
+        this.staff = staff;
         this.jdbc = jdbc;
     }
 
-    /** One file of an order, as staff need it. */
+    /**
+     * Signs this screen in: called once with the counter password, answers a
+     * token for 30 days. The screen then sends X-Counter-Session, so it keeps
+     * working even while wrong passwords from elsewhere pause new sign-ins.
+     */
+    @PostMapping("/session")
+    public Map<String, Object> session() {
+        return Map.of("token", sessions.issue(), "expiresInSeconds", CounterSessions.TTL_SECONDS);
+    }
+
+    /**
+     * One file of an order, as staff need it.
+     * hasPreview: a picture of its first printed sheet can be fetched (documents/{id}/preview).
+     */
     public record CounterDocument(UUID id, int position, String fileName, String fileType, Integer pageCount,
                                   String pages, Integer printPages, Integer sheets, int copies, boolean color,
                                   String settingsText, String status, String printerName, String errorCode,
                                   String errorMessage, int attempts, boolean fileKept, Integer amountPaise,
-                                  boolean noPrinter) {}
+                                  boolean noPrinter, Instant printedAt, boolean hasPreview) {}
 
     public record CounterOrder(UUID id, String pickupCode, String status, Integer amountPaise,
                                String paymentProvider, String paymentId, String errorCode, String errorMessage,
@@ -85,9 +117,13 @@ public class CounterController {
                                String fileName, String fileType, Integer pageCount, String pages,
                                Integer printPages, int copies, boolean color, String printerName,
                                int attempts, boolean fileKept,
-                               // CampusPay (direct UPI):
+                               // XeoGo Pay (direct UPI):
                                Instant paymentStartedAt, Integer upiTagPaise, String paymentClaimRef,
-                               Instant paymentClaimedAt, String paymentNote, String paymentVerifiedBy) {}
+                               Instant paymentClaimedAt, String paymentNote, String paymentVerifiedBy,
+                               // The student opened this order at the counter a moment ago (null when not, or stale):
+                               Instant arrivedAt,
+                               // A college staff member's free order: their name, and the pages it takes from their month
+                               String staffName, Integer staffPages) {}
 
     public record SettingsForm(String centerName, Integer priceBwPaise, Integer priceColorPaise, Boolean stampCode,
                                PricingRules pricing) {}
@@ -162,15 +198,25 @@ public class CounterController {
         out.put("ready", orders.findReadyToCollect().size());
         out.put("problems", orders.findProblems().size());
         out.put("noPrinter", noPrinter);
+        // Students standing at the counter right now, with their files: hand over without any code.
+        out.put("atCounter", describe(orders.findAtCounter((int) OrderService.AT_COUNTER.toSeconds())));
         return out;
     }
 
-    /** view = active | ready | problems | all.  code = search by pickup code. */
+    /**
+     * view = active | ready | problems | all.
+     * q = look for an order by a file's name or its order number (a student whose phone is offline).
+     * code = the order number alone (Stations before 4.3).
+     */
     @GetMapping("/orders")
     public List<CounterOrder> list(@RequestParam(defaultValue = "active") String view,
-                                   @RequestParam(required = false) String code) {
+                                   @RequestParam(required = false) String code,
+                                   @RequestParam(required = false) String q) {
         List<PrintOrder> found;
-        if (code != null && !code.isBlank()) {
+        if (q != null && q.trim().length() >= 2) {
+            String text = q.trim();
+            found = orders.search(text.length() > 80 ? text.substring(0, 80) : text);
+        } else if (code != null && !code.isBlank()) {
             found = orders.findByPickupCodeIgnoreCase(code.trim());
         } else {
             found = switch (view) {
@@ -194,9 +240,13 @@ public class CounterController {
         });
         List<PrinterRules.Candidate> usable = all.stream().filter(Printer::isEnabled).map(Printer::candidate).toList();
         Map<UUID, List<OrderDocument>> byOrder = new HashMap<>();
-        for (OrderDocument d : documents.findByOrderIdInOrderByPosition(found.stream().map(PrintOrder::getId).toList())) {
+        List<UUID> ids = found.stream().map(PrintOrder::getId).toList();
+        for (OrderDocument d : documents.findByOrderIdInOrderByPosition(ids)) {
             byOrder.computeIfAbsent(d.getOrderId(), k -> new ArrayList<>()).add(d);
         }
+        Set<UUID> withPreview = previews.documentsWithPreview(ids);
+        Map<UUID, String> staffNames = staff.names(found.stream().map(PrintOrder::getStaffId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
         List<CounterOrder> out = new ArrayList<>();
         for (PrintOrder o : found) {
             List<CounterDocument> docs = new ArrayList<>();
@@ -216,7 +266,9 @@ public class CounterController {
                         s != null && s.color(), SettingsText.of(s, d.getFileType() != FileType.PDF, media),
                         d.getStatus().name(), d.getPrinterId() == null ? null : names.get(d.getPrinterId()),
                         d.getErrorCode(), d.getErrorMessage(), d.getAttempts(), !d.isFileDeleted(),
-                        d.getAmountPaise(), noPrinter));
+                        d.getAmountPaise(), noPrinter,
+                        d.getStatus() == DocumentStatus.COMPLETED ? d.getCompletedAt() : null,
+                        withPreview.contains(d.getId())));
             }
             CounterDocument first = docs.isEmpty() ? null : docs.get(0);
             out.add(new CounterOrder(o.getId(), o.getPickupCode(), o.getStatus().name(), o.getAmountPaise(),
@@ -231,12 +283,25 @@ public class CounterController {
                     docs.stream().mapToInt(CounterDocument::attempts).max().orElse(0),
                     docs.stream().anyMatch(CounterDocument::fileKept),
                     o.getPaymentStartedAt(), o.getUpiTagPaise(), o.getPaymentClaimRef(), o.getPaymentClaimedAt(),
-                    o.getPaymentNote(), o.getPaymentVerifiedBy()));
+                    o.getPaymentNote(), o.getPaymentVerifiedBy(),
+                    o.isAtCounter(OrderService.AT_COUNTER) ? o.getArrivedAt() : null,
+                    o.getStaffId() == null ? null : staffNames.getOrDefault(o.getStaffId(), "Staff"),
+                    o.getStaffId() == null ? null : o.getStaffPages()));
         }
         return out;
     }
 
-    // ------------------------------------------------------------ CampusPay (direct UPI)
+    /** The picture of one file's first printed sheet (made by the Xerox PC while printing). */
+    @GetMapping("/documents/{id}/preview")
+    public ResponseEntity<byte[]> preview(@PathVariable UUID id) {
+        byte[] jpeg = previews.get(id).orElseThrow(() -> ApiException.notFound("That picture"));
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePrivate())
+                .body(jpeg);
+    }
+
+    // ------------------------------------------------------------ XeoGo Pay (direct UPI)
 
     public record ApproveForm(String reference) {}
 
@@ -259,7 +324,7 @@ public class CounterController {
     }
 
     /**
-     * Everything about CampusPay payments: students who said "I have paid"
+     * Everything about XeoGo Pay payments: students who said "I have paid"
      * (staff check these), open payment screens, today's confirmed payments,
      * and the bank messages that came in (with the order each one paid).
      */
@@ -281,7 +346,32 @@ public class CounterController {
         out.put("waiting", describe(orders.findUpiWaiting()));
         out.put("paid", describe(orders.findUpiPaidRecently()));
         out.put("alerts", upi.recentAlerts(50));
+        out.put("senders", upi.confirmedSenders());
         return out;
+    }
+
+    /**
+     * "This is our bank": the sender name of this SMS (for example AX-SBIUPI)
+     * is believed from now on, and its waiting messages pay the orders they
+     * prove. Never possible for a message from a phone number or from an app
+     * where anyone can write: those could be made by a student.
+     */
+    @PostMapping("/payments/alerts/{id}/trust-sender")
+    public Map<String, Object> trustSender(@PathVariable UUID id) {
+        requireUpi();
+        String sender = upi.trustSenderOf(id, ((UpiGateway) gateway).windowMinutes()).orElseThrow(() ->
+                ApiException.badRequest("NOT_A_BANK_SENDER", "Only an SMS from a bank's sender name (like AX-SBIUPI) can "
+                        + "be confirmed, never one from a phone number or from an app."));
+        return Map.of("ok", true, "sender", sender);
+    }
+
+    /** Staff take back a bank sender they confirmed by mistake. */
+    @DeleteMapping("/payments/senders/{sender}")
+    public Map<String, Object> forgetSender(@PathVariable String sender) {
+        requireUpi();
+        if (!upi.forgetSender(sender)) throw ApiException.notFound("That sender");
+        log.warn("Counter removed the bank SMS sender {}", sender);
+        return Map.of("ok", true);
     }
 
     /**
@@ -352,7 +442,7 @@ public class CounterController {
     private void requireUpi() {
         if (!(gateway instanceof UpiGateway)) {
             throw ApiException.conflict("NOT_UPI",
-                    "CampusPay is off: this shop uses PAYMENT_MODE=" + gateway.name() + ".");
+                    "XeoGo Pay is off: this shop uses PAYMENT_MODE=" + gateway.name() + ".");
         }
     }
 
@@ -361,13 +451,24 @@ public class CounterController {
         return "₹" + (paise % 100 == 0 ? String.valueOf(paise / 100) : String.format("%.2f", paise / 100.0));
     }
 
-    /** Handed to the student (or refunded, for a problem order). */
+    /**
+     * Handed to the student (or refunded, for a problem order). The student's
+     * phone shows "Collected" a moment later, so staff see they gave the pages
+     * to the phone that made the order. One order is handed over once.
+     */
     @PostMapping("/orders/{id}/collected")
     public Map<String, Object> collected(@PathVariable UUID id) {
+        PrintOrder o = orders.findById(id).orElseThrow(() -> ApiException.notFound("That order"));
+        boolean atCounter = o.isAtCounter(OrderService.AT_COUNTER);
         if (orders.markCollected(id) == 0) {
-            throw ApiException.conflict("NOT_READY", "Only paid orders that finished printing can be marked as handed over.");
+            throw ApiException.conflict("NOT_READY", o.getCollectedAt() != null
+                    ? "This order was already handed over."
+                    : "Only paid orders that finished printing can be marked as handed over.");
         }
-        return Map.of("ok", true);
+        previews.deleteForOrder(id);
+        log.info("Order {} handed over ({})", o.getPickupCode(),
+                atCounter ? "the student's phone was at the counter" : "found by staff, the phone had not said it is here");
+        return Map.of("ok", true, "studentAtCounter", atCounter);
     }
 
     /** Staff checked the tray: print every failed file of this paid order again. */
@@ -466,7 +567,7 @@ public class CounterController {
         }
         if (f.stampCode() != null) {
             s.setStampCode(f.stampCode());
-            log.info("Pickup code on pages switched {}", f.stampCode() ? "ON" : "OFF");
+            log.info("Order number on pages switched {}", f.stampCode() ? "ON" : "OFF");
         }
         if (f.pricing() != null) {
             s.setPricing(checkPricing(f.pricing()));

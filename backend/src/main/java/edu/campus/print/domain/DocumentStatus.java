@@ -8,6 +8,7 @@ import java.util.Set;
  * on a printer that can do everything its settings need.
  *
  *   UPLOADING -> READY (checked, pages counted)      or REJECTED (cannot be printed)
+ *   UPLOADING -> CONVERTING (a Word file: the Xerox PC turns it into a PDF) -> READY or REJECTED
  *   READY     -> QUEUED (the order was paid)
  *   QUEUED    -> CLAIMED -> DOWNLOADING -> SUBMITTED -> COMPLETED
  *
@@ -16,6 +17,7 @@ import java.util.Set;
  */
 public enum DocumentStatus {
     UPLOADING,
+    CONVERTING,
     READY,
     REJECTED,
     QUEUED,
@@ -30,5 +32,5 @@ public enum DocumentStatus {
     public static final Set<DocumentStatus> AT_PRINTER = EnumSet.of(CLAIMED, DOWNLOADING, SUBMITTED);
 
     /** Still part of a draft order (before payment). */
-    public static final Set<DocumentStatus> DRAFT = EnumSet.of(UPLOADING, READY, REJECTED);
+    public static final Set<DocumentStatus> DRAFT = EnumSet.of(UPLOADING, CONVERTING, READY, REJECTED);
 }

@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Who students pay with CampusPay: the Xerox center's UPI ID.
+ * Who students pay with XeoGo Pay: the Xerox center's UPI ID.
  *
  * UPI_ID in backend/.env is either a UPI ID ("xeroxshop@okaxis") or the whole
  * text of the shop's UPI QR code ("upi://pay?pa=...&pn=...&mc=5411..."; scan

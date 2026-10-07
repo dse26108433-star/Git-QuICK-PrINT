@@ -1,8 +1,18 @@
 # ---------------------------------------------------------------
-# Render "Blueprint": puts the backend online with HTTPS.
+# Render "Blueprint": puts the XeoGo backend online with HTTPS.
 # render.com -> New -> Blueprint -> pick this repository.
 # Render asks for each value marked sync: false (copy them from
 # backend/.env). WEB_ORIGINS = your Netlify address.
+#
+# After that, every push to GitHub puts the new version online by
+# itself; the server brings its database up to date when it starts.
+# If a new version cannot start, Render keeps the previous one running.
+#
+# Optional values you can add under Environment (see backend/.env.example):
+#   UPI_SMS_SENDERS, UPI_TRUSTED_APPS, SHOP_TIME_ZONE, DB_AUTO_SETUP
+#
+# The service keeps its first name (campus-print-backend): the name is
+# part of its address, which the websites, apps and Stations point at.
 # ---------------------------------------------------------------
 services:
   - type: web
@@ -28,7 +38,8 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
-      # upi = CampusPay (docs/campuspay-upi.md), razorpay, or demo (tests only)
+      # upi = XeoGo Pay (docs/campuspay-upi.md), razorpay, or demo (tests only: prints without payment).
+      # Must be set: left empty, paying is switched off.
       - key: PAYMENT_MODE
         sync: false
       - key: UPI_ID
@@ -37,7 +48,7 @@ services:
         sync: false
       - key: UPI_MERCHANT_CODE
         sync: false
-      # The CampusPay Verifier app's password: Render makes a random one; copy it into the app.
+      # The XeoGo Pay Verifier app's password: Render makes a random one; copy it into the app.
       - key: UPI_ALERT_TOKEN
         generateValue: true
       - key: RAZORPAY_KEY_ID

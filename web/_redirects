@@ -1,0 +1,7 @@
+# The XeoGo websites on Netlify: addresses that lead somewhere else.
+
+# The staff counter is the XeoGo Station app on the Xerox PC, not part of the public website.
+/counter.html   /             302!
+
+# A short address for staff to type.
+/staff          /staff.html   301

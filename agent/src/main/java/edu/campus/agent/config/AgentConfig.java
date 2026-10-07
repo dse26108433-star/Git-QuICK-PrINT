@@ -28,7 +28,7 @@ public class AgentConfig {
     public int tempRetentionMinutes = 60;
 
     /**
-     * Print the pickup code small in the bottom-right corner of each order's
+     * Print the order number small in the bottom-right corner of each order's
      * first page, so staff can match paper to students without an extra sheet.
      */
     public boolean pickupCodeOnPage = true;
@@ -54,6 +54,11 @@ public class AgentConfig {
      * wrongly reports its printer offline while it prints fine.
      */
     public boolean checkPrinterStatus = true;
+    /**
+     * Turn students' Word files into PDFs with the Microsoft Word on this PC (when it has one that works).
+     * Switch off to never open students' Word files here: they are then told to send a PDF.
+     */
+    public boolean wordFiles = true;
 
     public static AgentConfig load(Path file) throws Exception {
         AgentConfig cfg = Files.exists(file)
@@ -75,7 +80,7 @@ public class AgentConfig {
 
     /** Checks settings made in code (the Station app). Throws with a message for the user. */
     public AgentConfig check() {
-        validate(Path.of("the Campus Print Station settings"));
+        validate(Path.of("the XeoGo Station settings"));
         return this;
     }
 

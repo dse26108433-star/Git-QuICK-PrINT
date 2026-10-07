@@ -133,7 +133,7 @@ public final class PrinterSmokeTest {
         System.out.println("Result: " + r.outcome() + " - " + r.detail());
         System.out.println();
         System.out.println("Now CHECK THE PAPER:");
-        System.out.println("  - the label  Pickup TEST1  in the bottom-right corner of the first page");
+        System.out.println("  - the label  Order TEST1  in the bottom-right corner of the first page");
         System.out.println("    (fully readable, not cut off by the edge of the paper)");
         if (cover) System.out.println("  - a cover sheet with the big code TEST1");
         if (pages != null) System.out.println("  - only pages " + pages);

@@ -1,5 +1,5 @@
 /*
- * CampusPay on the website (web/js/upi-pay.js): the links that open UPI apps.
+ * XeoGo Pay on the website (web/js/upi-pay.js): the links that open UPI apps.
  *   node spec/upi-pay.test.js
  * The upi://pay link itself comes from the server (UpiPayee.java, checked in
  * the backend's BankAlertParserTest); this checks what each phone gets from it.

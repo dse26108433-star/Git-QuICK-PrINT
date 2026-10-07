@@ -13,13 +13,30 @@ android {
         applicationId = "edu.campus.printapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "3.2.0"
+        versionCode = 6
+        versionName = "3.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Where the print service runs: the live one, unless built with -PapiBase=http://... (see AppConfig.kt)
         val apiBase = (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
+        buildConfigField("boolean", "STAFF", "false")
+    }
+
+    // Two apps from the same code, installed side by side:
+    //   student  "XeoGo"        edu.campus.printapp        students pay and print (no login)
+    //   staff    "XeoGo Staff"  edu.campus.printapp.staff  college staff sign in with a staff ID and print for free
+    flavorDimensions += "who"
+    productFlavors {
+        create("student") {
+            dimension = "who"
+        }
+        create("staff") {
+            dimension = "who"
+            applicationIdSuffix = ".staff"
+            versionNameSuffix = "-staff"
+            buildConfigField("boolean", "STAFF", "true")
+        }
     }
 
     buildTypes {
@@ -27,6 +44,18 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // "dist": the build that is handed out (gradlew assembleStudentDist assembleStaffDist). Like release it
+        // talks https only and cannot be debugged; unlike release its code is left as it is (exactly what the
+        // tests ran), and it is signed with this computer's debug key, the key of every copy handed out so
+        // far, so it installs over them and keeps their orders. For the Play Store, sign "release" with a
+        // key of your own instead.
+        create("dist") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
         }
     }
 

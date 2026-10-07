@@ -83,6 +83,16 @@ public class OrderDocument implements Persistable<UUID> {
     @Column(name = "error_code")    private String errorCode;
     @Column(name = "error_message") private String errorMessage;
 
+    /** What the student sent, when that is not what is printed: DOCX for a Word file that was turned into a PDF. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type")
+    private FileType sourceType;
+    @Column(name = "convert_requested_at") private Instant convertRequestedAt;   // in line for the Xerox PC since
+    @Column(name = "convert_claimed_at")   private Instant convertClaimedAt;     // a PC took it at
+    @Column(name = "convert_agent_id")     private UUID convertAgentId;          // ...this PC
+    @Column(name = "convert_attempts", nullable = false, insertable = false, updatable = false)
+    private int convertAttempts;                                                  // counted by claim_next_conversion()
+
     @Column(name = "created_at", insertable = false, updatable = false) private Instant createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false) private Instant updatedAt;
 
@@ -116,6 +126,16 @@ public class OrderDocument implements Persistable<UUID> {
     public FileType getFileType() { return fileType; }
     public void setFileType(FileType v) { this.fileType = v; }
     public String getStoragePath() { return storagePath; }
+    public void setStoragePath(String v) { this.storagePath = v; }
+    /** Where the PDF made from a Word file goes: never the place of the file the student sent. */
+    public String convertedPath() { return "orders/" + orderId + "/" + id + "-pages.pdf"; }
+    public FileType getSourceType() { return sourceType; }
+    public void setSourceType(FileType v) { this.sourceType = v; }
+    public Instant getConvertRequestedAt() { return convertRequestedAt; }
+    public void setConvertRequestedAt(Instant v) { this.convertRequestedAt = v; }
+    public Instant getConvertClaimedAt() { return convertClaimedAt; }
+    public UUID getConvertAgentId() { return convertAgentId; }
+    public int getConvertAttempts() { return convertAttempts; }
     public Long getFileSizeBytes() { return fileSizeBytes; }
     public void setFileSizeBytes(Long v) { this.fileSizeBytes = v; }
     public String getSha256() { return sha256; }

@@ -41,19 +41,26 @@ import java.util.concurrent.Executors;
  * The Station's own little web server, reachable only from this PC
  * (127.0.0.1). It serves the app's screens, answers questions only this PC
  * can answer (which printers are installed, test prints, start with
- * Windows), and passes counter actions on to the Campus Print server.
+ * Windows), and passes counter actions on to the XeoGo server.
  *
  * Safety: it listens on 127.0.0.1 only, accepts only requests addressed to
  * 127.0.0.1/localhost (so other websites cannot reach it through DNS tricks),
  * and every action needs the random token the app window was opened with.
+ * A request sent by a web page of another site (it carries that site's
+ * Origin) is refused outright.
+ *
+ * Counter actions go to the server with this PC's counter sign-in (a token
+ * the server gave for the counter password), not with the password itself.
  */
 public class LocalServer {
 
-    public static final int PORT = 47800;
+    /** -Dcampusprint.station.port=... only for tests next to an installed Station. */
+    public static final int PORT = Integer.getInteger("campusprint.station.port", 47800);
 
     private static final Logger log = LoggerFactory.getLogger(LocalServer.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Set<String> HOSTS = Set.of("127.0.0.1:" + PORT, "localhost:" + PORT);
+    private static final Set<String> ORIGINS = Set.of("http://127.0.0.1:" + PORT, "http://localhost:" + PORT);
     private static final Map<String, String> TYPES = Map.of(
             "html", "text/html; charset=utf-8", "css", "text/css; charset=utf-8",
             "js", "text/javascript; charset=utf-8", "png", "image/png", "svg", "image/svg+xml",
@@ -68,6 +75,8 @@ public class LocalServer {
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
+    /** Until when the counter password is sent with every action: the server is an older one without sign-ins. */
+    private volatile long passwordOnlyUntil;
 
     /** Takes the port. Fails if the Station is already running (then that copy is asked to show itself). */
     public static HttpServer bind() throws IOException {
@@ -128,6 +137,12 @@ public class LocalServer {
                 send(ex, 403, "text/plain", "Forbidden".getBytes(StandardCharsets.UTF_8));
                 return;
             }
+            String origin = ex.getRequestHeaders().getFirst("Origin");
+            if (origin != null && !ORIGINS.contains(origin.toLowerCase())) {
+                // A page of some other website is calling this PC: never.
+                send(ex, 403, "text/plain", "Forbidden".getBytes(StandardCharsets.UTF_8));
+                return;
+            }
             String path = ex.getRequestURI().getPath();
             if (path.equals("/local/show") && ex.getRequestMethod().equals("POST")) {
                 openWindow.run();
@@ -136,7 +151,7 @@ public class LocalServer {
             }
             if (path.startsWith("/local/") || path.startsWith("/api/")) {
                 if (!tokenOk(ex.getRequestHeaders().getFirst("X-Station-Token"))) {
-                    json(ex, 401, Map.of("message", "Please open Campus Print from its icon."));
+                    json(ex, 401, Map.of("message", "Please open XeoGo from its icon."));
                     return;
                 }
                 if (path.startsWith("/api/")) proxy(ex);
@@ -182,6 +197,10 @@ public class LocalServer {
                 runner.rescanNow();
                 json(ex, 200, Map.of("ok", true));
             }
+            case "POST /local/word-check" -> {
+                runner.checkWordNow();
+                json(ex, 200, Map.of("ok", true));
+            }
             case "POST /local/disconnect" -> json(ex, 200, disconnect());
             case "POST /local/open-logs" -> {
                 DesktopShell.openFolder(StationConfig.dir().resolve("logs"));
@@ -217,7 +236,7 @@ public class LocalServer {
 
         HttpResponse<String> shop = call("GET", url + "/api/v1/shop", null, null);
         if (shop == null || shop.statusCode() != 200) {
-            throw new UserProblem("Cannot reach the Campus Print server at " + url
+            throw new UserProblem("Cannot reach the XeoGo server at " + url
                     + ". Check the address and the internet connection.");
         }
         HttpResponse<String> summary = call("GET", url + "/api/v1/counter/summary", password, null);
@@ -240,6 +259,7 @@ public class LocalServer {
         cfg.backendUrl = url;
         cfg.pcName = pcName;
         cfg.counterPassword = password;
+        cfg.counterSession = "";            // sign in afresh with this password
         cfg.save();
         runner.start(cfg);
         if (!sameServer && DesktopShell.autostartSupported() && !DesktopShell.autostartOn()) {
@@ -256,6 +276,7 @@ public class LocalServer {
         if (r.statusCode() == 401) throw new UserProblem("That password is not right.");
         if (r.statusCode() != 200) throw new UserProblem(messageOf(r));
         cfg.counterPassword = password;
+        cfg.counterSession = "";
         cfg.save();
         return state();
     }
@@ -269,14 +290,15 @@ public class LocalServer {
         cfg.agentId = "";
         cfg.agentSecret = "";
         cfg.counterPassword = "";
+        cfg.counterSession = "";
         cfg.save();
-        log.warn("This PC was disconnected from Campus Print");
+        log.warn("This PC was disconnected from XeoGo");
         return state();
     }
 
     /**
-     * "Test print" buttons: the Step 1 test page, with the label TEST1, on one
-     * printer; "two-sided" prints it on both sides of one sheet.
+     * "Test print" buttons: the Step 1 test page, with the label "Order TEST1",
+     * on one printer; "two-sided" prints it on both sides of one sheet.
      */
     private Map<String, Object> testPrint(JsonNode b) throws Exception {
         String printer = b.path("printer").asText("");
@@ -290,7 +312,7 @@ public class LocalServer {
             Messages.JobSettings settings = !twoSided ? plain : new Messages.JobSettings(1, color, null, "LONG_EDGE",
                     "A4", "AUTO", "FIT", 100, 1, 5, 0, true, true, null, null, null, null, "STANDARD");
             PrintJob job = new PrintJob(UUID.randomUUID().toString(), printer, "PDF", "TEST1",
-                    "Campus Print test page", 1, 1, settings, new Messages.Paper("A4", 210, 297), null, true);
+                    "XeoGo test page", 1, 1, settings, new Messages.Paper("A4", 210, 297), null, true);
             new PrintEngine(new PdfBoxPrintStrategy(), true, 0, new PrintTicket(StationConfig.dir().resolve("work")),
                     new CapabilityCache()).print(file, job);
         } catch (PrintEngine.CannotPrint e) {
@@ -304,34 +326,80 @@ public class LocalServer {
                     "Sent. Check the paper: ONE sheet, \"Side 1\" on the front and \"Side 2\" on the back.");
         }
         return Map.of("ok", true, "message", color
-                ? "Sent. Check the paper: the red box must be RED, and \"Pickup TEST1\" in the corner."
-                : "Sent. Check the paper: the red box must be GREY, and \"Pickup TEST1\" in the corner.");
+                ? "Sent. Check the paper: the red box must be RED, and \"Order TEST1\" in the corner."
+                : "Sent. Check the paper: the red box must be GREY, and \"Order TEST1\" in the corner.");
     }
 
     // ------------------------------------------------------------ counter actions -> server
 
     private void proxy(HttpExchange ex) throws Exception {
-        if (cfg.backendUrl.isBlank()) throw new UserProblem("Connect this PC to the Campus Print server first.");
+        if (cfg.backendUrl.isBlank()) throw new UserProblem("Connect this PC to the XeoGo server first.");
         String query = ex.getRequestURI().getRawQuery();
         String target = cfg.backendUrl + ex.getRequestURI().getRawPath() + (query == null ? "" : "?" + query);
         byte[] body = ex.getRequestBody().readAllBytes();
-        String password = ex.getRequestHeaders().getFirst("X-Counter-Password");
-        if (password == null || password.isBlank()) password = cfg.counterPassword;
-
-        HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(target)).timeout(Duration.ofSeconds(30))
-                .method(ex.getRequestMethod(), body.length == 0 ? HttpRequest.BodyPublishers.noBody()
-                        : HttpRequest.BodyPublishers.ofByteArray(body));
         String type = ex.getRequestHeaders().getFirst("Content-Type");
-        if (type != null) rb.header("Content-Type", type);
-        if (password != null && !password.isBlank()) rb.header("X-Counter-Password", password);
         HttpResponse<byte[]> r;
         try {
-            r = client.send(rb.build(), HttpResponse.BodyHandlers.ofByteArray());
+            r = forward(ex.getRequestMethod(), target, type, body, counterSession());
+            if (r.statusCode() == 401 && !cfg.counterSession.isBlank()) {
+                // The sign-in ran out (30 days), or the password was changed on the server: sign in once more.
+                forgetSession();
+                r = forward(ex.getRequestMethod(), target, type, body, counterSession());
+            }
         } catch (IOException e) {
-            json(ex, 502, Map.of("message", "Cannot reach the Campus Print server. Check the internet connection."));
+            json(ex, 502, Map.of("message", "Cannot reach the XeoGo server. Check the internet connection."));
             return;
         }
         send(ex, r.statusCode(), r.headers().firstValue("Content-Type").orElse("application/json"), r.body());
+    }
+
+    private HttpResponse<byte[]> forward(String method, String target, String contentType, byte[] body, String session)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(target)).timeout(Duration.ofSeconds(30))
+                .method(method, body.length == 0 ? HttpRequest.BodyPublishers.noBody()
+                        : HttpRequest.BodyPublishers.ofByteArray(body));
+        if (contentType != null) rb.header("Content-Type", contentType);
+        if (session != null) {
+            rb.header("X-Counter-Session", session);
+        } else if (!cfg.counterPassword.isBlank()) {
+            rb.header("X-Counter-Password", cfg.counterPassword);
+        }
+        return client.send(rb.build(), HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    /**
+     * This PC's counter sign-in, fetched with the counter password when there
+     * is none yet. Null: use the password itself (the server is an older one,
+     * or would not sign us in just now: its own answer then reaches the screen).
+     */
+    private synchronized String counterSession() {
+        if (!cfg.counterSession.isBlank()) return cfg.counterSession;
+        if (cfg.counterPassword.isBlank() || System.currentTimeMillis() < passwordOnlyUntil) return null;
+        HttpResponse<String> r = call("POST", cfg.backendUrl + "/api/v1/counter/session", cfg.counterPassword, null);
+        if (r == null) return null;
+        if (r.statusCode() == 404 || r.statusCode() == 405) {
+            passwordOnlyUntil = System.currentTimeMillis() + 10 * 60_000L;       // an older server: ask again later
+            return null;
+        }
+        if (r.statusCode() != 200) return null;
+        try {
+            String token = JSON.readTree(r.body()).path("token").asText("");
+            if (token.isBlank()) return null;
+            cfg.counterSession = token;
+            cfg.save();
+            return token;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private synchronized void forgetSession() {
+        cfg.counterSession = "";
+        try {
+            cfg.save();
+        } catch (IOException e) {
+            log.debug("Could not save the settings: {}", e.getMessage());
+        }
     }
 
     // ------------------------------------------------------------ static screens
@@ -348,7 +416,7 @@ public class LocalServer {
                 return;
             }
             String ext = path.substring(path.lastIndexOf('.') + 1);
-            ex.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; "
+            ex.getResponseHeaders().set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; "
                     + "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'");
             send(ex, 200, TYPES.getOrDefault(ext, "application/octet-stream"), in.readAllBytes());
         }
@@ -383,7 +451,7 @@ public class LocalServer {
 
     static String normaliseUrl(String raw) {
         String url = raw.trim().replaceAll("/+$", "");
-        if (url.isEmpty()) throw new UserProblem("Type the Campus Print server address.");
+        if (url.isEmpty()) throw new UserProblem("Type the XeoGo server address.");
         if (!url.matches("(?i)https?://.*")) {
             boolean local = url.startsWith("localhost") || url.startsWith("127.") || url.matches("(10|192\\.168)\\..*");
             url = (local ? "http://" : "https://") + url;

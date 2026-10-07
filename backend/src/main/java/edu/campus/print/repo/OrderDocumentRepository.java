@@ -94,6 +94,38 @@ public interface OrderDocumentRepository extends JpaRepository<OrderDocument, UU
     int renewLease(@Param("id") UUID id, @Param("claimToken") UUID claimToken,
                    @Param("leaseSeconds") int leaseSeconds);
 
+    // ------------------------------------------------------------ Word files (see orders/WordFiles)
+
+    /** Atomic: the next Word file for this PC to turn into a PDF, see claim_next_conversion() in db/setup.sql. */
+    @Query(value = "select * from claim_next_conversion(:agentId, :retrySeconds)", nativeQuery = true)
+    Optional<OrderDocument> claimNextConversion(@Param("agentId") UUID agentId, @Param("retrySeconds") int retrySeconds);
+
+    @Query(value = "select * from order_documents where status = 'CONVERTING' order by convert_requested_at limit 500",
+            nativeQuery = true)
+    List<OrderDocument> findConverting();
+
+    @Query(value = "select count(*) from order_documents where status = 'CONVERTING' and convert_requested_at < :before",
+            nativeQuery = true)
+    long countConvertingBefore(@Param("before") java.time.Instant before);
+
+    /** Gives up on a Word file that is still waiting. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            update order_documents set status = 'REJECTED', error_code = :code, error_message = :message
+             where id = :id and status = 'CONVERTING'
+            """, nativeQuery = true)
+    int rejectConversion(@Param("id") UUID id, @Param("code") String code, @Param("message") String message);
+
+    /** The PC's Word stopped working (not the file's fault): back in line for another PC or another try. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(value = """
+            update order_documents set convert_claimed_at = null
+             where id = :id and status = 'CONVERTING' and convert_agent_id = :agentId
+            """, nativeQuery = true)
+    int requeueConversion(@Param("id") UUID id, @Param("agentId") UUID agentId);
+
     // ------------------------------------------------------------ student side
 
     /** The student removed a document from a draft, or cancelled the order. */
@@ -101,7 +133,7 @@ public interface OrderDocumentRepository extends JpaRepository<OrderDocument, UU
     @Transactional
     @Query(value = """
             update order_documents set status = 'CANCELLED'
-             where order_id = :orderId and status in ('UPLOADING', 'READY', 'REJECTED')
+             where order_id = :orderId and status in ('UPLOADING', 'CONVERTING', 'READY', 'REJECTED')
             """, nativeQuery = true)
     int cancelDraftDocuments(@Param("orderId") UUID orderId);
 

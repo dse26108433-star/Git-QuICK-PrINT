@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Optional;
 
 /**
- * CampusPay: the Xerox center's own UPI payment gateway (PAYMENT_MODE=upi).
+ * XeoGo Pay: the Xerox center's own UPI payment gateway (PAYMENT_MODE=upi).
  * No payment company in between and no fees: students pay the center's UPI
  * ID with GPay, PhonePe, Paytm, BHIM or any bank's UPI app.
  *
@@ -18,11 +18,11 @@ import java.util.Optional;
  *              apart from every other one. Gives the upi://pay link (Android
  *              opens the list of UPI apps on the phone; laptops show it as a QR code).
  *  2. The student pays in their UPI app and comes back to the website or app.
- *  3. The CampusPay Verifier app on the Xerox center's phone forwards the
+ *  3. The XeoGo Pay Verifier app on the Xerox center's phone forwards the
  *     bank's "money received" SMS / the UPI app's notification
  *     (UpiAlertController); its amount or reference number proves which order
- *     was paid, and that order is paid at once: the pickup code opens by
- *     itself. Nothing prints before that proof.
+ *     was paid, and that order is paid at once: the student's screen moves
+ *     on by itself. Nothing prints before that proof.
  *     Fallbacks: the student may type the UPI reference number
  *     (OrderService.claimPayment), and staff can confirm at the counter.
  *
@@ -60,7 +60,7 @@ public class UpiGateway implements PaymentGateway {
         return windowMinutes;
     }
 
-    /** UPI_ALERT_TOKEN is set: a CampusPay Verifier phone may forward the bank's messages. */
+    /** UPI_ALERT_TOKEN is set: a XeoGo Pay Verifier phone may forward the bank's messages. */
     public boolean alertsOn() {
         return alertsOn;
     }
@@ -117,7 +117,7 @@ public class UpiGateway implements PaymentGateway {
     public Optional<String> findPayment(PrintOrder order) {
         if (order.getPaymentClaimRef() == null) return Optional.empty();
         Optional<String> paid = ledger.matchOrder(order.getId());
-        paid.ifPresent(id -> log.info("CampusPay: order {} paid, reference {} found in a bank message",
+        paid.ifPresent(id -> log.info("XeoGo Pay: order {} paid, reference {} found in a bank message",
                 order.getPickupCode(), id));
         return paid;
     }

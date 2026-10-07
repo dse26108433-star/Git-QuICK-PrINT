@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * 12-digit UPI reference number (UTR / RRN). A message that says money went
  * OUT, an OTP, or a payment request is never read as a payment.
  *
- * Nothing here decides an order is paid: CampusPay only pays an order when
+ * Nothing here decides an order is paid: XeoGo Pay only pays an order when
  * this amount matches it exactly (see upi_match_alert in db/setup.sql).
  */
 public final class BankAlertParser {

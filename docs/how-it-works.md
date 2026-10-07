@@ -3,23 +3,29 @@
 ## The parts
 
 ```
- web/index.html  ─┐                              ┌─ Supabase Postgres (orders, files of each order, printers, prices)
- Android app     ─┼─► backend (Spring Boot) ─────┤
- web/counter.html ┘        ▲                      └─ Supabase Storage (private bucket: the files)
-                           │ HTTPS, PC always calls out
-                    Xerox center PC (Campus Print Station)
-                           │ Windows print queue + Canon drivers
-                    Printer 1   Printer 2   Printer 3   Printer 4 (colour)
+ students: web/index.html, XeoGo app        ─┐                         ┌─ Supabase Postgres (orders, their files,
+ staff:    web/staff.html, XeoGo Staff app  ─┼─► backend (Spring Boot) ─┤   printers, prices, staff IDs)
+ Xerox center's phone: XeoGo Pay Verifier   ─┘        ▲                 └─ Supabase Storage (private bucket: the files)
+                                                      │ HTTPS, PC always calls out
+                                               Xerox center PC (XeoGo Station: printing, counter, staff IDs)
+                                                      │ Windows print queue + printer drivers
+                                               Printer 1   Printer 2   Printer 3   Printer 4 (colour)
 ```
 
 Phones and browsers **never** talk to the database. Only the backend does, with its own connection.
 The database has row level security switched on and gives nothing to Supabase's public keys.
 
+**The database keeps itself up to date.** `db/setup.sql` owns the tables and the rules and can be run again and
+again. A copy travels inside the server (`backend/src/main/resources/db/setup.sql`); when the server starts it
+compares that copy with what the database was last brought up to (`schema_version`) and, if it differs, runs it
+in one transaction (`DatabaseSetup.java`). So a new version goes online with one push: nobody runs SQL by hand.
+If the update cannot be done the new server does not start (the host keeps the previous one running).
+
 ## One order, many files
 
 A student puts **all their files in one order** (up to 25: PDFs, JPGs and PNGs mixed) and sets up each
 file on its own: pages, copies, colour, sides, paper size, layout, finishing. They pay once and collect
-everything with **one pickup code**.
+everything together, by showing their files (see "Collecting").
 
 In the database an order (`orders`) has one row per file (`order_documents`). **Each file is its own print
 job**: it has its own settings, price, status and printer. The order's status follows from its files.
@@ -63,8 +69,11 @@ so files can be added, removed or changed; the next review checks and prices eve
 
 When the website creates an order, the backend makes a random 256-bit **access key**, returns it once, and
 stores only its SHA-256. The website saves it on the device and sends it as `X-Order-Key`. Without it,
-nobody can see, change, pay for, or cancel that order. The **pickup code** (5 characters, no look-alike
-letters) is only for the counter and the label on the printed pages.
+nobody can see, change, pay for, or cancel that order. Each order also has a short **order number** (5
+characters, no look-alike letters): the label on the printed pages, and a way to search. It opens nothing.
+
+A **staff order** is different: it belongs to a staff ID, not to a device. It answers to any device signed in
+with that ID (`X-Staff-Session`), and to nobody else; its key alone is not enough (see "Staff printing").
 
 The website also keeps the unfinished order (files and settings, not the files' contents) in the browser, so
 a reload or a closed tab comes back to the same place; the files are fetched again from storage.
@@ -163,18 +172,103 @@ The website draws the preview from the same layout rules the Station prints with
 
 ## Matching paper to students (no cover sheet)
 
-The pickup code is printed **small in the bottom-right corner of the first sheet of each file**:
+The order number is printed **small in the bottom-right corner of the first sheet of each file**:
 
-    [ Pickup K7M4X  ·  2/3  ·  3 sheets × 2 ]
+    [ Order K7M4X  ·  2/3  ·  3 sheets × 2 ]
 
 (file 2 of the order's 3, 3 sheets per copy, 2 copies). Every copy starts with that sheet, so staff see where
 each file (and each copy) begins in the tray, and how many sheets to count. The label sits in the white margin
 at least 6 mm from the edge. Borderless prints get no label. If adding it ever fails, the file prints with a
-cover sheet instead. The **"Pickup code on pages"** switch in the Station turns it off for everyone
+cover sheet instead. The **"Order number on pages"** switch in the Station turns it off for everyone
 (`shop_settings.stamp_code`); `agent.yml` `coverSheetMinSheets: 30` adds a cover sheet only for thick files.
 
-At the counter: staff type the code, see each file with its printer and sheets, take the pages whose first
-sheet shows that code, and press **Handed over**.
+## Word files
+
+A student adds a Word file (`.docx`) like any other file. What happens to it:
+
+1. **The server looks inside it** (`storage/DocxInspector`) before anything opens it. A `.docx` is a ZIP of
+   XML parts; it is read strictly (the directory at the end, each part once, sizes and checksums right,
+   nothing encrypted, no huge unpacking) and only a plain document passes: text, tables, pictures, charts,
+   headers, page numbers, a table of contents, hyperlinks. Refused, with "save it as PDF": macros and ActiveX,
+   embedded objects of the old kind (OLE), pieces of other documents merged in on opening, anything loaded
+   from outside the file (linked pictures, a template on a server, a mail-merge source), fields that read
+   other files or run commands (and fields whose name another field puts together), embedded fonts, EPS
+   pictures, web add-ins. Old `.doc` files cannot be looked into like this and are not accepted.
+2. **The Xerox PC turns it into pages.** The document waits (status `CONVERTING`); the Station asks for the
+   next one (`POST /agent/v1/conversions/claim`), fetches exactly the file the server checked (same
+   SHA-256, or it is not opened), lets its own Microsoft Word save it as PDF, puts the PDF where the server
+   said, and reports `done`. The server checks that PDF like any upload (the PC is trusted to print, not to
+   vouch for a file) and the document **becomes that PDF**: page count, preview, every setting, price and
+   printing are the PDF's. The file keeps its name; `source_type` remembers it was Word.
+3. **The student's device** shows "Turning it into pages at the Xerox center…" (with how many are ahead),
+   then fetches the pages and shows them like any PDF. What is seen before paying is what prints.
+
+Word runs as a second, hidden Word that belongs to the Station (`agent/.../word/WordEngine`, helper
+`word-worker.ps1`): alerts and macros off, files opened read-only, tracked changes and comments left out,
+none of the shop's Word settings touched. It starts with the first file, stays while files keep coming (about
+half a second each), and closes after 20 quiet seconds. Every step has a time limit; a Word that stops
+answering is ended and replaced. If Windows hands a file somebody opened by double-click to the hidden Word
+(it does when no other Word is open), that Word is shown and left to them, and the Station starts another.
+
+Whether a PC can do this is tried, not guessed: at start the Station turns a test page into a PDF, and only
+then tells the server (`wordFiles` in the heartbeat). Students are offered Word files only while such a PC is
+online (`wordFiles` in `/api/v1/shop`); otherwise they are told so before anything is uploaded. Nothing waits
+for ever: a file in line for ten minutes, one two tries gave up on, or one whose PC went offline is refused
+with the advice to save it as PDF.
+
+## Collecting: show your files (no pickup code)
+
+Nobody shows or types a code. What replaces it:
+
+1. **After paying, the files stay visible on the phone.** The website and the app keep a small picture of every
+   file's first sheet, drawn exactly as it prints (the uploaded files themselves are not kept on the phone), with
+   the times: *Paid 10:42 · Ready at about 10:47* (an estimate from the queue: sheets ahead × the measured seconds
+   per sheet, `ReadyEstimate`), then *Ready since…*, then *Collected…*.
+2. **The Xerox PC makes the same picture** from what it really printed (`SheetPicture`, sent with
+   `POST /agent/v1/jobs/{id}/preview`, kept in `document_previews` until the order is handed over). The counter
+   shows it next to each file. A phone that has no picture of its own (another device) fetches this one.
+3. **"I'm at the counter"** (`POST /orders/{id}/arrive`). Only the device that holds the order's key (or the staff
+   sign-in) can say it. The order then appears in the green box **At the counter now** on the Xerox center's
+   screen, with its pictures, within a few seconds, and stays while the phone keeps saying it (every 45 seconds;
+   it wears off after 3 minutes).
+4. The Xerox center compares phone and screen, hands over the pages, presses **Handed over**
+   (`POST /counter/orders/{id}/collected`). The phone turns to **Collected**: the pages went to the phone that
+   ordered them. One order is handed over once.
+
+Why this cannot be cheated: a screenshot of someone's order, or the same PDF on another phone, never appears on
+the counter's screen, because only the ordering device can put it there. And a phone that shows "Collected" was
+handed its pages.
+
+No internet at the counter: the order still opens (the last answer of the server and the pictures are kept on
+the device) and says so; the Xerox center types a file's name or the order number in **Find**, sees the order
+with its pictures, and confirms a question before handing over.
+
+## Staff printing (free, with a staff ID)
+
+College staff print for free, up to a number of pages a month. No payment and no code are involved.
+
+- **The staff ID** is a username and a password, made in the Station (**Staff** screen; `POST /counter/staff`).
+  The server makes the password (10 random characters), shows it once, and keeps only its bcrypt hash. Eight
+  wrong passwords in a row make an ID wait 15 minutes; sign-in tries are also limited per network address.
+  Every failure reads the same, so nothing tells whether a username exists.
+- **Signing in** (`POST /staff/login`) gives the device a sign-in token (HMAC, 90 days, renewed while in use). The
+  token names the password it was made with: a **new password**, **switching the ID off** or **removing** it signs
+  every device out at once (`StaffSessions`, `StaffService.session`).
+- **A staff order** is made by `POST /orders` with the sign-in. It takes the same steps as a student's, except:
+  `review` counts instead of pricing (`freePages` = printed sides × copies, amount 0), and
+  `POST /orders/{id}/staff-print` replaces payment.
+- **The limit is kept in the database.** `staff_print()` locks the staff ID's row, adds up what the ID used since
+  the 1st of the month (`staff_pages_used`: only files that printed or are printing; failed and cancelled ones do
+  not count), refuses when the order does not fit, and otherwise queues it, all in one step. Two orders sent at
+  the same moment are counted one after the other.
+- **The two kinds of order cannot be mixed up.** `mark_order_paid()` is the only way into the print queue, and it
+  lets a staff order in only as `staff` and an ordinary order never as `staff`. So no payment route can print a
+  staff order, and no student order can be printed for free, whatever the apps send.
+- **Colour** and special paper are free only if the Xerox center says so (Staff → switch); otherwise the staff
+  site does not offer them, the review refuses them, and `staff_print()` refuses them again.
+- The month is the calendar month in `SHOP_TIME_ZONE` (default Asia/Kolkata). The usual number of pages
+  (`shop_settings.staff_monthly_pages`, default 1000) and one ID's own number are set on the Staff screen.
+- On the counter a staff order shows **Staff · free** and the person's name, so the pages go to the right hands.
 
 ## Price and payment
 
@@ -202,7 +296,9 @@ is two printed sides.
 5. Safety net: every minute the backend asks Razorpay about unpaid orders, so a student who closed the page
    right after paying still gets printed.
 
-`PAYMENT_MODE=demo` replaces steps 3–4 with a test button. The backend log and counter screen warn loudly.
+`PAYMENT_MODE=upi` is XeoGo Pay (see `docs/campuspay-upi.md`). `PAYMENT_MODE=demo` replaces steps 3–4 with a
+test button; the backend log and counter screen warn loudly. With no `PAYMENT_MODE` at all, paying is switched
+off (`ClosedGateway`): nothing ever prints for free because a setting was forgotten.
 The Android app (3.0.0) uses the same endpoints and settings as the website; its rules (`core/PrintCore.kt`) run
 the shared `spec/cases`, and its tests check against the real backend that the reviewed settings, prices and the
 print jobs the PC receives are identical. Older app versions (one file per order, `/orders/{id}/uploaded`) keep working.
@@ -228,9 +324,10 @@ If the PC disappears:
 Paper out, jam, offline printer: Windows keeps the document, so the file stays "printing" and the counter
 shows the printer lamp amber with the reason. It finishes by itself once staff fix the printer.
 
-## Campus Print Station (the Xerox center app)
+## XeoGo Station (the Xerox center app)
 
-One installer (`installer/CampusPrintStation-Setup-<version>.exe`, built by `agent/packaging/build-installer.ps1`).
+One installer (`installer/XeoGoStation-Setup-<version>.exe`, built by `agent/packaging/build-installer.ps1`).
+It updates an older "Campus Print Station" in place and keeps its settings.
 It contains a trimmed private Java made with `jlink` and a launcher made with `jpackage`, wrapped by Inno Setup,
 so the PC needs nothing else. It installs per user (no administrator), adds shortcuts and an uninstaller.
 
@@ -250,10 +347,15 @@ so the PC needs nothing else. It installs per user (no administrator), adds shor
   Station restarts while a file still waits in a Windows queue, it watches that entry again and reports it
   only when it really leaves the queue; it never sends the file a second time. If the queue cannot be read
   for 5 minutes the file is reported as "could not confirm: check the tray", never as printed.
-- **Counter**: orders with their files; per file: printer, sheets, **Print again**, **Cancel**; a red banner when a
-  paid file waits that no printer can do.
+- **Counter**: **At the counter now** (students standing there, with pictures of their files) and **Handed
+  over**; **Find** by file name; orders with their files; per file: printer, sheets, **Print again**, **Cancel**;
+  a red banner when a paid file waits that no printer can do. Staff orders show **Staff · free** and the name.
+- **Staff**: make a staff ID (the password is shown once: copy it or print the slip), new password, pages per
+  month, switch off, remove.
+- The counter signs in once with the counter password and then uses a sign-in token, so it keeps working
+  while the server pauses password sign-ins because someone on the internet keeps guessing.
 - **Screens** are served on `127.0.0.1:47800` and shown in a Microsoft Edge app window; each call needs the random
-  token the window was opened with, so other websites cannot use it.
+  token the window was opened with, and requests that come from another website are refused.
 - Logs: `%LOCALAPPDATA%\CampusPrint\logs`.
 
 For a new printer model, `PrinterSmokeTest` shows what the Station reads and prints any combination by hand:
@@ -268,3 +370,6 @@ For a new printer model, `PrinterSmokeTest` shows what the Station reads and pri
 - Uploads and downloads use 5-minute signed links made by the backend.
 - On the PC, files sit in the Station's own work folder and are deleted after printing.
 - In storage: deleted after printing; unpaid or cancelled after expiry; failed paid files kept 24 h (for "Print again").
+- First-sheet pictures: at most 200 KB each, in the database (`document_previews`), deleted when the order is
+  handed over and after 7 days in any case.
+- Orders that were never paid are removed two weeks after they ended.

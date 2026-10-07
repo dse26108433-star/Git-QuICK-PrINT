@@ -1,5 +1,5 @@
 /*
- * CampusPay on the student website: turns the server's upi://pay link into
+ * XeoGo Pay on the student website: turns the server's upi://pay link into
  * what each phone understands.
  *
  *   Android  upi://pay?...        Android shows the UPI apps installed on the phone

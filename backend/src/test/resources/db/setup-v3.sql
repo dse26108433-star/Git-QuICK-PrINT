@@ -1,5 +1,5 @@
 -- =====================================================================
--- Campus Print (Xerox center) - database setup
+-- XeoGo (Xerox center) - database setup
 --
 -- HOW TO RUN: Supabase dashboard -> SQL Editor -> New query ->
 -- paste this WHOLE file -> Run.  Safe to run again later.
@@ -29,10 +29,10 @@ create table if not exists shop_settings (
     price_bw_paise    int  not null default 200  check (price_bw_paise >= 0),
     price_color_paise int  not null default 1000 check (price_color_paise >= 0),
     currency          text not null default 'INR',
-    stamp_code        boolean not null default true,   -- pickup code printed on the first page
+    stamp_code        boolean not null default true,   -- order number printed on the first page
     updated_at        timestamptz not null default now()
 );
--- Added later (the counter's "Print pickup code on pages" switch). Safe to run again.
+-- Added later (the counter's "Print order number on pages" switch). Safe to run again.
 alter table shop_settings add column if not exists stamp_code boolean not null default true;
 insert into shop_settings (id) values (1) on conflict (id) do nothing;
 

@@ -190,13 +190,15 @@ private fun ColorField(d: Doc, s: PrintSettings, st: SessionState, session: Orde
     Field("Colour") {
         if (cs.size == 1) {
             val c = cs[0].value == true
-            Hint(if (c) "Colour printing only (${rupees(shop.priceColorPaise)} per side)."
+            Hint(if (st.staffApp) (if (c) "Colour printing only." else if (st.staff?.colorAllowed == false)
+                    "Black & white: free staff printing is not in colour here." else "Black & white only. Colour printing is not available.")
+                else if (c) "Colour printing only (${rupees(shop.priceColorPaise)} per side)."
                 else "Black & white only (${rupees(shop.priceBwPaise)} per side). Colour printing is not available.")
         } else {
             Seg(cs.map { a ->
                 val colour = a.value == true
                 SegItem(if (colour) "Colour" else "Black & white",
-                    conflictWords(a) ?: (rupees(if (colour) shop.priceColorPaise else shop.priceBwPaise) + " / side"),
+                    conflictWords(a) ?: if (st.staffApp) null else (rupees(if (colour) shop.priceColorPaise else shop.priceBwPaise) + " / side"),
                     s.color == colour, conflict = !a.available) { session.pick(d.local, a) { it.copy(color = colour) } }
             }, label = "Colour")
         }
@@ -453,12 +455,14 @@ private fun PriceBlock(d: Doc, n: Normalized, st: SessionState, session: OrderSe
                 Text(
                     if (p != null) (if (d.type == "PDF") plural(n.plan.printPages, "page", "pages") + " → " else "") +
                         plural(n.plan.sheets, "sheet", "sheets") + (if (s.copies > 1) " × ${s.copies} copies" else "") +
-                        " · " + rupees(p.perSide) + " per side" + (if (p.finishing > 0) " + " + rupees(p.finishing) + " finishing" else "")
-                    else "Fix the choice above to see the price.",
+                        (if (st.staffApp) " · " + plural(n.plan.sides, "printed side", "printed sides") + (if (s.copies > 1) " each" else "")
+                         else " · " + rupees(p.perSide) + " per side" + (if (p.finishing > 0) " + " + rupees(p.finishing) + " finishing" else ""))
+                    else if (st.staffApp) "Fix the choice above." else "Fix the choice above to see the price.",
                     fontSize = 12.5.sp, color = CP.Muted
                 )
             }
-            Text(if (p != null) rupees(p.amount) else "–", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
+            Text(if (p == null) "–" else if (st.staffApp) plural(session.pages(n), "page", "pages") else rupees(p.amount),
+                fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
         }
         if (st.docs.any { it.local != d.local && it.settings != null }) {
             Spacer(Modifier.size(10.dp))

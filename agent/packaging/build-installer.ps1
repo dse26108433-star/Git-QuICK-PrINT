@@ -1,5 +1,5 @@
 <#
-  Builds the Campus Print Station installer: one .exe for the Xerox center PC.
+  Builds the XeoGo Station installer: one .exe for the Xerox center PC.
   The app carries its own small Java inside, so the PC needs nothing else.
 
   Needs (on THIS build computer only): JDK 21, Maven, Inno Setup 6.
@@ -9,11 +9,11 @@
 
   -BackendUrl  builds a copy for one college: the server address is already
                filled in, so staff only type the counter password.
-  Result:      packaging\out\CampusPrintStation-Setup-<version>.exe
+  Result:      packaging\out\XeoGoStation-Setup-<version>.exe
 #>
 param(
     [string]$BackendUrl = "",
-    [string]$Version = "4.2.0",
+    [string]$Version = "4.3.0",
     [string]$InnoSetup = ""
 )
 $ErrorActionPreference = 'Stop'
@@ -57,14 +57,14 @@ Say "Modules: $mods"
     --no-man-pages --compress=zip-6 --output "$work\runtime"
 if ($LASTEXITCODE -ne 0) { throw "jlink failed" }
 
-# --- 3. the app folder (Campus Print Station.exe + Java + program) ------------
+# --- 3. the app folder (XeoGo Station.exe + Java + program) ------------
 Say "Making the app folder"
 $javaOptions = @('-Xmx768m', '-Dfile.encoding=UTF-8')
 if ($BackendUrl) { $javaOptions += "-Dcampusprint.backendUrl=$($BackendUrl.TrimEnd('/'))"; Say "Server address built in: $BackendUrl" }
-$jpArgs = @('--type', 'app-image', '--name', 'Campus Print Station', '--app-version', $Version,
-            '--vendor', 'Vedant Pravin Surve', '--description', 'Campus Print Station',
+$jpArgs = @('--type', 'app-image', '--name', 'XeoGo Station', '--app-version', $Version,
+            '--vendor', 'Vedant Pravin Surve', '--description', 'XeoGo Station',
             '--copyright', '(c) 2026 Vedant Pravin Surve',
-            '--icon', "$here\campus-print.ico", '--input', "$work\input", '--main-jar', 'print-agent.jar',
+            '--icon', "$here\xeogo.ico", '--input', "$work\input", '--main-jar', 'print-agent.jar',
             '--main-class', 'edu.campus.agent.station.StationMain', '--runtime-image', "$work\runtime",
             '--dest', "$work\app-image")
 foreach ($o in $javaOptions) { $jpArgs += @('--java-options', $o) }
@@ -76,7 +76,7 @@ Say "Making the installer (Inno Setup)"
 & $iscc /Q "/DAppVersion=$Version" "$here\station.iss"
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
-$out = Join-Path $here "out\CampusPrintStation-Setup-$Version.exe"
+$out = Join-Path $here "out\XeoGoStation-Setup-$Version.exe"
 $mb = [math]::Round((Get-Item $out).Length / 1MB, 1)
 Write-Host ""
 Write-Host "Installer ready: $out ($mb MB)" -ForegroundColor Green

@@ -43,9 +43,23 @@ class OrderSessionTest {
         session = newSession()
     }
 
-    private fun newSession() = OrderSession(PrintApi(backend.base), scope, TestFiles.reader, store, store, workDir = TestFiles.dir).also { s ->
+    private fun newSession() = OrderSession(PrintApi(backend.base), scope, TestFiles.reader, store, store, workDir = TestFiles.dir,
+        wakeRetryMs = 60, wordPollMs = 40, pictures = pictures, painter = { d, _, _, to ->
+            // what the phone's own painter does: the first sheet of the file as a picture (here: a few bytes that say whose)
+            drawPictures && d.file != null && run { to.writeBytes(byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + ("phone:" + d.name).toByteArray()); true }
+        }).also { s ->
         scope.launch { s.notices.collect { notices += it.text } }
     }
+
+    /** The pictures of paid orders' files, in a folder of this test. */
+    private val pictureDir = java.io.File(TestFiles.dir, "prints-" + System.nanoTime())
+    private val pictures = object : PictureStore {
+        override fun file(orderId: String, docId: String) = java.io.File(pictureDir, "$orderId/$docId.jpg").also { it.parentFile.mkdirs() }
+        override fun keepOnly(orderIds: Set<String>) {
+            pictureDir.listFiles()?.forEach { if (it.name !in orderIds) it.deleteRecursively() }
+        }
+    }
+    private var drawPictures = true
 
     @After
     fun stop() {
@@ -80,6 +94,155 @@ class OrderSessionTest {
         runBlocking { session.loadShop() }
         session.addFiles(files.map { TestFiles.incoming(it) })
         return allReady(files.size)
+    }
+
+    // ------------------------------------------------------------------ Word files
+
+    @Test
+    fun aWordFileBecomesPagesAndIsThenLikeAnyPdf() {
+        backend.word = true
+        runBlocking { session.loadShop() }
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.docx("Report.docx")), TestFiles.incoming(TestFiles.pdf("Notes.pdf", 2))))
+        var st = waitFor("with the Xerox center's computer") { s ->
+            s.docs.size == 2 && s.docs[0].status == DocStatus.CONVERTING && s.docs[1].status == DocStatus.READY
+        }
+        val word = st.docs[0]
+        assertEquals("DOCX", word.type)
+        assertTrue(word.word && !word.picture && word.busy)
+        assertNull(word.pageCount)
+        assertNull(session.norm(word))                             // no pages, no price yet
+        val c = session.checkout(st)
+        assertFalse(c.canReview)
+        assertEquals("Wait until the Word file is turned into pages.", c.why)
+        assertEquals(listOf(word.id), backend.wordWaiting())
+
+        // the Xerox center's computer is done: seven pages
+        backend.wordReady(word.id!!, 7)
+        st = waitFor("its pages on the phone") { s -> s.docs[0].status == DocStatus.READY && s.docs[0].file != null }
+        val pages = st.docs[0]
+        assertEquals("PDF", pages.type)
+        assertEquals(7, pages.pageCount)
+        assertEquals("Report.docx", pages.name)                    // still called what the student called it
+        assertEquals("PDF", edu.campus.printapp.flow.FileTypes.detect(pages.file!!))
+        assertFalse(word.file!!.exists())                          // the Word file itself is gone from the phone
+
+        // every setting a PDF has
+        session.setPagesText(pages.local, "2-5")
+        session.change(pages.local) { it.copy(copies = 3, duplex = "LONG_EDGE", pagesPerSheet = 2) }
+        st = session.state.value
+        val n = session.norm(st.docs[0])!!
+        assertNull(n.error)
+        assertEquals(4, n.plan.printPages)
+        assertEquals(2, n.plan.sides)                              // four pages, two on a side
+        assertEquals(1, n.plan.sheets)                             // ...on the two sides of one sheet
+        assertTrue(session.checkout(st).canReview)
+
+        session.review()
+        st = waitFor("review") { it.step == Step.REVIEW }
+        assertEquals("2-5", backend.lastReview!!.documents[0].settings.pages)
+        session.pay()
+        st = waitFor("paid and printed", 20_000) { it.step == Step.STATUS && it.order?.status == "COMPLETED" }
+        assertEquals(listOf("Report.docx", "Notes.pdf"), st.order!!.live.map { it.fileName })
+    }
+
+    @Test
+    fun withoutAXeroxPcWithWordAWordFileIsNotEvenSent() {
+        backend.word = false
+        runBlocking { session.loadShop() }
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.docx("Report.docx"))))
+        var st = waitFor("told why") { s -> s.docs.size == 1 && s.docs[0].status == DocStatus.ERROR }
+        assertTrue(st.docs[0].error!!.contains("not online right now"))
+        assertTrue(st.docs[0].canRetry)
+        assertTrue(backend.requests.none { it.startsWith("PUT /upload") })       // nothing was uploaded for nothing
+
+        // the Xerox center opens: "Try again" is enough
+        backend.word = true
+        session.retry(st.docs[0].local)
+        st = waitFor("with the Xerox center's computer") { s -> s.docs[0].status == DocStatus.CONVERTING }
+        backend.wordReady(st.docs[0].id!!, 1)
+        waitFor("ready") { s -> s.docs[0].status == DocStatus.READY && s.docs[0].pageCount == 1 }
+    }
+
+    @Test
+    fun wordFilesThatCannotBePrintedSayWhy() {
+        backend.word = true
+        runBlocking { session.loadShop() }
+        // an old .doc and a ZIP that is no Word file: said on the phone, nothing is sent
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.oldDoc("Notice.doc")),
+            TestFiles.incoming(TestFiles.docx("Photos.zip"))))
+        var st = waitFor("both told") { s -> s.docs.size == 2 && s.docs.all { it.status == DocStatus.ERROR } }
+        assertTrue(st.docs[0].error!!.startsWith("This is an older kind of Word file (.doc)"))
+        assertEquals("Only PDF, Word (.docx), JPG and PNG files can be printed.", st.docs[1].error)
+        assertTrue(st.docs.none { it.canRetry })
+        assertTrue(backend.requests.none { it.startsWith("PUT /upload") })
+        st.docs.forEach { session.removeDoc(it.local) }
+
+        // one the server refuses after looking inside, and one Word on the Xerox PC cannot open
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.docx("Macro.docx", mapOf("word/vbaProject.bin" to "x"))),
+            TestFiles.incoming(TestFiles.docx("Odd.docx"))))
+        st = waitFor("one refused, one waiting") { s ->
+            s.docs.size == 2 && s.docs[0].status == DocStatus.ERROR && s.docs[1].status == DocStatus.CONVERTING
+        }
+        assertTrue(st.docs[0].error!!.contains("cannot be prepared automatically"))
+        backend.wordRefused(st.docs[1].id!!, "Microsoft Word at the Xerox center could not open this file.")
+        st = waitFor("the second refused") { s -> s.docs[1].status == DocStatus.ERROR }
+        assertEquals("Microsoft Word at the Xerox center could not open this file.", st.docs[1].error)
+        assertFalse(st.docs[1].canRetry)
+    }
+
+    @Test
+    fun aWordFileBeingTurnedIntoPagesSurvivesClosingTheApp() {
+        backend.word = true
+        runBlocking { session.loadShop() }
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.docx("Thesis.docx"))))
+        val before = waitFor("with the Xerox center's computer") { s -> s.docs.size == 1 && s.docs[0].status == DocStatus.CONVERTING }
+        val id = before.docs[0].id!!
+
+        // the app is closed and opened again while the Xerox center's computer works
+        scope.cancel()
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        session = newSession()
+        assertTrue(runBlocking { session.restoreDraft() })
+        var st = session.state.value
+        assertEquals(DocStatus.CONVERTING, st.docs[0].status)
+        assertEquals("Thesis.docx", st.docs[0].name)
+        backend.wordReady(id, 12)
+        st = waitFor("its pages") { s -> s.docs[0].status == DocStatus.READY && s.docs[0].file != null }
+        assertEquals(12, st.docs[0].pageCount)
+        assertEquals("PDF", st.docs[0].type)
+
+        // closed again right after: the pages are fetched, never the Word file shown as a PDF
+        scope.cancel()
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        session = newSession()
+        assertTrue(runBlocking { session.restoreDraft() })
+        st = waitFor("ready after opening again") { s -> s.docs.size == 1 && s.docs[0].status == DocStatus.READY && s.docs[0].file != null }
+        assertEquals("PDF", edu.campus.printapp.flow.FileTypes.detect(st.docs[0].file!!))
+        assertEquals(12, st.docs[0].pageCount)
+    }
+
+    @Test
+    fun whileThePrintServiceWakesUpTheFilesWaitForIt() {
+        // the service sleeps after a quiet time: its host answers "not up yet" for a while
+        backend.waking = 3
+        assertNull(runBlocking { session.loadShop() })
+        assertEquals(OrderSession.WAKING, session.state.value.shopError)     // said calmly, not "check your internet"
+        // files chosen meanwhile are not thrown away: they are added as soon as the service is up
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.pdf("Notes.pdf", 3))))
+        val st = allReady(1)
+        assertEquals(Step.SETUP, st.step)
+        assertNull(st.shopError)
+        assertTrue(notices.toList().toString(), notices.none { it.contains("Cannot reach") })
+    }
+
+    @Test
+    fun noInternetIsNotCalledWakingUp() {
+        backend.down = true
+        assertNull(runBlocking { session.loadShop() })
+        assertTrue(session.state.value.shopError!!.startsWith("Cannot reach the print service"))
+        session.addFiles(listOf(TestFiles.incoming(TestFiles.pdf("Notes.pdf", 3))))
+        waitNotice("cannot reach") { it.startsWith("Cannot reach the print service") }
+        assertTrue(session.state.value.docs.isEmpty())
     }
 
     @Test
@@ -119,6 +282,147 @@ class OrderSessionTest {
         st = waitFor("paid and printed", 20_000) { it.step == Step.STATUS && it.order?.status == "COMPLETED" }
         assertEquals("K7M4X", st.order!!.pickupCode)
         assertNull(store.load())                                   // the unfinished order is done with
+    }
+
+    // ------------------------------------------------------------------ collecting by showing the files (no pickup code)
+
+    /** The phone's own copies of the files of the order being put together. */
+    private var copies = emptyList<java.io.File>()
+
+    /** Two files, reviewed and paid: on the "your prints" screen. */
+    private fun paidOrder(): SessionState {
+        copies = addAndWait(TestFiles.pdf("Notes.pdf", 3), TestFiles.png("Photo.png")).docs.mapNotNull { it.file }
+        assertEquals(2, copies.count { it.isFile })
+        session.review()
+        waitFor("review") { it.step == Step.REVIEW }
+        if (drawPictures) waitFor("a picture of each file is kept") { it.pictures.size == 2 }
+        session.pay()
+        return waitFor("paid") { it.step == Step.STATUS && it.order?.paidAt != null }
+    }
+
+    @Test
+    fun afterPayingTheFilesStayOnThePhoneAsPicturesWithTheTimes() {
+        var st = paidOrder()
+        val ids = st.order!!.live.map { it.id }
+        assertEquals(ids.toSet(), st.pictures.keys)
+        assertTrue(st.pictures.values.all { java.io.File(it).readBytes().size > 8 })
+        assertTrue(java.io.File(st.pictures.getValue(ids[0])).readText(Charsets.ISO_8859_1).endsWith("phone:Notes.pdf"))
+        // the phone's copies of the uploaded files are deleted once they are paid for; their pictures are not
+        eventually("the phone's copies of the files are deleted") { copies.none { it.exists() } }
+        assertTrue(st.pictures.values.all { java.io.File(it).isFile })
+        assertEquals("Paid 3:30 pm  ·  Ready at about 3:34 pm",
+            whenLine(st.order!!, java.time.Instant.parse("2026-09-29T10:01:00Z").toEpochMilli(), java.time.ZoneId.of("Asia/Kolkata")))
+        st = waitFor("printed") { it.order?.status == "COMPLETED" }
+        assertEquals("Paid 3:30 pm  ·  Ready since 3:32 pm",
+            whenLine(st.order!!, java.time.Instant.parse("2026-09-29T10:03:00Z").toEpochMilli(), java.time.ZoneId.of("Asia/Kolkata")))
+        assertTrue(st.order!!.canCollect)
+        assertEquals("All 3 pages · B/W · A4 · 3 sheets", docSummary(st.order!!.live[0]))
+    }
+
+    @Test
+    fun atTheCounterTheOrderGoesToTheStaffScreenAndTurnsToCollected() {
+        var st = paidOrder()
+        val id = st.order!!.orderId
+        st = waitFor("printed") { it.order?.status == "COMPLETED" }
+        assertFalse(st.atCounter)
+        assertNull(backend.orders.getValue(id).arrivedAt)
+
+        session.atCounter()
+        st = waitFor("at the counter") { it.atCounter && it.order?.arrivedAt != null }
+        assertNotNull(backend.orders.getValue(id).arrivedAt)       // the staff's screen shows this order now
+        assertFalse(st.counterOffline)
+
+        backend.handOver(id)                                         // staff press "Handed over"
+        st = waitFor("collected") { it.order?.isCollected == true && !it.atCounter }
+        assertFalse(st.order!!.canCollect)
+        assertEquals("Paid 3:30 pm  ·  Collected 3:36 pm",
+            whenLine(st.order!!, java.time.Instant.parse("2026-09-29T10:07:00Z").toEpochMilli(), java.time.ZoneId.of("Asia/Kolkata")))
+        waitNotice("collected") { it.startsWith("Collected") }
+        // nothing left to collect: the button does nothing
+        val before = backend.requests.count { it.endsWith("/arrive") }
+        session.atCounter()
+        Thread.sleep(200)
+        assertFalse(session.state.value.atCounter)
+        assertEquals(before, backend.requests.count { it.endsWith("/arrive") })
+    }
+
+    @Test
+    fun leavingTheScreenTakesTheOrderOffTheStaffScreen() {
+        val id = paidOrder().order!!.orderId
+        session.atCounter()
+        waitFor("at the counter") { it.atCounter && it.order?.arrivedAt != null }
+        session.leaveCounter()
+        eventually("the order left the staff's screen") { backend.orders.getValue(id).arrivedAt == null }
+        assertFalse(session.state.value.atCounter)
+        // going back to the start does the same
+        session.atCounter()
+        eventually("at the counter again") { backend.orders.getValue(id).arrivedAt != null }
+        session.toHome()
+        eventually("left again") { backend.orders.getValue(id).arrivedAt == null }
+    }
+
+    @Test
+    fun anOrderThatIsNotPaidCannotBeShownAtTheCounter() {
+        addAndWait(TestFiles.pdf("Notes.pdf", 1))
+        session.review()
+        val st = waitFor("review") { it.step == Step.REVIEW }
+        assertFalse(st.order!!.canCollect)
+        session.atCounter()                                          // not on the "your prints" screen: nothing happens
+        Thread.sleep(200)
+        assertFalse(session.state.value.atCounter)
+        assertTrue(backend.requests.none { it.endsWith("/arrive") })
+    }
+
+    @Test
+    fun withoutAPictureOfItsOwnThePhoneShowsTheXeroxPcsPicture() {
+        drawPictures = false                                         // e.g. the app was reinstalled meanwhile
+        var st = paidOrder()
+        assertTrue(st.pictures.isEmpty())
+        st = waitFor("printed") { it.order?.status == "COMPLETED" }
+        val doc = st.order!!.live[0].id
+        val printed = byteArrayOf(0xFF.toByte(), 0xD8.toByte()) + ByteArray(200) { 7 }
+        backend.previews[doc] = printed                              // the Xerox PC sent the picture of the sheet it printed
+        st = waitFor("the picture was fetched") { it.pictures.containsKey(doc) }
+        assertTrue(java.io.File(st.pictures.getValue(doc)).readBytes().contentEquals(printed))
+        assertEquals(1, backend.requests.count { it.endsWith("/preview") })       // fetched once, then kept
+    }
+
+    @Test
+    fun withoutInternetAtTheCounterTheOrderStillOpensWithItsFiles() {
+        val paid = waitForPrinted(paidOrder())
+        val saved = store.all().first { it.orderId == paid.order!!.orderId }
+        // the app is opened again in a dead spot
+        session.toHome()
+        backend.down = true
+        session = newSession()
+        session.openStatus(saved)
+        var st = waitFor("the saved order is shown") { it.step == Step.STATUS && it.order?.status == "COMPLETED" && it.offline }
+        assertEquals(2, st.pictures.size)                            // the pictures were kept on the phone
+        session.atCounter()
+        st = waitFor("at the counter, offline") { it.atCounter && it.counterOffline }
+        assertNull(backend.orders.getValue(saved.orderId).arrivedAt)
+        // back online: the staff's screen gets the order at once (not at the next 45-second repeat), and the note goes
+        backend.down = false
+        st = waitFor("online again", 25_000) { !it.offline && !it.counterOffline && it.order?.arrivedAt != null }
+        assertTrue(st.atCounter)
+        assertNotNull(backend.orders.getValue(saved.orderId).arrivedAt)
+    }
+
+    private fun waitForPrinted(st: SessionState): SessionState =
+        if (st.order?.status == "COMPLETED") st else waitFor("printed") { it.order?.status == "COMPLETED" }
+
+    @Test
+    fun anOlderServerStillShowsTheFilesAtTheCounter() {
+        backend.oldServer = true
+        waitForPrinted(paidOrder())
+        session.atCounter()
+        eventually("the app asked the server") { backend.requests.any { it.endsWith("/arrive") } }
+        Thread.sleep(7000)                                           // two more looks at the order: no asking again and again
+        val st = session.state.value
+        assertTrue(st.atCounter)                                     // the screen is shown to the staff all the same
+        assertFalse(st.counterOffline)
+        assertTrue(notices.none { it.contains("not accepted") })
+        assertEquals(1, backend.requests.count { it.endsWith("/arrive") })
     }
 
     @Test
@@ -195,7 +499,7 @@ class OrderSessionTest {
         session.addFiles(listOf(TestFiles.incoming(notes), TestFiles.incoming(TestFiles.text("Fake.pdf"))))
         var st = waitFor("checked") { s -> s.docs.size == 2 && s.docs.none { it.busy } }
         assertEquals(DocStatus.ERROR, st.docs[1].status)
-        assertEquals("Only PDF, JPG and PNG files can be printed.", st.docs[1].error)
+        assertEquals("Only PDF, Word (.docx), JPG and PNG files can be printed.", st.docs[1].error)
         assertFalse(st.docs[1].canRetry)
         assertEquals("One file needs attention: try again or remove.", session.checkout(st).why)
         assertEquals(st.docs[1].local, session.checkout(st).needs)
@@ -274,7 +578,7 @@ class OrderSessionTest {
         assertEquals(Step.REVIEW, session.state.value.step)
     }
 
-    // ================================================================== CampusPay: pay with a UPI app, confirmed by itself
+    // ================================================================== XeoGo Pay: pay with a UPI app, confirmed by itself
 
     private fun toUpiScreen(): SessionState {
         backend.paymentMode = "upi"
@@ -298,7 +602,7 @@ class OrderSessionTest {
         assertFalse(backend.requests.any { it.endsWith("/payment/claim") })   // automatic: no claim, the bank decides
         // the Xerox center's Verifier phone passes on the bank's message
         backend.bankConfirms(backend.orders.keys.first())
-        val paid = waitFor("paid: the pickup code", 20_000) { it.step == Step.STATUS && it.order?.paidAt != null }
+        val paid = waitFor("paid: your prints open", 20_000) { it.step == Step.STATUS && it.order?.paidAt != null }
         assertEquals("K7M4X", paid.order!!.pickupCode)
         waitNotice("payment received") { it.startsWith("Payment received") }
         assertNull(store.load())

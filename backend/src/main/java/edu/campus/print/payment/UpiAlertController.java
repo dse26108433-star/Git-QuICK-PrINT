@@ -3,6 +3,7 @@ package edu.campus.print.payment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.campus.print.common.ApiException;
+import edu.campus.print.common.ClientIp;
 import edu.campus.print.common.Secrets;
 import edu.campus.print.config.PaymentProperties;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * CampusPay's bank connection: the Xerox center's phone (the one that gets
+ * XeoGo Pay's bank connection: the Xerox center's phone (the one that gets
  * the bank's SMS for the UPI account) forwards each "money received" SMS or
  * UPI-app notification here, and the order it proves is paid at once.
  *
@@ -30,10 +31,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *   POST /api/v1/payments/upi/heartbeat   {"device", "version", "sms", "notifications"}
  *           the Verifier phone is alive: while it is, payments confirm by themselves.
  *
- * The CampusPay Verifier app (android/verifier) does both. Anything else that
+ * The XeoGo Pay Verifier app (android/verifier) does both. Anything else that
  * can send an HTTP POST works too (an SMS forwarder app, an iPhone Shortcuts
  * automation). Only credit messages are kept; OTPs and every other SMS are
  * dropped unread.
+ *
+ * Not every message is believed: other people can make the shop's phone
+ * receive an SMS or a chat message that says "Rs 20.01 received". Only an SMS
+ * from the bank's own sender name, or a notification of a business UPI app,
+ * pays an order by itself (AlertTrust); the rest waits for staff.
  */
 @RestController
 @RequestMapping("/api/v1/payments/upi")
@@ -68,7 +74,7 @@ public class UpiAlertController {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ALERTS_OFF",
                     "Bank messages are not switched on. Set PAYMENT_MODE=upi and UPI_ALERT_TOKEN (24+ characters).");
         }
-        checkToken(firstNonBlank(header, bearer(authorization), query), req.getRemoteAddr());
+        checkToken(firstNonBlank(header, bearer(authorization), query), ClientIp.of(req));
 
         String text = body == null ? "" : body;
         String sender = null;
@@ -104,10 +110,12 @@ public class UpiAlertController {
         out.put("references", r.parsed().refs());
         out.put("paidOrder", r.alert() == null ? null : r.alert().pickupCode());
         out.put("matchMethod", r.alert() == null ? null : r.alert().matchMethod());
+        out.put("trusted", r.alert() == null || r.alert().trusted());
+        out.put("note", r.alert() == null ? null : r.alert().trustNote());
         return out;
     }
 
-    /** The CampusPay Verifier phone is alive, and what it may read. */
+    /** The XeoGo Pay Verifier phone is alive, and what it may read. */
     @PostMapping("/heartbeat")
     public Map<String, Object> heartbeat(@RequestHeader(value = "X-Alert-Token", required = false) String header,
                                          @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -116,7 +124,7 @@ public class UpiAlertController {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ALERTS_OFF",
                     "Bank messages are not switched on. Set PAYMENT_MODE=upi and UPI_ALERT_TOKEN (24+ characters).");
         }
-        checkToken(firstNonBlank(header, bearer(authorization)), req.getRemoteAddr());
+        checkToken(firstNonBlank(header, bearer(authorization)), ClientIp.of(req));
         String device = safe(body == null ? null : field(body, List.of("device")), "Verifier phone");
         String version = safe(body == null ? null : field(body, List.of("version")), null);
         boolean sms = body != null && body.path("sms").asBoolean(false);

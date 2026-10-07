@@ -1,10 +1,15 @@
 package edu.campus.print.domain;
 
-/** The three kinds of file a student can print. */
+/**
+ * The kinds of file a student can add. PDF, PNG and JPEG are printed as they
+ * are. A Word file (DOCX) is first turned into a PDF by the Xerox center's
+ * computer (see orders/WordFiles): it is only ever DOCX while that happens.
+ */
 public enum FileType {
     PDF("application/pdf", ".pdf"),
     PNG("image/png", ".png"),
-    JPEG("image/jpeg", ".jpg");
+    JPEG("image/jpeg", ".jpg"),
+    DOCX("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx");
 
     private final String mimeType;
     private final String extension;
@@ -24,6 +29,11 @@ public enum FileType {
         }
         if (head.length >= 3 && (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xD8 && (head[2] & 0xFF) == 0xFF) {
             return JPEG;
+        }
+        // A .docx is a ZIP file. Whether this ZIP really is a Word document is found out by looking inside
+        // (storage/DocxInspector), which needs the whole file.
+        if (head.length >= 4 && head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4) {
+            return DOCX;
         }
         // PDF readers accept up to 1 KB of junk before the header; so do we.
         int limit = Math.min(head.length - 5, 1024);

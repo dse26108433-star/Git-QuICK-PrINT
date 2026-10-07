@@ -54,12 +54,33 @@ import edu.campus.printapp.core.layoutSheet
 import edu.campus.printapp.core.pagesFromSpec
 import edu.campus.printapp.core.pictureSize
 import edu.campus.printapp.flow.Doc
+import edu.campus.printapp.flow.PictureMaker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/**
+ * Keeps the first sheet of a file, drawn as it will print, as a JPEG on the
+ * phone. After paying, that picture is what the student shows at the counter
+ * (the uploaded file itself is deleted from the phone).
+ */
+class SheetPictureMaker(private val images: PageImages) : PictureMaker {
+    override suspend fun draw(d: Doc, n: Normalized, paper: Paper, to: File): Boolean {
+        if (d.file == null || chosenPages(d, n).isEmpty()) return false
+        val bitmap = drawSheet(d, n, paper, images, 0, 760, 1000, guides = false)
+        return withContext(Dispatchers.IO) {
+            to.parentFile?.mkdirs()
+            val tmp = File(to.path + ".tmp")
+            tmp.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            if (to.exists()) to.delete()
+            tmp.renameTo(to)
+        }
+    }
+}
 
 /** The chosen pages, as page numbers in print order (none when the list cannot be read). */
 fun chosenPages(d: Doc, n: Normalized): List<Int> {
@@ -148,8 +169,9 @@ fun SheetPreview(
     }
 }
 
-/** Draws sheet k into a bitmap that fits boxW × boxH pixels. */
-private suspend fun drawSheet(d: Doc, n: Normalized, paper: Paper, images: PageImages, k: Int, boxW: Int, boxH: Int): Bitmap {
+/** Draws sheet k into a bitmap that fits boxW × boxH pixels. guides: the dashed margin line of the preview. */
+internal suspend fun drawSheet(d: Doc, n: Normalized, paper: Paper, images: PageImages, k: Int, boxW: Int, boxH: Int,
+                               guides: Boolean = true): Bitmap {
     val s = n.settings
     val file = d.file!!
     val isPic = d.type != "PDF"
@@ -206,7 +228,7 @@ private suspend fun drawSheet(d: Doc, n: Normalized, paper: Paper, images: PageI
             c.restore()
         }
         c.restore()
-        if (s.marginMm > 0) {                                                   // margin guides
+        if (s.marginMm > 0 && guides) {                                         // margin guides
             val m = (s.marginMm * MM * scale).toFloat()
             val guide = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE; strokeWidth = 1.5f; color = 0x8C3B6FF0.toInt()

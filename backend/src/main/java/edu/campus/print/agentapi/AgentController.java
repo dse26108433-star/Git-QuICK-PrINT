@@ -8,11 +8,13 @@ import edu.campus.print.domain.DocumentStatus;
 import edu.campus.print.domain.OrderDocument;
 import edu.campus.print.domain.PrintOrder;
 import edu.campus.print.domain.Printer;
+import edu.campus.print.orders.WordFiles;
 import edu.campus.print.printing.PaperSize;
 import edu.campus.print.printing.PrintSettings;
 import edu.campus.print.repo.AgentRepository;
 import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
+import edu.campus.print.repo.PreviewStore;
 import edu.campus.print.repo.PrinterRepository;
 import edu.campus.print.repo.ShopSettingsRepository;
 import edu.campus.print.security.AgentTokenService;
@@ -22,6 +24,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,10 +59,13 @@ public class AgentController {
     private final AgentTokenService tokens;
     private final AgentProperties props;
     private final PasswordEncoder encoder;
+    private final PreviewStore previews;
+    private final WordFiles word;
 
     public AgentController(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
                            AgentRepository agents, ShopSettingsRepository settings, SupabaseStorage storage,
-                           AgentTokenService tokens, AgentProperties props, PasswordEncoder encoder) {
+                           AgentTokenService tokens, AgentProperties props, PasswordEncoder encoder,
+                           PreviewStore previews, WordFiles word) {
         this.orders = orders;
         this.documents = documents;
         this.printers = printers;
@@ -69,6 +75,8 @@ public class AgentController {
         this.tokens = tokens;
         this.props = props;
         this.encoder = encoder;
+        this.previews = previews;
+        this.word = word;
     }
 
     // ------------------------------------------------------------ token
@@ -125,6 +133,7 @@ public class AgentController {
     public HeartbeatResponse heartbeat(@RequestBody HeartbeatRequest body) {
         UUID me = CurrentAgent.id();
         agents.touch(me, nz(body.agentVersion()), nz(body.hostName()));
+        agents.wordReady(me, Boolean.TRUE.equals(body.wordFiles()), truncate(nz(body.wordNote()), 200));
         if (body.printers() != null) {
             for (PrinterReport r : body.printers()) {
                 if (r.printerId() == null) continue;
@@ -246,6 +255,30 @@ public class AgentController {
         return Map.of("url", storage.createSignedDownload(d.getStoragePath()));
     }
 
+    /**
+     * A small picture (JPEG) of the first sheet, exactly as this PC prints it.
+     * The counter shows it next to the order and the student's phone can show
+     * it too, so pages are handed over by looking, not by a pickup code. Only
+     * the PC that holds (or just printed) the document may send it.
+     */
+    @PostMapping(value = "/jobs/{id}/preview", consumes = MediaType.IMAGE_JPEG_VALUE)
+    public ResponseEntity<Map<String, Object>> preview(@PathVariable UUID id,
+                                                       @RequestHeader("X-Claim-Token") UUID claimToken,
+                                                       @RequestBody byte[] jpeg) {
+        UUID me = CurrentAgent.id();
+        OrderDocument d = documents.findById(id).orElseThrow(() -> ApiException.notFound("That document"));
+        boolean mine = me.equals(d.getAgentId()) && claimToken.equals(d.getClaimToken())
+                && (DocumentStatus.AT_PRINTER.contains(d.getStatus()) || d.getStatus() == DocumentStatus.COMPLETED
+                    || d.getStatus() == DocumentStatus.FAILED);
+        if (!mine) return notYours();
+        if (!PreviewStore.acceptable(jpeg)) {
+            throw ApiException.badRequest("BAD_PREVIEW", "The picture must be a JPEG of at most "
+                    + (PreviewStore.MAX_BYTES / 1024) + " KB.");
+        }
+        previews.put(d.getId(), d.getOrderId(), jpeg);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
     // ------------------------------------------------------------ progress
 
     /**
@@ -303,6 +336,26 @@ public class AgentController {
     }
 
     // ------------------------------------------------------------ helpers
+
+    // ------------------------------------------------------------ Word files (see orders/WordFiles)
+
+    /** "Is there a Word file to turn into a PDF?" 204 when there is none. */
+    @PostMapping("/conversions/claim")
+    public ResponseEntity<WordFiles.Job> claimConversion() {
+        return word.claim(CurrentAgent.id()).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /** The PDF is at the upload link the PC was given. Answer: READY, or REJECTED (the PDF was no good). */
+    @PostMapping("/conversions/{id}/done")
+    public Map<String, Object> conversionDone(@PathVariable UUID id) {
+        return Map.of("status", word.done(CurrentAgent.id(), id));
+    }
+
+    /** The PC could not do it. Answer: REJECTED, or CONVERTING (back in line: it was the PC, not the file). */
+    @PostMapping("/conversions/{id}/failed")
+    public Map<String, Object> conversionFailed(@PathVariable UUID id, @RequestBody(required = false) ConversionProblem p) {
+        return Map.of("status", word.failed(CurrentAgent.id(), id, p == null ? null : p.code(), p == null ? null : p.message()));
+    }
 
     private Printer requirePrinter(ClaimRequest req) {
         if (req == null || req.printerId() == null) {

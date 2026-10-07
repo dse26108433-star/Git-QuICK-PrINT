@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Counter - Campus Print</title>
+<title>Counter - XeoGo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared.css">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png">
 <style>
 .wrap { max-width: 1180px; }
 .login { max-width: 380px; margin: 60px auto; }
@@ -29,12 +29,30 @@
 .tab .n { display: inline-block; min-width: 22px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: rgba(0,0,0,.08); font-size: 13px; }
 .tab.on .n { background: rgba(255,255,255,.25); }
 .tab.alert .n { background: var(--lamp-stop); color: #fff; }
-.search { margin-left: auto; min-height: 42px; padding: 0 12px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 200px;
-          text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+.search { margin-left: auto; min-height: 42px; padding: 0 12px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 260px; }
 
-.order { display: grid; grid-template-columns: 110px 1fr auto; gap: 14px; align-items: center;
+.order { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center;
          background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 8px; }
-.order .code { font-size: 28px; font-weight: 700; letter-spacing: .1em; }
+.order .no { font-size: 13px; color: var(--ink-soft); letter-spacing: .08em; font-weight: 600; }
+
+/* Students at the counter now, and the pictures of their files */
+.at { background: #EAF4EE; border: 2px solid var(--lamp-ready); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+.at h2 { font-size: 17px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.at .sub { font-size: 14px; color: var(--ink-soft); margin: 2px 0 6px; }
+.at .order { margin: 8px 0 0; box-shadow: none; border: 1px solid #BFDCCB; }
+.pics { display: flex; gap: 8px; flex-wrap: wrap; }
+.pic { position: relative; width: 44px; height: 58px; flex: none; border: 1px solid var(--rule); border-radius: 4px; background: #F3F4F0;
+       display: grid; place-items: center; overflow: hidden; font-size: 11px; color: var(--ink-soft); padding: 0; cursor: zoom-in; }
+.pic.big { width: 108px; height: 144px; }
+.pic img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.pic.bw img { filter: grayscale(1); }
+.pic .n { position: absolute; left: 2px; bottom: 2px; background: var(--ink); color: #fff; font-size: 10px; font-weight: 700;
+          border-radius: 3px; padding: 0 4px; line-height: 15px; }
+.zoom { position: fixed; inset: 0; background: rgba(20, 38, 59, .86); display: grid; place-items: center; z-index: 50; cursor: zoom-out; padding: 20px; }
+.zoom img { max-width: 100%; max-height: 100%; background: #fff; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.zoom.bw img { filter: grayscale(1); }
+.alerts .untrusted td { background: #FBF0EE; }
+.alerts .why { display: block; color: var(--lamp-stop); font-size: 13px; margin-top: 2px; }
 .order .file { font-weight: 600; word-break: break-word; }
 .order .meta { font-size: 14px; color: var(--ink-soft); }
 .order .err { font-size: 14px; color: var(--lamp-stop); margin-top: 4px; }
@@ -60,7 +78,7 @@ details.settings summary { cursor: pointer; font-weight: 600; }
 .form { display: grid; gap: 10px; max-width: 420px; margin-top: 12px; }
 .form input { min-height: 44px; padding: 0 10px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 100%; }
 
-/* CampusPay (direct UPI) */
+/* XeoGo Pay (direct UPI) */
 .tab.hidden { display: none; }
 .pay-info { font-size: 14px; color: var(--ink-soft); background: var(--sheet); border-radius: var(--radius); padding: 10px 14px; margin: 0 0 12px; }
 .pay-info b { color: var(--ink); }
@@ -82,12 +100,50 @@ details.settings summary { cursor: pointer; font-weight: 600; }
 .alerts th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
 .alerts .msg { color: var(--ink-soft); font-size: 13px; word-break: break-word; }
 .small-list { font-size: 14px; color: var(--ink-soft); }
+
+/* Staff IDs: free printing for college staff */
+.staff-tag { display: inline-block; background: #E6ECF7; color: #24427A; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+.staff-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.staff-card { background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
+.staff-card h3 { margin: 0; font-size: 16px; }
+.staff-card label { display: grid; gap: 4px; font-size: 14px; }
+.staff-card input[type=text], .staff-card input[type=number], .staff-card input:not([type]) { min-height: 44px; padding: 0 10px; border: 1.5px solid var(--rule); border-radius: var(--radius); width: 100%; font: inherit; }
+.staff-card .tick { display: flex; gap: 10px; align-items: center; }
+.staff-card .tick input { width: 22px; height: 22px; accent-color: var(--lamp-ready); margin: 0; }
+.staff-row { display: grid; grid-template-columns: minmax(170px, 1.2fr) minmax(160px, 1fr) auto; gap: 12px; align-items: center;
+             background: var(--sheet); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 14px; margin-bottom: 8px; }
+.staff-row.off { opacity: .7; }
+.staff-row b { overflow-wrap: anywhere; }
+.staff-row .user { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--ink-soft); margin-left: 6px; }
+.staff-row .use { font-size: 13.5px; }
+.staff-row .bar { height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; margin-top: 4px; }
+.staff-row .bar i { display: block; height: 100%; background: var(--lamp-ready); }
+.staff-row .bar i.full { background: var(--lamp-stop); }
+.staff-row .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) { .staff-row { grid-template-columns: 1fr; } .staff-row .actions { justify-content: flex-start; } }
+.slip { border: 2px solid var(--lamp-ready); border-radius: var(--radius); padding: 12px 14px; background: #EEF6F1; }
+.slip dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0; align-items: baseline; }
+.slip dt { font-size: 13px; color: var(--ink-soft); }
+.slip dd { margin: 0; font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 16px; user-select: all; overflow-wrap: anywhere; }
+.slip dd.big { font-size: 21px; letter-spacing: .05em; }
+.slip p { font-size: 13px; margin: 0 0 8px; }
+#printSlip { display: none; }
+@media print {
+  body > *:not(#printSlip) { display: none !important; }
+  #printSlip { display: block; font-family: system-ui, "Segoe UI", sans-serif; color: #000; padding: 12mm; max-width: 110mm; border: 1px dashed #666; }
+  #printSlip h1 { font-size: 16pt; margin: 0 0 1mm; }
+  #printSlip .where { font-size: 10pt; margin: 0 0 5mm; color: #333; }
+  #printSlip dl { display: grid; grid-template-columns: auto 1fr; gap: 2mm 6mm; margin: 0 0 5mm; }
+  #printSlip dt { font-size: 10pt; color: #333; }
+  #printSlip dd { margin: 0; font-family: Consolas, monospace; font-size: 14pt; font-weight: 700; }
+  #printSlip .note { font-size: 9.5pt; margin: 0; }
+}
 </style>
 </head>
 <body>
-<div id="demoBanner" class="demo-banner hidden">DEMO PAYMENT MODE - orders print without real money. Set PAYMENT_MODE=upi (CampusPay) or razorpay for real use.</div>
+<div id="demoBanner" class="demo-banner hidden">DEMO PAYMENT MODE - orders print without real money. Set PAYMENT_MODE=upi (XeoGo Pay) or razorpay for real use.</div>
 <header class="top">
-  <div class="brand"><img class="brand-logo" src="icon.svg" alt=""><div>Counter <small id="centerName">Campus Print</small></div></div>
+  <div class="brand"><img class="brand-logo" src="logo.png" alt=""><div>Counter <small id="centerName">XeoGo</small></div></div>
   <div class="small" id="pcStatus"></div>
 </header>
 
@@ -98,18 +154,19 @@ details.settings summary { cursor: pointer; font-weight: 600; }
   <!-- Login -->
   <section id="loginBox" class="sheet login hidden">
     <h2>Staff sign in</h2>
-    <p class="muted small">Use the counter password from backend/.env (COUNTER_PASSWORD).</p>
+    <p class="muted small">Use the counter password from backend/.env (COUNTER_PASSWORD). It is sent once to sign this tab in.</p>
     <input id="password" type="password" autocomplete="current-password" placeholder="Counter password">
     <button class="btn block" id="loginBtn">Open counter</button>
   </section>
 
   <!-- Main screen -->
   <section id="mainBox" class="hidden">
+    <div class="at hidden" id="atCounter" aria-live="polite"></div>
     <div class="printers" id="printers"></div>
     <label class="stamp" id="stampBox">
       <input type="checkbox" id="stampToggle">
-      <span><b>Print pickup code on pages</b>
-        <small id="stampHint">A small label in the corner of each order's first page, so staff can find the right pages.</small></span>
+      <span><b>Print the order number on pages</b>
+        <small id="stampHint">A small label in the corner of each file's first page, so staff can tell the orders apart in the tray.</small></span>
     </label>
 
     <div class="tabs" role="tablist">
@@ -118,16 +175,44 @@ details.settings summary { cursor: pointer; font-weight: 600; }
       <button class="tab" data-view="problems" id="tabProblems">Problems <span class="n" id="nProblems">0</span></button>
       <button class="tab hidden" data-view="payments" id="tabPayments">UPI payments <span class="n" id="nPay">0</span></button>
       <button class="tab" data-view="all">All recent</button>
-      <input class="search" id="search" placeholder="Code" maxlength="5" aria-label="Search pickup code">
+      <button class="tab" data-view="staff">Staff IDs</button>
+      <input class="search" id="search" placeholder="Find: file name or order number" maxlength="80" aria-label="Find an order by a file name or its order number">
     </div>
     <p class="hint hidden" id="hint">
-      <b>Handing over:</b> the student shows the code on their phone &rarr; type it in the <b>Code</b> box &rarr;
-      take the pages from the printer shown. Each order starts with a page that has the label
-      <b>Pickup&nbsp;CODE</b> in its bottom-right corner (no cover sheet) &rarr; check the number of sheets
-      &rarr; press <b>Handed over</b>.
+      <b>Handing over (no code):</b> the student opens their order and taps <b>I&rsquo;m at the counter</b> &rarr; the order
+      appears in the green box at the top, with a picture of each file &rarr; the same pictures are on the student&rsquo;s phone
+      &rarr; give them those pages (each file&rsquo;s first sheet has a small <b>Order&nbsp;number</b> label) &rarr; press
+      <b>Handed over</b>: the phone shows <b>Collected</b>. Phone has no internet? Type the file&rsquo;s name in <b>Find</b>.
     </p>
 
     <div id="orders"></div>
+
+    <!-- College staff print for free with an ID made here: a username and a password, nothing else -->
+    <div id="staffBox" class="hidden">
+      <p class="hint">College staff print for free with a <b>staff ID</b>: a username and a password that you make here,
+        nothing else. They sign in on the staff website or the staff app. No payment, no code.</p>
+      <div class="staff-cards">
+        <div class="staff-card">
+          <h3>New staff ID</h3>
+          <label>Name <input id="staffName" maxlength="60" placeholder="e.g. Prof. Rakesh Sharma" autocomplete="off"></label>
+          <label>Username <input id="staffUsername" maxlength="30" placeholder="Leave empty: made from the name" autocomplete="off" spellcheck="false"></label>
+          <div><button class="btn" id="staffMake">Make staff ID</button></div>
+          <span class="small" id="staffMadeNote" style="color:var(--lamp-stop)"></span>
+          <div id="staffSlip" class="slip hidden" aria-live="polite"></div>
+        </div>
+        <div class="staff-card">
+          <h3>Free pages</h3>
+          <label>Free pages for each staff ID, per month
+            <input id="staffPages" type="number" min="0" max="100000" step="50" inputmode="numeric"></label>
+          <span class="small muted">One printed side is one page. The count starts again on the 1st of every month.</span>
+          <label class="tick"><input type="checkbox" id="staffColor"> Colour and special paper are free too</label>
+          <div><button class="btn" id="staffSave">Save</button> <span class="small muted" id="staffSaved"></span></div>
+          <span class="small muted" id="staffSite"></span>
+        </div>
+      </div>
+      <h3 class="pay-h" id="staffHead">Staff IDs</h3>
+      <div id="staffList"></div>
+    </div>
 
     <details class="settings">
       <summary>Prices and name</summary>
@@ -140,468 +225,12 @@ details.settings summary { cursor: pointer; font-weight: 600; }
       </div>
     </details>
     <p style="margin-top:24px"><button class="linkish" id="logout">Sign out of this screen</button></p>
-    <p class="small muted" style="margin-top:28px;text-align:center">Campus Print &middot; Designed &amp; developed by <b>Vedant Pravin Surve</b></p>
+    <p class="small muted" style="margin-top:28px;text-align:center">XeoGo &middot; Designed &amp; developed by <b>Vedant Pravin Surve</b></p>
   </section>
 </main>
 
+<div id="printSlip" aria-hidden="true"></div>
 <script src="config.js"></script>
-<script>
-"use strict";
-const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
-const $ = (id) => document.getElementById(id);
-const PW_KEY = "campusprint.counter";
-const state = { view: "active", code: "", timer: null, settingsLoaded: false, mode: "", pasteResult: "" };
-
-function rupees(paise) {
-  if (paise == null) return "-";
-  return "\u20B9" + (paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2));
-}
-function when(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
-    (d.toDateString() === new Date().toDateString() ? "" : " " + d.toLocaleDateString());
-}
-function showError(msg) {
-  $("error").textContent = msg || "";
-  $("error").classList.toggle("hidden", !msg);
-}
-
-async function api(method, path, body) {
-  const headers = { "X-Counter-Password": sessionStorage.getItem(PW_KEY) || "" };
-  if (body != null) headers["Content-Type"] = "application/json";
-  let res;
-  try {
-    res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body) });
-  } catch (e) {
-    throw new Error("Cannot reach the backend at " + API + ". Is it running?");
-  }
-  if (res.status === 401) { signOut("Wrong password."); throw new Error("Wrong password."); }
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
-  if (!res.ok) throw new Error((data && data.message) || ("Error " + res.status));
-  return data;
-}
-
-/* ---------------- sign in ---------------- */
-async function signIn() {
-  sessionStorage.setItem(PW_KEY, $("password").value);
-  try {
-    await refresh();
-    $("loginBox").classList.add("hidden");
-    $("mainBox").classList.remove("hidden");
-    showError(null);
-    clearInterval(state.timer);
-    state.timer = setInterval(refresh, 5000);
-  } catch (e) {
-    showError(e.message);
-  }
-}
-function signOut(msg) {
-  clearInterval(state.timer);
-  sessionStorage.removeItem(PW_KEY);
-  $("mainBox").classList.add("hidden");
-  $("loginBox").classList.remove("hidden");
-  $("password").value = "";
-  showError(msg || null);
-}
-
-/* ---------------- screen ---------------- */
-async function refresh() {
-  if (state.view === "payments" && !state.code) {
-    const [summary, payments] = await Promise.all([api("GET", "/api/v1/counter/summary"), api("GET", "/api/v1/counter/payments")]);
-    renderSummary(summary);
-    // Do not redraw while staff type a bank message.
-    if (!(document.activeElement && document.activeElement.tagName === "TEXTAREA" && document.activeElement.value)) {
-      renderPayments(payments);
-    }
-    showError(null);
-    return;
-  }
-  const [summary, orders] = await Promise.all([
-    api("GET", "/api/v1/counter/summary"),
-    api("GET", "/api/v1/counter/orders?view=" + (state.view === "payments" ? "all" : state.view) +
-      (state.code ? "&code=" + encodeURIComponent(state.code) : ""))
-  ]);
-  renderSummary(summary);
-  renderOrders(orders);
-  showError(null);
-}
-
-function renderSummary(s) {
-  $("centerName").textContent = s.centerName;
-  $("demoBanner").classList.toggle("hidden", s.paymentMode !== "demo");
-  $("nActive").textContent = s.waiting + s.printing;
-  $("nReady").textContent = s.ready;
-  $("nProblems").textContent = s.problems;
-  $("tabProblems").classList.toggle("alert", s.problems > 0);
-  state.mode = s.paymentMode;
-  $("tabPayments").classList.toggle("hidden", s.paymentMode !== "upi");
-  const [vk, vt] = s.paymentMode === "upi" ? verifierLine(s.upi) : ["ok", ""];
-  $("verifierBanner").classList.toggle("hidden", !(s.paymentMode === "upi" && vk === "stop"));
-  $("verifierBanner").textContent = vt;
-  $("nPay").textContent = s.paymentsToCheck || 0;
-  $("tabPayments").classList.toggle("alert", (s.paymentsToCheck || 0) > 0);
-  setStampUi(s.stampCode !== false);
-
-  const pcOnline = s.pcs.some(p => p.online);
-  $("pcStatus").innerHTML = '<span class="lamp ' + (pcOnline ? "ready" : "stop") + '"></span> ' +
-    (s.pcs.length === 0 ? "No PC enrolled (seed.sql step 3)" : pcOnline ? "Xerox PC online" : "Xerox PC OFFLINE");
-
-  const box = $("printers");
-  box.innerHTML = "";
-  if (s.printers.length === 0) {
-    box.innerHTML = '<div class="notice">No printers set up yet. Add them on the Printers screen of Campus Print Station.</div>';
-  }
-  for (const p of s.printers) {
-    const lamp = !p.enabled ? "" : p.status === "READY" ? "ready" : p.status === "ERROR" ? "work" : "stop";
-    const words = !p.enabled ? "Switched off" : p.status === "READY" ? "Ready" : p.status === "ERROR" ? "Needs attention"
-      : p.status === "MISSING" ? "Not found in Windows" : "Offline";
-    const card = document.createElement("div");
-    card.className = "printer" + (p.enabled ? "" : " off");
-    card.innerHTML =
-      '<div class="row"><span class="lamp ' + lamp + '"></span><span class="name"></span>' +
-      '<span class="small muted">' + (p.supportsColor ? "Colour" : "B/W") + '</span></div>' +
-      '<div class="detail"></div>' +
-      '<label class="switch"><input type="checkbox"> Taking orders</label>';
-    card.querySelector(".name").textContent = p.name;
-    card.querySelector(".detail").textContent = words + (p.statusDetail ? " - " + p.statusDetail : "");
-    const cb = card.querySelector("input");
-    cb.checked = p.enabled;
-    cb.onchange = async () => {
-      try { await api("POST", "/api/v1/counter/printers/" + p.id + "/enabled", { enabled: cb.checked }); refresh(); }
-      catch (e) { showError(e.message); cb.checked = !cb.checked; }
-    };
-    box.appendChild(card);
-  }
-
-  if (!state.settingsLoaded) {
-    $("setName").value = s.centerName;
-    $("setBw").value = s.priceBwPaise / 100;
-    $("setColor").value = s.priceColorPaise / 100;
-    state.settingsLoaded = true;
-  }
-}
-
-const STATUS_WORDS = {
-  QUEUED: "Waiting for a printer", PRINTING: "Printing", CLAIMED: "Starting", DOWNLOADING: "Starting",
-  SUBMITTED: "Printing", COMPLETED: "Printed", FAILED: "Problem", CANCELLED: "Cancelled",
-  EXPIRED: "Not paid (expired)", AWAITING_UPLOAD: "Adding files", AWAITING_PAYMENT: "Not paid yet",
-  UPLOADING: "Uploading", READY: "Not paid yet", REJECTED: "Refused"
-};
-
-function renderOrders(list) {
-  const box = $("orders");
-  box.innerHTML = "";
-  $("hint").classList.toggle("hidden", !(state.view === "ready" || state.code));
-  if (!list.length) {
-    box.innerHTML = '<div class="empty">' + (state.code ? "No order with code " + state.code : "Nothing here right now.") + "</div>";
-    return;
-  }
-  for (const o of list) {
-    const row = document.createElement("div");
-    row.className = "order";
-    row.innerHTML = '<div class="code"></div><div><div class="meta"></div><div class="docs"></div><div class="err"></div></div>' +
-                    '<div class="actions"></div>';
-    row.querySelector(".code").textContent = o.pickupCode;
-    const docs = o.documents || [];
-    const lamp = o.status === "COMPLETED" ? "ready" : (o.status === "FAILED" ? "stop" : "work");
-    row.querySelector(".meta").innerHTML = '<span class="lamp ' + lamp + '"></span> ';
-    row.querySelector(".meta").append(
-      (STATUS_WORDS[o.status] || o.status) + " · " + docs.length + (docs.length === 1 ? " file" : " files") +
-      " · " + (o.totalSheets || 0) + (o.totalSheets === 1 ? " sheet" : " sheets") + " · " +
-      rupees(o.amountPaise) + " · " + when(o.paidAt || o.createdAt) +
-      (o.collectedAt ? " · handed over " + when(o.collectedAt) : "") +
-      (o.refundDuePaise ? " · REFUND DUE " + rupees(o.refundDuePaise) : ""));
-    const docBox = row.querySelector(".docs");
-    for (const d of docs) {
-      const r = document.createElement("div");
-      r.className = "doc";
-      const title = document.createElement("b");
-      title.textContent = d.position + ". " + d.fileName;
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      const pages = d.fileType === "PDF" ? (d.pages ? "pages " + d.pages.replace(/,/g, ", ") + " of " + d.pageCount
-        : (d.pageCount || 0) + " pages") : "picture";
-      meta.textContent = (d.noPrinter ? "NO PRINTER CAN DO THIS NOW" : (STATUS_WORDS[d.status] || d.status) +
-        (d.printerName ? " on " + d.printerName : "")) + " · " + pages + " · " + d.settingsText +
-        " × " + d.copies + " · " + (d.sheets || 0) * d.copies + " sheets";
-      r.append(title, meta);
-      if (d.status === "FAILED" && d.errorMessage) {
-        const err = document.createElement("div");
-        err.className = "err";
-        err.textContent = d.errorMessage;
-        r.append(err);
-      }
-      const acts = document.createElement("div");
-      acts.className = "actions";
-      const add = (label, fn) => {
-        const b = document.createElement("button");
-        b.className = "btn small ghost"; b.textContent = label;
-        b.onclick = async () => {
-          b.disabled = true;
-          try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
-        };
-        acts.appendChild(b);
-      };
-      if (d.status === "FAILED" && o.paidAt && !o.collectedAt && d.fileKept) {
-        add("Print this again", () => {
-          if (!confirm("Check the printer tray first. Nothing there? Print \"" + d.fileName + "\" again?")) return Promise.resolve();
-          return api("POST", "/api/v1/counter/documents/" + d.id + "/print-again");
-        });
-      }
-      if ((d.status === "QUEUED" && d.noPrinter) || (d.status === "FAILED" && o.paidAt && !o.collectedAt)) {
-        add("Cancel this file", () => {
-          if (!confirm("Cancel \"" + d.fileName + "\"? Refund " + rupees(d.amountPaise) + " " + refundWhere() + ".")) return Promise.resolve();
-          return api("POST", "/api/v1/counter/documents/" + d.id + "/cancel");
-        });
-      }
-      if (acts.children.length) r.append(acts);
-      docBox.append(r);
-    }
-    if (o.status === "COMPLETED" && !o.collectedAt) {
-      const sheets = document.createElement("div");
-      sheets.className = "sheets";
-      sheets.textContent = (o.totalSheets || 0) + " sheets · each file's first page has “Pickup " + o.pickupCode + "”";
-      row.querySelector(".docs").after(sheets);
-    }
-    if ((o.status === "FAILED" || o.status === "CANCELLED") && !docs.some(d => d.errorMessage)) {
-      row.querySelector(".err").textContent = (o.errorMessage || o.errorCode || "") +
-        (o.paymentId ? "  [payment " + o.paymentId + "]" : "");
-    }
-    const actions = row.querySelector(".actions");
-    const add = (label, cls, fn) => {
-      const b = document.createElement("button");
-      b.className = "btn small " + cls; b.textContent = label;
-      b.onclick = async () => {
-        b.disabled = true;
-        try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
-      };
-      actions.appendChild(b);
-    };
-    const failed = docs.filter(d => d.status === "FAILED");
-    if (o.status === "COMPLETED" && !o.collectedAt) {
-      add("Handed over", "", () => api("POST", "/api/v1/counter/orders/" + o.id + "/collected"));
-    }
-    if ((o.status === "FAILED" || failed.length || o.refundDuePaise) && o.paidAt && !o.collectedAt) {
-      add("Refunded / done", "ghost", () => {
-        if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand or refunded " + refundWhere() + ")?")) return Promise.resolve();
-        return api("POST", "/api/v1/counter/orders/" + o.id + "/collected");
-      });
-    }
-    if (o.status === "AWAITING_PAYMENT" && state.mode === "upi") {
-      for (const a of paymentActions(o)) add(a.label, a.cls, a.run);
-    }
-    if (o.status === "QUEUED") {
-      add("Cancel", "ghost", () => {
-        if (!confirm("Cancel " + o.pickupCode + "? You must refund the student " + refundWhere() + ".")) return Promise.resolve();
-        return api("POST", "/api/v1/counter/orders/" + o.id + "/cancel");
-      });
-    }
-    box.appendChild(row);
-  }
-}
-
-/* ---------------- CampusPay: UPI payments ---------------- */
-/** The CampusPay Verifier phone: is it online, and what may it read? */
-function verifierLine(u) {
-  const vs = (u && u.verifiers) || [];
-  const live = vs.filter(v => Date.now() - new Date(v.lastSeenAt).getTime() < 3 * 3600 * 1000);
-  const fresh = live.find(v => v.sms || v.notifications) || live[0];
-  if (u && !u.alertsConfigured) return ["work", "Automatic confirmation is off: set UPI_ALERT_TOKEN on the server and install CampusPay Verifier on the shop's phone."];
-  if (fresh) {
-    const reads = [fresh.notifications ? "UPI app notifications" : null, fresh.sms ? "bank SMS" : null].filter(Boolean).join(" + ") || "nothing yet (allow it on the phone)";
-    return [fresh.notifications || fresh.sms ? "ok" : "work", "Verifier phone “" + fresh.device + "” online · checked in " + when(fresh.lastSeenAt) +
-      (fresh.lastAlertAt ? " · last payment message " + when(fresh.lastAlertAt) : "") + " · reads " + reads + "."];
-  }
-  if (vs.length) return ["stop", "Verifier phone “" + vs[0].device + "” not heard from since " + when(vs[0].lastSeenAt) +
-    ". Until it is back, students press “I have paid” and you confirm here. Is it switched on, online and charging?"];
-  return ["work", "No Verifier phone yet: install CampusPay Verifier on the shop's phone for automatic payments."];
-}
-
-function refundWhere() {
-  return state.mode === "upi" ? "by UPI from the shop's account" : "in the Razorpay dashboard";
-}
-
-/** Staff saw the money in the bank / UPI app, or could not find it. */
-function paymentActions(o) {
-  return [
-    { label: "Money received", cls: "", run: () => {
-      let ref = o.paymentClaimRef;
-      if (ref) {
-        if (!confirm("Did " + rupees(o.amountPaise) + " with reference " + groupRef(ref) +
-                     " arrive in the bank or UPI app? The order prints straight away.")) return Promise.resolve();
-      } else {
-        ref = prompt("Did " + rupees(o.amountPaise) + " for " + o.pickupCode + " arrive in the bank or UPI app?\n" +
-                     "Type its 12-digit UPI reference number if you see it (or leave it empty), then OK.", "");
-        if (ref === null) return Promise.resolve();
-      }
-      return api("POST", "/api/v1/counter/orders/" + o.id + "/payment/approve", { reference: ref || null });
-    } },
-    { label: "Not found", cls: "ghost", run: () => {
-      const why = prompt("Tell the student why (optional), for example: no payment of " + rupees(o.amountPaise) + " today", "");
-      if (why === null) return Promise.resolve();
-      return api("POST", "/api/v1/counter/orders/" + o.id + "/payment/reject", { reason: why || null });
-    } }
-  ];
-}
-
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-}
-function groupRef(r) { return /^\d{12}$/.test(r || "") ? r.slice(0, 4) + " " + r.slice(4, 8) + " " + r.slice(8) : (r || ""); }
-function actionButton(label, cls, fn) {
-  const b = el("button", "btn small " + cls, label);
-  b.onclick = async () => {
-    b.disabled = true;
-    try { await fn(); await refresh(); } catch (e) { showError(e.message); b.disabled = false; }
-  };
-  return b;
-}
-
-function renderPayments(p) {
-  const box = $("orders");
-  box.innerHTML = "";
-  $("hint").classList.add("hidden");
-  const u = p.upi || {};
-  const info = el("div", "pay-info");
-  info.append("Students pay ", el("b", null, u.payeeVpa || "-"), " (" + (u.payeeName || "") + ") from any UPI app. ",
-    u.autoConfirm ? "Bank messages from the shop's phone confirm payments by themselves; below are only the ones they could not."
-                  : "Check each payment in the bank or UPI app, then press Money received: only then it prints.",
-    " Today: " + (p.today.paidOrders || 0) + " paid, " + rupees(p.today.paidPaise || 0) +
-    (u.autoConfirm ? " (" + (p.today.confirmedByBank || 0) + " confirmed by the bank)" : "") + ".");
-  box.append(info);
-  const [vk, vt] = verifierLine(u);
-  box.append(el("div", "notice" + (vk === "stop" ? " stop" : ""), vt));
-
-  box.append(el("h3", "pay-h", "Students who say they paid (" + p.toCheck.length + ")"));
-  if (!p.toCheck.length) box.append(el("div", "empty", "Nothing to check."));
-  for (const o of p.toCheck) {
-    const row = el("div", "pay-order");
-    const mid = el("div");
-    mid.append(el("div", "amount", rupees(o.amountPaise)));
-    const meta = el("div", "meta");
-    meta.append(o.paymentClaimRef ? "Reference " : "No reference typed",
-      o.paymentClaimRef ? el("span", "ref", groupRef(o.paymentClaimRef)) : "",
-      " · said paid " + when(o.paymentClaimedAt) + " · " + (o.documents || []).length + " file(s), " + (o.totalSheets || 0) + " sheets");
-    mid.append(meta);
-    for (const a of (p.hints[o.id] || [])) {
-      mid.append(el("div", "hintline", "Bank message " + when(a.receivedAt) + ": " + rupees(a.amountPaise) +
-        (a.refs.length ? " · ref " + a.refs.map(groupRef).join(", ") : "") + " (same amount, not matched automatically)"));
-    }
-    const acts = el("div", "actions");
-    for (const a of paymentActions(o)) acts.append(actionButton(a.label, a.cls, a.run));
-    row.append(el("div", "code", o.pickupCode), mid, acts);
-    box.append(row);
-  }
-
-  const paste = el("div", "paste");
-  paste.append(el("b", null, "Paste a bank SMS"),
-    el("span", "small muted", "Copy the bank's \"credited\" message from the shop's phone and paste it here: it pays the order it proves, exactly like a forwarded one."));
-  const ta = document.createElement("textarea");
-  ta.placeholder = "e.g. A/C X1234 credited by Rs.20.01 ... Ref No 627312345678";
-  const res = el("span", "small");
-  const go = el("button", "btn small", "Check this message");
-  go.onclick = async () => {
-    go.disabled = true;
-    try {
-      const r = await api("POST", "/api/v1/counter/payments/alerts", { text: ta.value });
-      state.pasteResult = r.kind !== "CREDIT" ? "Not a money-received message." : r.paidOrder
-        ? "Paid order " + r.paidOrder + " (" + rupees(r.amountPaise) + ")." : r.duplicate ? "Already pasted before."
-        : rupees(r.amountPaise) + " received, but no order waits for exactly this amount.";
-      ta.value = "";
-      await refresh();
-    } catch (e) { showError(e.message); go.disabled = false; }
-  };
-  res.textContent = state.pasteResult || "";
-  paste.append(ta, go, res);
-  box.append(el("h3", "pay-h", "Bank messages"), paste);
-
-  if (p.alerts.length) {
-    const t = el("table", "alerts");
-    const head = el("tr");
-    ["Time", "Amount", "Order", "Message"].forEach(h => head.append(el("th", null, h)));
-    const th = el("thead");
-    th.append(head);
-    const tb = el("tbody");
-    const how = { REFERENCE: "by reference", AMOUNT: "by amount", COUNTER: "by staff" };
-    for (const a of p.alerts) {
-      const tr = el("tr");
-      tr.append(el("td", null, when(a.receivedAt)), el("td", null, rupees(a.amountPaise)),
-        el("td", null, a.pickupCode ? a.pickupCode + " · " + (how[a.matchMethod] || "") : "no order"),
-        el("td", "msg", a.message));
-      tb.append(tr);
-    }
-    t.append(th, tb);
-    box.append(t);
-  }
-
-  if (p.waiting.length) {
-    box.append(el("h3", "pay-h", "Payment screen open, not paid yet (" + p.waiting.length + ")"));
-    box.append(el("div", "small-list", p.waiting.map(o => o.pickupCode + " " + rupees(o.amountPaise) +
-      " (" + when(o.paymentStartedAt) + ")").join(" · ")));
-  }
-  if (p.paid.length) {
-    box.append(el("h3", "pay-h", "Paid by UPI, last 24 hours (" + p.paid.length + ")"));
-    box.append(el("div", "small-list", p.paid.map(o => o.pickupCode + " " + rupees(o.amountPaise) + " " + when(o.paidAt) +
-      (o.paymentVerifiedBy === "counter" ? " (staff)" : " (bank)")).join(" · ")));
-  }
-}
-
-/* The "Print pickup code on pages" tick: untick for a while if a student wants only their own file on the paper. */
-function setStampUi(on) {
-  $("stampToggle").checked = on;
-  $("stampBox").classList.toggle("off", !on);
-  $("stampHint").textContent = on
-    ? "A small label in the corner of each order's first page, so staff can find the right pages."
-    : "OFF: orders print with nothing added. Tick again when done.";
-}
-$("stampToggle").onchange = async () => {
-  const on = $("stampToggle").checked;
-  try { await api("PUT", "/api/v1/counter/settings", { stampCode: on }); setStampUi(on); }
-  catch (e) { setStampUi(!on); showError(e.message); }
-};
-
-async function saveSettings() {
-  const bw = Math.round(parseFloat($("setBw").value) * 100);
-  const color = Math.round(parseFloat($("setColor").value) * 100);
-  if (!(bw >= 0) || !(color >= 0)) { $("settingsMsg").textContent = "Enter both prices."; return; }
-  try {
-    await api("PUT", "/api/v1/counter/settings", { centerName: $("setName").value, priceBwPaise: bw, priceColorPaise: color });
-    $("settingsMsg").textContent = "Saved.";
-    state.settingsLoaded = false;
-    refresh();
-  } catch (e) { $("settingsMsg").textContent = e.message; }
-}
-
-/* ---------------- wiring ---------------- */
-document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
-  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  state.view = t.dataset.view;
-  state.code = "";
-  $("search").value = "";
-  refresh().catch(e => showError(e.message));
-});
-$("search").addEventListener("input", () => {
-  state.code = $("search").value.trim().toUpperCase();
-  if (state.code.length === 0 || state.code.length === 5) refresh().catch(e => showError(e.message));
-});
-$("loginBtn").onclick = signIn;
-$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
-$("saveSettings").onclick = saveSettings;
-$("logout").onclick = () => signOut();
-
-if (!API) showError("config.js has no apiBase. Open config.js and set it.");
-if (sessionStorage.getItem(PW_KEY)) {
-  $("password").value = sessionStorage.getItem(PW_KEY);
-  signIn();
-} else {
-  $("loginBox").classList.remove("hidden");
-}
-</script>
+<script src="js/counter.js"></script>
 </body>
 </html>

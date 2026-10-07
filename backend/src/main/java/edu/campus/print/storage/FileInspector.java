@@ -23,6 +23,8 @@ import java.util.Iterator;
  * pages it has, because the price depends on the page count. For pictures it
  * also reads the size, the dots per inch and the phone camera's "turn me"
  * note, so the website preview and the print agree on how it lies on paper.
+ * A Word file is only looked into for safety here (DocxInspector); its pages
+ * are counted once the Xerox PC has turned it into a PDF.
  */
 @Component
 public class FileInspector {
@@ -41,11 +43,20 @@ public class FileInspector {
         if (bytes.length == 0) {
             return Result.problem("EMPTY_FILE", "The file is empty.");
         }
+        if (DocxInspector.looksLikeOldOffice(bytes)) {         // an old .doc, or a file locked with a password
+            DocxInspector.Verdict v = DocxInspector.oldOffice(bytes);
+            return Result.problem(v.code(), v.message());
+        }
         FileType type = FileType.detect(bytes);
         if (type == null) {
-            return Result.problem("NOT_SUPPORTED", "Only PDF, PNG and JPG files can be printed.");
+            return Result.problem("NOT_SUPPORTED", DocxInspector.KINDS);
         }
         String sha = Secrets.sha256Hex(bytes);
+        if (type == FileType.DOCX) {
+            // A Word file: only a plain document goes on to the Xerox PC's Word. Its pages are counted there.
+            DocxInspector.Verdict v = DocxInspector.inspect(bytes);
+            return v.ok() ? new Result(type, 0, sha, null, null, null) : Result.problem(v.code(), v.message());
+        }
 
         if (type == FileType.PDF) {
             try (PDDocument doc = Loader.loadPDF(bytes)) {

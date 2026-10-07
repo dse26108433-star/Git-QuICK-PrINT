@@ -1,4 +1,4 @@
-# Removes the Campus Print agent service. Run PowerShell as administrator.
+# Removes the XeoGo agent service. Run PowerShell as administrator.
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $here 'print-agent.exe'

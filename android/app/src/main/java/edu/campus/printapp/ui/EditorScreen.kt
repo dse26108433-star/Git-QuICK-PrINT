@@ -85,7 +85,9 @@ fun EditorScreen(vm: PrintViewModel, st: SessionState, d: Doc, fullScreen: Boole
             else Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(d.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = CP.Ink)
-                val meta = mutableListOf(when (d.type) { "JPEG" -> "JPG picture"; "PNG" -> "PNG picture"; "PDF" -> "PDF"; else -> "File" })
+                val meta = mutableListOf(when (d.type) {
+                    "JPEG" -> "JPG picture"; "PNG" -> "PNG picture"; "PDF" -> "PDF"; "DOCX" -> "Word file"; else -> "File"
+                })
                 if (d.type == "PDF" && d.pageCount != null) meta += plural(d.pageCount, "page", "pages")
                 if (d.size > 0) meta += fileSize(d.size)
                 Text(meta.joinToString(" · "), fontSize = 13.sp, color = CP.Muted, maxLines = 1)
@@ -143,8 +145,8 @@ fun EditorScreen(vm: PrintViewModel, st: SessionState, d: Doc, fullScreen: Boole
                 val p = if (n != null && n.error == null) session.price(d, n) else null
                 val problem = n != null && (n.error != null || d.serverError != null)
                 Column(Modifier.weight(1f)) {
-                    Text(if (p != null) rupees(p.amount) else "–", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink,
-                        modifier = Modifier.testTag("editorPrice"))
+                    Text(if (p == null || n == null) "–" else if (st.staffApp) plural(session.pages(n), "page", "pages") else rupees(p.amount),
+                        fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink, modifier = Modifier.testTag("editorPrice"))
                     Text(if (problem) "needs a change" else if (n != null) plural(n.plan.sheets * n.settings.copies, "sheet", "sheets") else "",
                         fontSize = 13.sp, color = if (problem) CP.Warn else CP.Muted)
                 }

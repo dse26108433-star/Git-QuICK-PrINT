@@ -2,6 +2,8 @@ package edu.campus.agent;
 
 import edu.campus.agent.config.AgentConfig;
 import edu.campus.agent.core.Journal;
+import edu.campus.agent.core.WordFiles;
+import edu.campus.agent.word.WordEngine;
 import edu.campus.agent.core.JobProcessor;
 import edu.campus.agent.core.PrinterHealth;
 import edu.campus.agent.core.Supervisor;
@@ -37,7 +39,7 @@ public final class AgentMain {
 
         Path configPath = Path.of(args.length > 0 ? args[0] : "agent.yml");
         AgentConfig cfg = AgentConfig.load(configPath);
-        log.info("Campus Print agent {} starting (backend {})", AgentVersion.VALUE, cfg.backendUrl);
+        log.info("XeoGo agent {} starting (backend {})", AgentVersion.VALUE, cfg.backendUrl);
 
         Parts parts = build(cfg);
         Supervisor supervisor = parts.supervisor();
@@ -82,7 +84,7 @@ public final class AgentMain {
         PrintTicket tickets = new PrintTicket(cfg.work());
         PrintEngine engine = new PrintEngine(strategy, cfg.pickupCodeOnPage, cfg.coverSheetMinSheets, tickets,
                 capabilities);
-        log.info("Pickup code: {}", !cfg.pickupCodeOnPage ? "on a cover sheet before every order"
+        log.info("Order number label: {}", !cfg.pickupCodeOnPage ? "on a cover sheet before every order"
                 : cfg.coverSheetMinSheets > 0
                         ? "on the first page; cover sheet only for orders of " + cfg.coverSheetMinSheets + "+ sheets"
                         : "on the first page (no cover sheets)");
@@ -90,6 +92,9 @@ public final class AgentMain {
 
         JobProcessor processor = new JobProcessor(backend, engine, spooler, journal, temp, health,
                 cfg.maxFileSizeBytes);
-        return new Parts(new Supervisor(cfg, backend, processor, health, temp, capabilities, tickets), processor);
+        Supervisor supervisor = new Supervisor(cfg, backend, processor, health, temp, capabilities, tickets);
+        supervisor.setWordFiles(new WordFiles(backend, new WordEngine(cfg.work().resolve("word")), temp,
+                cfg.pollInterval(), cfg.maxFileSizeBytes, cfg.wordFiles));
+        return new Parts(supervisor, processor);
     }
 }

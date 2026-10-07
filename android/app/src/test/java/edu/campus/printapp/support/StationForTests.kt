@@ -27,7 +27,7 @@ data class ClaimedJob(
 )
 
 /**
- * Takes print jobs the way Campus Print Station does, signed in as the demo
+ * Takes print jobs the way XeoGo Station does, signed in as the demo
  * backend's PC (LocalDemo), to check what would really be printed.
  */
 class StationForTests(base: String) {

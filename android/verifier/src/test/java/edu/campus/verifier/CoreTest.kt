@@ -41,6 +41,55 @@ class CoreTest {
     }
 
     @Test
+    fun aTextFromAPhoneNumberIsNeverMoneyReceived() {
+        // banks send under a name the operators registered for them
+        assertEquals("SBIUPI", CreditFilter.senderName("AX-SBIUPI"))
+        assertEquals("SBIUPI", CreditFilter.senderName("JD-SBIUPI-S"))
+        assertEquals("HDFCBK", CreditFilter.senderName("vm-hdfcbk"))
+        assertEquals("ICICIB", CreditFilter.senderName("ICICIB"))
+        // a person's phone: "Rs 20.01 credited to your a/c" from there is just a text
+        listOf("+919876543210", "9876543210", "+91 98765 43210", "098765 43210", "56767", "AB", "", null,
+            "AX-9876543210", "SBI UPI <script>", "AX-SBIUPI-S-EXTRA-LONG-NAME").forEach {
+            assertNull(it.toString(), CreditFilter.senderName(it))
+        }
+    }
+
+    @Test
+    fun onlyAppsThatNobodyElseCanWriteIntoAreRead() {
+        // the shop's business apps: always
+        listOf("com.phonepe.app.business", "com.paytm.business", "com.google.android.apps.nbu.paisa.merchant", "com.bharatpe.app")
+            .forEach { assertTrue(it, CreditFilter.appAllowed(it, otherApps = false)) }
+        // the ordinary UPI apps have chat: not unless the owner switches "Also other apps" on (and the server lists them)
+        listOf("com.phonepe.app", "com.google.android.apps.nbu.paisa.user", "net.one97.paytm", "com.sbi.lotusintouch").forEach {
+            assertFalse(it, CreditFilter.appAllowed(it, otherApps = false))
+            assertTrue(it, CreditFilter.appAllowed(it, otherApps = true))
+        }
+        // chat and SMS apps: never
+        listOf("com.whatsapp", "com.google.android.apps.messaging", "org.telegram.messenger", "com.truecaller").forEach {
+            assertFalse(it, CreditFilter.appAllowed(it, otherApps = true))
+        }
+    }
+
+    @Test
+    fun theTokenOnlyTravelsOverHttps() {
+        val token = "t".repeat(32)
+        assertNull(Config("https://print.example.org", token, "x").problem)
+        assertTrue(Config("https://print.example.org", token, "x").ready)
+        // trying it out with the demo server on the same Wi-Fi, or in the emulator
+        listOf("http://192.168.1.20:8080", "http://10.0.2.2:8080", "http://localhost:8080", "http://127.0.0.1:8080/",
+            "http://172.16.4.9:8080", "http://172.31.255.1").forEach { assertNull(it, Config(it, token, "x").problem) }
+        // anywhere else, plain http would show the token to everyone on the way
+        listOf("http://print.example.org", "http://203.0.113.9:8080", "http://192.168.1.20.evil.example", "http://172.32.0.1",
+            "http://localhost.evil.example", "http://evil.example/192.168.1.20", "http://10.0.0.1@evil.example").forEach {
+            val why = Config(it, token, "x").problem
+            assertTrue(it + ": " + why, why != null && why.contains("https://"))
+            assertFalse(Config(it, token, "x").ready)
+        }
+        assertTrue(Config("print.example.org", token, "x").problem!!.contains("server address"))
+        assertTrue(Config("https://print.example.org", "short", "x").problem!!.contains("token"))
+    }
+
+    @Test
     fun theOutboxKeepsEverythingUntilSentAndTheSameMessageOnce() {
         val store = MapStore()
         var now = 1_000_000L

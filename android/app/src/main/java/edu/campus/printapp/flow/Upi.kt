@@ -1,7 +1,7 @@
 package edu.campus.printapp.flow
 
 /**
- * CampusPay on the phone: what a UPI app answers when it closes, and the
+ * XeoGo Pay on the phone: what a UPI app answers when it closes, and the
  * UPI reference number (UTR) students type.
  *
  * The answer (NPCI UPI linking spec) looks like

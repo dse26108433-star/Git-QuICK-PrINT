@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The staff app (college staff sign in with a staff ID and print for free). -->
+<resources>
+    <string name="app_name">XeoGo Staff</string>
+</resources>

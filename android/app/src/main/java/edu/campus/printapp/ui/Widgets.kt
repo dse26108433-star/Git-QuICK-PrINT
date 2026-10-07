@@ -1,6 +1,8 @@
 package edu.campus.printapp.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -232,15 +234,16 @@ fun ProgressBar(fraction: Float, color: Color = CP.Ink, modifier: Modifier = Mod
     }
 }
 
-/** 1. Add & set up · 2. Review & pay · 3. Collect */
+/** 1. Add & set up · 2. Review & pay (staff: Review & print) · 3. Collect */
 @Composable
-fun StepBar(now: Int) {
-    val labels = listOf("1. Add & set up", "2. Review & pay", "3. Collect")
+fun StepBar(now: Int, staff: Boolean = false) {
+    val labels = listOf("1. Add & set up", if (staff) "2. Review & print" else "2. Review & pay", "3. Collect")
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         labels.forEachIndexed { i, label ->
             Column(Modifier.weight(1f)) {
-                Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp))
-                    .background(if (i < now) CP.Accent else if (i == now) CP.Ink else CP.Line2))
+                val bar by animateColorAsState(if (i < now) CP.Accent else if (i == now) CP.Ink else CP.Line2,
+                    tween(if (LocalLively.current) 420 else 0), label = "step")
+                Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(bar))
                 Text(label, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (i < now) CP.Accent else if (i == now) CP.Ink else CP.Faint,
                     fontWeight = if (i == now) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.padding(top = 6.dp))

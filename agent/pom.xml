@@ -8,7 +8,7 @@
     <artifactId>print-agent</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>Campus Print Agent</name>
+    <name>XeoGo Agent</name>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

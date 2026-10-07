@@ -59,6 +59,8 @@ class AppFlowTest {
         // start from an empty order
         rule.runOnIdle { if (vm.session.state.value.docs.isNotEmpty()) vm.session.resetToStart() }
         waitUntil("the shop", 60_000) { vm.session.state.value.shop != null }
+        // the student app opens with its animation (when the phone shows animations): the test starts after it
+        waitUntil("the opening", 30_000) { vm.intro.value == 2 }
     }
 
     private fun waitUntil(what: String, ms: Long = 30_000, test: () -> Boolean) {
@@ -167,11 +169,23 @@ class AppFlowTest {
         assertEquals(listOf("3,7"), order.live.filter { it.fileName.endsWith("Assignment.pdf") }.map { it.settings!!.pages })
         shot("a08-review")
 
-        // pay (test mode) and the pickup code
+        // pay (test mode): your prints open, with the files and the times
         rule.onNodeWithTag("payBtn").tap()
         waitUntil("paid", 30_000) { vm.session.state.value.let { it.step == Step.STATUS && it.order?.paidAt != null } }
         shot("a09-status")
         assertTrue(vm.session.state.value.order!!.pickupCode.length == 5)
+
+        // The files stay on the phone as pictures (drawn by the phone itself), and one tap at the counter puts
+        // the order on the Xerox center's screen: no pickup code anywhere.
+        waitUntil("a picture of each file is kept", 60_000) { vm.session.state.value.pictures.size == 3 }
+        assertTrue(vm.session.state.value.pictures.values.all { java.io.File(it).length() > 1000 })
+        rule.onNodeWithTag("atCounter").tap()
+        waitUntil("the server knows the student is at the counter", 30_000) {
+            vm.session.state.value.let { it.atCounter && it.order?.arrivedAt != null }
+        }
+        shot("a10-at-counter")
+        rule.onNodeWithTag("leaveCounter").tap()
+        waitUntil("left the counter") { !vm.session.state.value.atCounter }
     }
 
     /** Several files shared into the app (WhatsApp, Files...) land in one order; the arrows change the print order. */

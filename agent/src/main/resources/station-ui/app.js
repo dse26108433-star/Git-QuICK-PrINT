@@ -1,7 +1,7 @@
 "use strict";
-/* Campus Print Station: the screens of the Xerox center app.
+/* XeoGo Station: the screens of the Xerox center app.
  *   /local/...          this PC (printers, test prints, setup)   - LocalServer.java
- *   /api/v1/counter/... the Campus Print server (passed through)  - CounterController.java
+ *   /api/v1/counter/... the XeoGo server (passed through)  - CounterController.java
  */
 const $ = (id) => document.getElementById(id);
 const TOKEN = (() => {
@@ -9,8 +9,8 @@ const TOKEN = (() => {
   if (t) { sessionStorage.setItem("station.t", t); history.replaceState(null, "", "/"); }
   return t || sessionStorage.getItem("station.t") || "";
 })();
-const state = { local: null, summary: null, view: "counter", list: "active", editors: {}, found: null, askedPassword: false,
-                pasteResult: "" };
+const state = { local: null, summary: null, view: "counter", list: "active", editors: {}, askedPassword: false,
+                pasteResult: "", pictures: new Map(), atCounter: "", find: "", staff: null };
 
 /* ------------------------------------------------------------------ helpers */
 async function call(method, path, body) {
@@ -20,7 +20,7 @@ async function call(method, path, body) {
   try {
     res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch (e) {
-    throw new Error("Campus Print is not responding. Open it again from its icon.");
+    throw new Error("XeoGo is not responding. Open it again from its icon.");
   }
   const text = await res.text();
   let data = null;
@@ -80,6 +80,7 @@ async function boot() {
   if (state.local.configured) openApp(); else startSetup();
   setInterval(refreshLocal, 5000);
   setInterval(() => { if (state.view === "counter" && !$("app").classList.contains("hidden")) refreshCounter(); }, 4000);
+  setInterval(() => { if (state.view === "staff" && !$("app").classList.contains("hidden")) loadStaff(); }, 20000);
 }
 
 /* ------------------------------------------------------------------ setup wizard */
@@ -121,8 +122,8 @@ $("suSavePrinters").onclick = () => busy($("suSavePrinters"), "Saving…", async
     if (used === 0) { showError("suPrintersError", "Tick at least one printer, so orders have somewhere to print."); return; }
     state.local = await local("GET", "state");
     $("suAutostartLine").textContent = state.local.autostart
-      ? "Campus Print starts together with Windows and keeps printing when this window is closed."
-      : "Campus Print keeps printing when this window is closed (the icon next to the clock stays).";
+      ? "XeoGo starts together with Windows and keeps printing when this window is closed."
+      : "XeoGo keeps printing when this window is closed (the icon next to the clock stays).";
     setupStep(3);
   } catch (e) {
     showError("suPrintersError", e.message);
@@ -139,11 +140,12 @@ function openApp() {
 }
 function show(view) {
   state.view = view;
-  ["counter", "printers", "settings"].forEach(v => $("view-" + v).classList.toggle("hidden", v !== view));
+  ["counter", "printers", "staff", "settings"].forEach(v => $("view-" + v).classList.toggle("hidden", v !== view));
   document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.view === view));
   showError("appError", null);
-  if (view === "counter") { refreshCounter(); setTimeout(() => $("findCode").focus(), 0); }
+  if (view === "counter") refreshCounter();
   if (view === "printers") loadPrinterEditor("printerEditor");
+  if (view === "staff") loadStaff();
   if (view === "settings") fillSettings();
 }
 document.querySelectorAll(".nav button").forEach(b => { b.onclick = () => show(b.dataset.view); });
@@ -160,12 +162,36 @@ async function refreshLocal() {
   const missing = p.printers.filter(x => !x.found).length;
   if (!state.local.configured) setPc("stop", "Not connected", "Finish the setup to start printing.");
   else if (!p.running) setPc("stop", "Not printing", p.problem || "");
-  else if (!p.connected) setPc("work", "Connecting…", p.problem || "Waiting for the Campus Print server.");
+  else if (!p.connected) setPc("work", "Connecting…", p.problem || "Waiting for the XeoGo server.");
   else setPc(p.busy ? "work" : "ready", p.busy ? "Printing an order" : "Ready to print",
     plural(p.printers.length, "printer", "printers") + " on this PC" + (missing ? " · " + missing + " not found" : ""));
   $("navPrinters").classList.toggle("hidden", missing === 0);
   if (state.view === "settings") fillPcInfo();
+  renderWord(p.word);
 }
+
+/* Word files: can this PC turn them into pages (its Microsoft Word passed the test), or why not. */
+function renderWord(w) {
+  const el = $("wordState");
+  if (!el) return;
+  if (!w || (!w.ready && w.note === "Not checked yet")) {
+    el.className = "notice work";
+    el.textContent = state.local && state.local.configured ? "Checking Microsoft Word on this PC…"
+      : "Connect this PC first.";
+    return;
+  }
+  el.className = "notice " + (w.ready ? "ok" : "stop");
+  el.textContent = w.ready
+    ? "Ready: " + w.note + ". Students can add Word files while this PC is on."
+    : "Not here: " + w.note + " Until it works, students are asked to send a PDF instead.";
+}
+$("wordCheck").onclick = () => busy($("wordCheck"), "Checking…", async () => {
+  await local("POST", "word-check").catch(() => {});
+  $("wordState").className = "notice work";
+  $("wordState").textContent = "Checking Microsoft Word on this PC…";
+  await new Promise(r => setTimeout(r, 9000));      // Word needs a moment to start and make its test page
+  await refreshLocal();
+});
 function setPc(lamp, text, detail) {
   $("pcLamp").className = "lamp " + lamp;
   $("pcText").textContent = text;
@@ -188,6 +214,7 @@ async function refreshCounter() {
       const [s, p] = await Promise.all([server("GET", "summary"), server("GET", "payments")]);
       state.summary = s;
       renderSummary(s);
+      renderAtCounter(s.atCounter || []);
       // Do not redraw while staff paste a bank message.
       const typing = document.activeElement && document.activeElement.id === "pasteSms" && document.activeElement.value;
       if (!typing) renderPayments(p);
@@ -199,11 +226,101 @@ async function refreshCounter() {
     ]);
     state.summary = s;
     renderSummary(s);
+    renderAtCounter(s.atCounter || []);
     renderOrders(list);
     showError("appError", null);
   } catch (e) {
     handleServerError(e);
   }
+}
+
+/* ------------------------------------------------------------------ pictures of the first printed sheets */
+/** A small picture of a file's first sheet (this PC made it while printing). Click: large, next to the student's phone. */
+function picture(d, big) {
+  const b = el("button", "pic" + (big ? " big" : "") + (d.color ? "" : " bw"));
+  b.type = "button";
+  b.title = d.fileName;
+  b.append(d.fileType === "PDF" ? "PDF" : "Photo", el("span", "n", String(d.position)));
+  const show = (url) => {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = "First sheet of " + d.fileName;
+    b.firstChild.replaceWith(img);
+    b.classList.add("has");
+    b.onclick = () => zoom(url, d);
+  };
+  if (state.pictures.has(d.id)) {
+    show(state.pictures.get(d.id));
+  } else if (d.hasPreview) {
+    fetch("/api/v1/counter/documents/" + d.id + "/preview", { headers: { "X-Station-Token": TOKEN } })
+      .then(r => (r.ok ? r.blob() : null))
+      .then(blob => {
+        if (!blob || !/^image\//.test(blob.type)) return;
+        if (state.pictures.size > 300) {
+          for (const u of state.pictures.values()) URL.revokeObjectURL(u);
+          state.pictures.clear();
+        }
+        const url = URL.createObjectURL(blob);
+        state.pictures.set(d.id, url);
+        if (b.isConnected) show(url);
+      }).catch(() => { /* the name and settings are shown */ });
+  }
+  return b;
+}
+function zoom(url, d) {
+  const z = el("div", "zoom" + (d.color ? "" : " bw"));
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = d.fileName;
+  z.append(img);
+  z.onclick = () => z.remove();
+  document.body.append(z);
+}
+
+/**
+ * Students who opened their paid order at the counter ("I'm at the counter"
+ * on their phone). Their order comes up here by itself, with its pictures:
+ * the same pictures are on their phone. Nobody shows or types a code.
+ */
+function renderAtCounter(list) {
+  const box = $("atCounter");
+  const key = JSON.stringify(list.map(o => [o.id, o.status, (o.documents || []).map(d => [d.id, d.status, d.hasPreview])]));
+  if (state.atCounter === key) return;                       // nothing changed: do not redraw under the mouse
+  const before = (state.atCounter && JSON.parse(state.atCounter).map(x => x[0])) || [];
+  const arrived = list.some(o => !before.includes(o.id));
+  state.atCounter = key;
+  box.innerHTML = "";
+  if (!list.length) return;
+  const h = el("h2");
+  h.append(el("span", "lamp ready"), "At the counter now (" + list.length + ")");
+  box.append(h, el("p", "sub", "These students opened their order here. Their phone shows the same pictures: give them those pages, then press Handed over."));
+  for (const o of list) box.append(orderRow(o, true));
+  if (arrived) {
+    box.classList.remove("new");
+    void box.offsetWidth;                                    // start the highlight again
+    box.classList.add("new");
+    chime();
+  }
+}
+
+/** A short, soft sound when a student arrives, so staff look up. */
+let audio = null;
+function chime() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const t = audio.currentTime;
+    [880, 1175].forEach((hz, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = "sine";
+      o.frequency.value = hz;
+      g.gain.setValueAtTime(0.0001, t + i * 0.16);
+      g.gain.exponentialRampToValueAtTime(0.12, t + i * 0.16 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.16 + 0.3);
+      o.connect(g).connect(audio.destination);
+      o.start(t + i * 0.16);
+      o.stop(t + i * 0.16 + 0.32);
+    });
+  } catch (e) { /* no sound on this PC: the box still lights up */ }
 }
 
 function renderSummary(s) {
@@ -285,7 +402,8 @@ function renderOrders(list) {
   for (const o of list) box.appendChild(orderRow(o));
 }
 
-function orderRow(o) {
+/** atCounter: the student is standing here (large pictures). */
+function orderRow(o, atCounter) {
   const row = el("div", "order");
   const [words, lamp] = o.status === "AWAITING_PAYMENT" && o.paymentClaimedAt ? ["Payment to check", "work"]
     : STATUS[o.status] || [o.status, ""];
@@ -293,11 +411,14 @@ function orderRow(o) {
   info.style.minWidth = "0";
   const docs = o.documents || [];
   const head = el("div", "meta head");
-  head.append(el("span", "badge " + lamp, words),
-    el("span", null, plural(docs.length, "file", "files") + " · " + plural(o.totalSheets || 0, "sheet", "sheets")),
-    el("span", null, rupees(o.amountPaise)),
-    el("span", null, when(o.paidAt || o.createdAt)));
+  head.append(el("span", "badge " + lamp, o.staffName && o.status === "AWAITING_PAYMENT" ? "Not sent yet" : words));
+  if (o.staffName) head.append(el("span", "badge staff", "Staff · free"), el("span", "who", o.staffName));
+  head.append(el("span", null, plural(docs.length, "file", "files") + " · " + plural(o.totalSheets || 0, "sheet", "sheets")),
+    el("span", null, o.staffName ? plural(o.staffPages || 0, "free page", "free pages") : rupees(o.amountPaise)),
+    el("span", null, o.paidAt ? (o.staffName ? "sent " : "paid ") + when(o.paidAt) : when(o.createdAt)));
+  if (o.completedAt && !o.collectedAt) head.append(el("span", null, "ready " + when(o.completedAt)));
   if (o.collectedAt) head.append(el("span", null, "handed over " + when(o.collectedAt)));
+  head.append(el("span", "no", "Order " + o.pickupCode));
   if (o.refundDuePaise) head.append(el("span", "badge stop", "Refund due " + rupees(o.refundDuePaise)));
   info.append(head);
   const list = el("div", "docs");
@@ -308,7 +429,9 @@ function orderRow(o) {
   }
   const acts = el("div", "acts");
   for (const a of actionsFor(o)) acts.appendChild(actionButton(a));
-  row.append(el("div", "code", o.pickupCode), info, acts);
+  const pics = el("div", "pics");
+  for (const d of docs.filter(x => x.status !== "CANCELLED")) pics.append(picture(d, atCounter));
+  row.append(pics, info, acts);
   return row;
 }
 
@@ -324,14 +447,15 @@ function docRow(o, d) {
   const pages = d.fileType === "PDF" ? (d.pages ? "pages " + d.pages.replace(/,/g, ", ") + " of " + d.pageCount
     : plural(d.pageCount || 0, "page", "pages")) : "picture";
   r.append(el("div", "doc-meta", pages + " · " + d.settingsText + " · ×" + d.copies + " · " +
-    plural((d.sheets || 0) * d.copies, "sheet", "sheets") + (d.amountPaise != null ? " · " + rupees(d.amountPaise) : "")));
+    plural((d.sheets || 0) * d.copies, "sheet", "sheets") +
+    (d.amountPaise != null && !o.staffName ? " · " + rupees(d.amountPaise) : "")));
   if (d.status === "FAILED" || (d.status === "CANCELLED" && d.errorMessage)) {
     r.append(el("div", "err", d.errorMessage || d.errorCode || ""));
   }
   const acts = [];
   if (d.status === "FAILED" && o.paidAt && !o.collectedAt && d.fileKept) {
     acts.push({ label: "Print this again", cls: "ghost", run: async () => {
-      if (!confirm("Check the printer tray first: look for \"" + d.fileName + "\" with \"Pickup " + o.pickupCode +
+      if (!confirm("Check the printer tray first: look for \"" + d.fileName + "\" with \"Order " + o.pickupCode +
                    "\" in the corner. Nothing there? Print it again?")) return;
       await server("POST", "documents/" + d.id + "/print-again");
       toast(d.fileName + " will print again");
@@ -340,10 +464,11 @@ function docRow(o, d) {
   }
   if ((d.status === "QUEUED" && (d.noPrinter || docsStarted(o))) || (d.status === "FAILED" && o.paidAt && !o.collectedAt)) {
     acts.push({ label: "Cancel this file", cls: "ghost", run: async () => {
-      if (!confirm("Cancel \"" + d.fileName + "\"? The rest of the order still prints. Refund " +
-                   rupees(d.amountPaise) + " " + refundWhere() + ".")) return;
+      if (!confirm("Cancel \"" + d.fileName + "\"? The rest of the order still prints. " + (o.staffName
+            ? "Its pages go back to " + o.staffName + "'s free pages."
+            : "Refund " + rupees(d.amountPaise) + " " + refundWhere() + "."))) return;
       const res = await server("POST", "documents/" + d.id + "/cancel");
-      toast("Cancelled. Refund " + rupees(res.refundPaise) + " to the student.");
+      toast(o.staffName ? "Cancelled. Its pages are free again." : "Cancelled. Refund " + rupees(res.refundPaise) + " to the student.");
       refreshCounter();
     } });
   }
@@ -375,24 +500,27 @@ function actionsFor(o) {
   }
   if (failed.length > 1 && o.paidAt && !o.collectedAt && failed.every(d => d.fileKept)) {
     list.push({ label: "Print failed files again", cls: "", run: async () => {
-      if (!confirm("Check the printer trays first. Print the " + failed.length + " failed files of " +
+      if (!confirm("Check the printer trays first. Print the " + failed.length + " failed files of order " +
                    o.pickupCode + " again?")) return;
       await server("POST", "orders/" + o.id + "/print-again");
-      toast(o.pickupCode + ": failed files will print again");
+      toast("Order " + o.pickupCode + ": failed files will print again");
       refreshCounter();
     } });
   }
   if ((o.status === "FAILED" || failed.length || o.refundDuePaise) && o.paidAt && !o.collectedAt) {
-    list.push({ label: "Refunded / done", cls: "ghost", run: async () => {
-      if (!confirm("Mark " + o.pickupCode + " as handled (printed by hand, handed over, or refunded " + refundWhere() + ")?")) return;
+    list.push({ label: o.staffName ? "Done" : "Refunded / done", cls: "ghost", run: async () => {
+      if (!confirm("Mark order " + o.pickupCode + " as handled (printed by hand" +
+                   (o.staffName ? " or handed over" : ", handed over, or refunded " + refundWhere()) + ")?")) return;
       await server("POST", "orders/" + o.id + "/collected");
       refreshCounter();
     } });
   }
-  if (o.status === "AWAITING_PAYMENT" && upiMode()) list.push(...paymentActions(o));
+  if (o.status === "AWAITING_PAYMENT" && upiMode() && !o.staffName) list.push(...paymentActions(o));
   if (o.status === "QUEUED") {
     list.push({ label: "Cancel order", cls: "ghost", run: async () => {
-      if (!confirm("Cancel " + o.pickupCode + "? You must refund the student " + refundWhere() + ".")) return;
+      if (!confirm("Cancel order " + o.pickupCode + "? " + (o.staffName
+            ? "Its pages go back to " + o.staffName + "'s free pages."
+            : "You must refund the student " + refundWhere() + "."))) return;
       await server("POST", "orders/" + o.id + "/cancel");
       refreshCounter();
     } });
@@ -400,10 +528,19 @@ function actionsFor(o) {
   return list;
 }
 
+/**
+ * The pages were given to the student. The usual way: their own phone said
+ * "I'm at the counter", so this order came up in the green box. Without that
+ * (a phone with no internet, found by file name) staff make sure themselves.
+ */
 async function handOver(o) {
+  if (!o.arrivedAt && !confirm("This student has not tapped “I’m at the counter” on their phone.\n\n" +
+      "Hand over only if their phone shows this same order (same files, order " + o.pickupCode + ").\n\nHand over now?")) {
+    return;
+  }
   await server("POST", "orders/" + o.id + "/collected");
-  toast(o.pickupCode + " handed over", "ok");
-  if (state.found && state.found.id === o.id) clearFind();
+  toast("Order " + o.pickupCode + " handed over", "ok");
+  if (state.find) runFind();
   refreshCounter();
 }
 
@@ -415,69 +552,33 @@ document.querySelectorAll(".tab").forEach(t => {
   };
 });
 
-/* Find a pickup code: the student shows it, staff type it, Enter hands over. */
-function clearFind() {
-  $("findCode").value = "";
-  $("findResult").innerHTML = "";
-  state.found = null;
-  $("findCode").focus();
-}
-$("findCode").addEventListener("input", async () => {
-  const code = $("findCode").value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
-  $("findCode").value = code;
-  state.found = null;
+/* Find an order by a file's name or its order number: for a student whose phone has no internet. */
+let findTimer = null;
+async function runFind() {
+  const text = state.find;
   const box = $("findResult");
-  if (code.length < 5) { box.innerHTML = ""; return; }
+  if (text.length < 2) { box.innerHTML = ""; return; }
   let list;
-  try { list = await server("GET", "orders?code=" + encodeURIComponent(code)); }
+  try { list = await server("GET", "orders?q=" + encodeURIComponent(text)); }
   catch (e) { handleServerError(e); return; }
-  if ($("findCode").value !== code) return;            // typed on meanwhile
+  if (state.find !== text) return;                     // typed on meanwhile
   box.innerHTML = "";
   if (!list.length) {
-    const c = el("div", "found bad");
-    c.append(el("div", "code", code), el("div", "what", "No order has this code. Check it on the student's phone."));
-    box.appendChild(c);
+    box.append(el("div", "notice work", "No paid order has a file or number like “" + text + "”. Check the spelling on the student's phone."));
     return;
   }
-  const o = list[0];
-  const docs = (o.documents || []).filter(d => d.status !== "CANCELLED");
-  const sheets = o.totalSheets || 0;
-  const canHand = o.status === "COMPLETED" && !o.collectedAt;
-  const c = el("div", "found" + (canHand ? "" : o.status === "FAILED" ? " bad" : " warn"));
-  const what = el("div", "what");
-  const where = [...new Set(docs.map(d => d.printerName).filter(Boolean))];
-  const payCheck = o.status === "AWAITING_PAYMENT" && upiMode();
-  const headline = canHand ? "Ready on " + (where.length ? where.join(" and ") : "the printer")
-    : o.collectedAt ? "Already handed over " + when(o.collectedAt)
-    : payCheck ? (o.paymentClaimedAt ? "Payment to check: " : "Not paid yet: ") + rupees(o.amountPaise) +
-                 (o.paymentClaimRef ? " · ref " + groupRef(o.paymentClaimRef) : "")
-    : (STATUS[o.status] || [o.status])[0];
-  what.append(el("b", null, headline));
-  for (const d of docs) {
-    what.append(el("span", "line", d.position + ". " + d.fileName + " · " + d.settingsText + " · ×" + d.copies +
-      (d.printerName ? " · " + d.printerName : "")));
-  }
-  const pile = el("div", "pile", String(sheets));
-  pile.append(el("small", null, sheets === 1 ? "sheet" : "sheets"));
-  c.append(el("div", "code", o.pickupCode), what, pile);
-  if (canHand) {
-    const b = el("button", "btn go lg", "Handed over");
-    b.onclick = () => busy(b, null, async () => { try { await handOver(o); } catch (e) { handleServerError(e); } });
-    c.append(b);
-    state.found = o;
-  } else if (payCheck) {
-    const acts = el("div", "acts");
-    for (const a of paymentActions(o)) acts.append(actionButton(a));
-    c.append(acts);
-  }
-  box.appendChild(c);
+  for (const o of list) box.append(orderRow(o, false));
+}
+$("findText").addEventListener("input", () => {
+  state.find = $("findText").value.trim();
+  clearTimeout(findTimer);
+  findTimer = setTimeout(runFind, 300);
 });
-$("findCode").addEventListener("keydown", e => {
-  if (e.key === "Enter" && state.found) { e.preventDefault(); $("findResult").querySelector(".btn.go")?.click(); }
-  if (e.key === "Escape") clearFind();
+$("findText").addEventListener("keydown", e => {
+  if (e.key === "Escape") { $("findText").value = ""; state.find = ""; $("findResult").innerHTML = ""; }
 });
 
-/* The pickup-code switch (on the counter and in Settings). */
+/* The order-number label on pages (switch on the counter and in Settings). */
 function setStampUi(on) {
   $("stampToggle").checked = on;
   $("stampToggle2").checked = on;
@@ -489,7 +590,7 @@ async function setStamp(on) {
   try {
     await server("PUT", "settings", { stampCode: on });
     setStampUi(on);
-    toast(on ? "Pickup code is printed on pages again" : "Pickup code switched off: orders print with nothing added",
+    toast(on ? "The order number is printed on pages again" : "Label switched off: orders print with nothing added",
           on ? "ok" : "");
   } catch (e) {
     setStampUi(!on);
@@ -918,7 +1019,7 @@ $("savePricing").onclick = () => busy($("savePricing"), "Saving…", async () =>
 $("autostartToggle").onchange = async () => {
   try {
     state.local = await local("POST", "autostart", { enabled: $("autostartToggle").checked });
-    toast(state.local.autostart ? "Campus Print will start with Windows" : "Campus Print will not start with Windows");
+    toast(state.local.autostart ? "XeoGo will start with Windows" : "XeoGo will not start with Windows");
   } catch (e) { $("autostartToggle").checked = !$("autostartToggle").checked; toast(e.message, "stop"); }
 };
 $("savePassword").onclick = () => busy($("savePassword"), null, async () => {
@@ -932,7 +1033,7 @@ $("savePassword").onclick = () => busy($("savePassword"), null, async () => {
 });
 $("openLogs").onclick = () => local("POST", "open-logs").catch(e => toast(e.message, "stop"));
 $("disconnect").onclick = () => busy($("disconnect"), null, async () => {
-  if (!confirm("Disconnect this PC? It stops printing, and its printers are removed from Campus Print.")) return;
+  if (!confirm("Disconnect this PC? It stops printing, and its printers are removed from XeoGo.")) return;
   try {
     state.local = await local("POST", "disconnect");
     startSetup();
@@ -941,13 +1042,13 @@ $("disconnect").onclick = () => busy($("disconnect"), null, async () => {
 
 boot();
 
-/* ------------------------------------------------------------------ CampusPay: UPI payments */
-/** The CampusPay Verifier phone: is it online, and what may it read? */
+/* ------------------------------------------------------------------ XeoGo Pay: UPI payments */
+/** The XeoGo Pay Verifier phone: is it online, and what may it read? */
 function verifierLine(u) {
   const vs = (u && u.verifiers) || [];
   const live = vs.filter(v => Date.now() - new Date(v.lastSeenAt).getTime() < 3 * 3600 * 1000);
   const fresh = live.find(v => v.sms || v.notifications) || live[0];
-  if (u && !u.alertsConfigured) return ["work", "Automatic confirmation is off: set UPI_ALERT_TOKEN on the server and install CampusPay Verifier on the shop's phone."];
+  if (u && !u.alertsConfigured) return ["work", "Automatic confirmation is off: set UPI_ALERT_TOKEN on the server and install XeoGo Pay Verifier on the shop's phone."];
   if (fresh) {
     const reads = [fresh.notifications ? "UPI app notifications" : null, fresh.sms ? "bank SMS" : null].filter(Boolean).join(" + ") || "nothing yet (allow it on the phone)";
     return [fresh.notifications || fresh.sms ? "ok" : "work", "Verifier phone “" + fresh.device + "” online · checked in " + when(fresh.lastSeenAt) +
@@ -955,7 +1056,7 @@ function verifierLine(u) {
   }
   if (vs.length) return ["stop", "Verifier phone “" + vs[0].device + "” not heard from since " + when(vs[0].lastSeenAt) +
     ". Until it is back, students press “I have paid” and you confirm here. Is it switched on, online and charging?"];
-  return ["work", "No Verifier phone yet: install CampusPay Verifier on the shop's phone for automatic payments."];
+  return ["work", "No Verifier phone yet: install XeoGo Pay Verifier on the shop's phone for automatic payments."];
 }
 
 function upiMode() { return !!(state.summary && state.summary.paymentMode === "upi"); }
@@ -976,15 +1077,15 @@ function paymentActions(o) {
         if (ref === null) return;
       }
       await server("POST", "orders/" + o.id + "/payment/approve", { reference: ref || null });
-      toast(o.pickupCode + ": payment confirmed, printing", "ok");
-      if (state.found && state.found.id === o.id) clearFind();
+      toast("Order " + o.pickupCode + ": payment confirmed, printing", "ok");
+      if (state.find) runFind();
       refreshCounter();
     } },
     { label: "Not found", cls: "ghost", run: async () => {
       const why = prompt("Tell the student why (optional), for example: no payment of " + rupees(o.amountPaise) + " today", "");
       if (why === null) return;
       await server("POST", "orders/" + o.id + "/payment/reject", { reason: why || null });
-      toast(o.pickupCode + ": the student is asked to check the payment");
+      toast("Order " + o.pickupCode + ": the student is asked to check the payment");
       refreshCounter();
     } }
   ];
@@ -1018,8 +1119,10 @@ function renderPayments(p) {
       el("span", null, plural((o.documents || []).length, "file", "files") + " · " + plural(o.totalSheets || 0, "sheet", "sheets")));
     mid.append(head);
     for (const a of (p.hints[o.id] || [])) {
-      mid.append(el("div", "pay-hint", "Bank message " + when(a.receivedAt) + ": " + rupees(a.amountPaise) +
-        (a.refs.length ? " · ref " + a.refs.map(groupRef).join(", ") : "") + " (same amount, not matched automatically)"));
+      mid.append(el("div", "pay-hint", a.trusted === false
+        ? "A message " + when(a.receivedAt) + " says " + rupees(a.amountPaise) + ", but NOT from the bank: do not count it. Look in the bank or UPI app."
+        : "Bank message " + when(a.receivedAt) + ": " + rupees(a.amountPaise) +
+          (a.refs.length ? " · ref " + a.refs.map(groupRef).join(", ") : "") + " (same amount, not matched automatically)"));
     }
     const acts = el("div", "acts");
     for (const a of paymentActions(o)) acts.append(actionButton(a));
@@ -1059,10 +1162,23 @@ function renderPayments(p) {
     const tb = el("tbody");
     const how = { REFERENCE: "by reference", AMOUNT: "by amount", COUNTER: "by staff" };
     for (const a of p.alerts) {
-      const tr = el("tr");
+      const tr = el("tr", a.trusted === false ? "untrusted" : null);
+      const msg = el("td", "msg", (a.sender ? a.sender + ": " : "") + a.message);
+      if (a.trusted === false) {
+        msg.append(el("span", "why", "Not counted. " + (a.trustNote || "")));
+        if (a.senderKey) {
+          // Only for an SMS with a sender NAME; never offered for a phone number or an app with chat.
+          msg.append(actionButton({ label: "This is our bank (" + a.senderKey + ")", cls: "ghost", run: async () => {
+            if (!confirm("Is " + a.senderKey + " the name your bank's SMS come from? Check it in the SMS list on the shop's phone.\n\n" +
+                "After this, every SMS from " + a.senderKey + " that says money came in confirms an order by itself.")) return;
+            await server("POST", "payments/alerts/" + a.id + "/trust-sender");
+            toast("SMS from " + a.senderKey + " now confirm payments", "ok");
+            refreshCounter();
+          } }, true));
+        }
+      }
       tr.append(el("td", null, when(a.receivedAt)), el("td", null, rupees(a.amountPaise)),
-        el("td", null, a.pickupCode ? a.pickupCode + " · " + (how[a.matchMethod] || "") : "no order"),
-        el("td", "msg", a.message));
+        el("td", null, a.pickupCode ? "order " + a.pickupCode + " · " + (how[a.matchMethod] || "") : "no order"), msg);
       tb.append(tr);
     }
     t.append(th, tb);
@@ -1077,4 +1193,193 @@ function renderPayments(p) {
     box.append(el("div", "sub", p.paid.map(o => o.pickupCode + " " + rupees(o.amountPaise) + " " + when(o.paidAt) +
       (o.paymentVerifiedBy === "counter" ? " (staff)" : " (bank)")).join(" · ")));
   }
+  if ((p.senders || []).length) {
+    box.append(el("h3", "pay-h", "Bank SMS senders you confirmed"));
+    const line = el("div", "sub");
+    for (const sender of p.senders) {
+      line.append(sender + " ", actionButton({ label: "Remove", cls: "ghost", run: async () => {
+        if (!confirm("Stop counting SMS from " + sender + "?")) return;
+        await server("DELETE", "payments/senders/" + encodeURIComponent(sender));
+        refreshCounter();
+      } }, true), " ");
+    }
+    box.append(line);
+  }
 }
+
+/* ------------------------------------------------------------------ staff IDs: free printing for college staff */
+/* The Xerox center makes each ID here: a username and a password, nothing else.
+ * The server makes the password and shows it once (StaffService.java); this
+ * screen passes it on, as a slip to copy or print, and never keeps it. */
+async function loadStaff() {
+  try {
+    const o = await server("GET", "staff");
+    state.staff = o;
+    if (!state.staffTyping) $("staffPages").value = o.monthlyPages;
+    $("staffColor").checked = o.colorAllowed;
+    $("staffSiteRow").classList.toggle("hidden", !o.site);
+    $("staffSite").textContent = o.site ? o.site + "  (or the XeoGo Staff app)" : "";
+    renderStaff();
+    showError("appError", null);
+  } catch (e) {
+    if (e.status === 404) showError("appError", "This server is an older version without staff IDs. Update the server first.");
+    else handleServerError(e);
+  }
+}
+
+function dayWords(isoDate) {
+  const d = new Date(isoDate + "T00:00:00");
+  return isNaN(d) ? isoDate : d.toLocaleDateString([], { day: "numeric", month: "long" });
+}
+
+function renderStaff() {
+  const o = state.staff;
+  if (!o) return;
+  const q = $("staffFilter").value.trim().toLowerCase();
+  const list = o.accounts.filter(a => !q || a.name.toLowerCase().includes(q) || a.username.includes(q));
+  $("staffCount").textContent = "(" + o.accounts.length + ")";
+  $("staffMonth").textContent = o.month + " · the free pages start again on " + dayWords(o.resetsOn);
+  const box = $("staffList");
+  box.innerHTML = "";
+  if (!o.accounts.length) { box.append(el("div", "empty", "No staff IDs yet. Make the first one above.")); return; }
+  if (!list.length) { box.append(el("div", "empty", "No staff ID like “" + q + "”.")); return; }
+  for (const a of list) box.append(staffRow(a));
+}
+
+function staffRow(a) {
+  const row = el("div", "staff-row" + (a.active ? "" : " off"));
+  const who = el("div", "who");
+  who.append(el("b", null, a.name), el("span", "user", a.username));
+  if (!a.active) who.append(el("span", "badge stop", "Switched off"));
+  if (a.waiting) who.append(el("span", "badge work", "Wrong passwords: waiting"));
+
+  const use = el("div", "use");
+  const bar = el("div", "bar");
+  const fill = el("i");
+  const pct = a.monthlyPages > 0 ? Math.min(100, Math.round(a.usedPages * 100 / a.monthlyPages)) : (a.usedPages ? 100 : 0);
+  fill.style.width = pct + "%";
+  if (a.leftPages <= 0) fill.className = "full";
+  bar.append(fill);
+  use.append(el("div", "n", a.usedPages + " of " + a.monthlyPages + " pages used" + (a.ownMonthlyPages != null ? " (own number)" : "")),
+    bar, el("div", "last", a.lastPrintAt ? "last print " + when(a.lastPrintAt) : "has not printed yet"));
+
+  const acts = el("div", "acts");
+  const act = (label, cls, run) => acts.append(actionButton({ label, cls, run }, true));
+  act("New password", "ghost", async () => {
+    if (!confirm("Make a new password for " + a.name + "?\n\nThe old password stops working, and every phone or computer " +
+                 "signed in with it is signed out.")) return;
+    showSlip(await server("POST", "staff/" + a.id + "/password"), "New password");
+    loadStaff();
+  });
+  act("Pages", "ghost", async () => {
+    const typed = prompt("Free pages per month for " + a.name + ".\nLeave empty for the usual " + state.staff.monthlyPages + ".",
+      a.ownMonthlyPages != null ? String(a.ownMonthlyPages) : "");
+    if (typed === null) return;
+    const t = typed.trim();
+    if (t !== "" && !/^\d{1,6}$/.test(t)) { toast("Type a number of pages, or leave it empty.", "stop"); return; }
+    await server("PUT", "staff/" + a.id, t === "" ? { usualPages: true } : { monthlyPages: parseInt(t, 10) });
+    toast(a.name + ": " + (t === "" ? "the usual " + state.staff.monthlyPages : t) + " free pages a month", "ok");
+    loadStaff();
+  });
+  act("Rename", "ghost", async () => {
+    const typed = prompt("Name of this staff member (the username " + a.username + " stays):", a.name);
+    if (typed === null || !typed.trim() || typed.trim() === a.name) return;
+    await server("PUT", "staff/" + a.id, { name: typed.trim() });
+    loadStaff();
+  });
+  act(a.active ? "Switch off" : "Switch on", "ghost", async () => {
+    if (a.active && !confirm("Switch off " + a.name + "'s staff ID?\n\nThey cannot sign in or print until you switch it on " +
+                             "again. Nothing is deleted.")) return;
+    await server("PUT", "staff/" + a.id, { active: !a.active });
+    toast(a.name + (a.active ? ": switched off" : ": switched on again"), a.active ? "" : "ok");
+    loadStaff();
+  });
+  act("Remove", "danger", async () => {
+    if (!confirm("Remove " + a.name + "'s staff ID (" + a.username + ") for good?\n\nWhat they already sent still prints. " +
+                 "If they should only stop for a while, use Switch off instead.")) return;
+    await server("DELETE", "staff/" + a.id);
+    toast("Removed " + a.name);
+    loadStaff();
+  });
+  row.append(who, use, acts);
+  return row;
+}
+
+/** The username and password, right after they were made: to copy or print now. They are not shown again. */
+function showSlip(made, title) {
+  const a = made.account;
+  const box = $("staffSlip");
+  box.innerHTML = "";
+  box.classList.remove("hidden");
+  box.append(el("b", null, title + " · " + a.name));
+  const dl = el("dl");
+  dl.append(el("dt", null, "Username"), el("dd", null, a.username), el("dt", null, "Password"), el("dd", "big", made.password));
+  box.append(dl, el("p", null, "Give these to the staff member now: the password is not shown again. " +
+    "Forgotten later? Press New password on their ID. Capitals and the dash do not matter when typing it."));
+  const acts = el("div", "acts");
+  const copy = el("button", "btn sm ghost", "Copy");
+  copy.onclick = async () => {
+    const site = state.staff && state.staff.site;
+    try {
+      await navigator.clipboard.writeText("XeoGo staff ID\nName: " + a.name + "\nUsername: " + a.username + "\nPassword: " +
+        made.password + (site ? "\nSign in: " + site : ""));
+      toast("Copied", "ok");
+    } catch (e) { toast("Could not copy. Write it down, or print the slip.", "stop"); }
+  };
+  const print = el("button", "btn sm ghost", "Print slip");
+  print.onclick = () => printSlip(a, made.password);
+  const close = el("button", "btn sm", "Done");
+  close.onclick = () => { box.classList.add("hidden"); box.innerHTML = ""; $("printSlip").innerHTML = ""; };
+  acts.append(copy, print, close);
+  box.append(acts);
+  box.scrollIntoView({ block: "nearest" });
+}
+
+function printSlip(a, password) {
+  const p = $("printSlip");
+  p.innerHTML = "";
+  const dl = el("dl");
+  dl.append(el("dt", null, "Name"), el("dd", null, a.name), el("dt", null, "Username"), el("dd", null, a.username),
+    el("dt", null, "Password"), el("dd", null, password));
+  const site = state.staff && state.staff.site;
+  p.append(el("h1", null, "XeoGo · staff ID"), el("p", "where", (state.summary && state.summary.centerName) || ""), dl,
+    el("p", "note", plural(a.monthlyPages, "free page", "free pages") + " every month. Sign in " +
+      (site ? "at " + site + " or " : "") + "in the XeoGo Staff app. Keep this slip to yourself."));
+  window.print();
+}
+
+$("staffMake").onclick = () => busy($("staffMake"), "Making…", async () => {
+  const name = $("staffName").value.trim();
+  showError("staffMadeNote", null);
+  if (name.length < 2) { showError("staffMadeNote", "Type the staff member's name."); $("staffName").focus(); return; }
+  try {
+    const made = await server("POST", "staff", { name, username: $("staffUsername").value.trim() || null });
+    $("staffName").value = "";
+    $("staffUsername").value = "";
+    showSlip(made, "Staff ID made");
+    loadStaff();
+  } catch (e) {
+    if (e.status === 400 || e.status === 409) showError("staffMadeNote", e.message); else handleServerError(e);
+  }
+});
+["staffName", "staffUsername"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("staffMake").click(); }));
+$("staffSave").onclick = () => busy($("staffSave"), "Saving…", async () => {
+  const pages = parseInt($("staffPages").value, 10);
+  if (!(pages >= 0 && pages <= 100000)) { $("staffSaved").textContent = "Type a number of pages (0 to 100000)."; return; }
+  try {
+    await server("PUT", "staff/settings", { monthlyPages: pages });
+    state.staffTyping = false;
+    $("staffSaved").textContent = "Saved.";
+    setTimeout(() => { $("staffSaved").textContent = ""; }, 4000);
+    loadStaff();
+  } catch (e) { $("staffSaved").textContent = ""; handleServerError(e); }
+});
+$("staffColor").onchange = async () => {
+  const on = $("staffColor").checked;
+  try {
+    await server("PUT", "staff/settings", { colorAllowed: on });
+    toast(on ? "Staff can print colour and on special paper for free" : "Free staff printing is black & white on the usual paper", on ? "ok" : "");
+  } catch (e) { $("staffColor").checked = !on; handleServerError(e); }
+};
+$("staffPages").addEventListener("input", () => { state.staffTyping = true; $("staffSaved").textContent = ""; });
+$("staffFilter").addEventListener("input", renderStaff);

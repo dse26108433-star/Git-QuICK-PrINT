@@ -24,11 +24,37 @@ import kotlin.coroutines.resumeWithException
 /**
  * The student API (the same one the website uses). Plain Kotlin + OkHttp, so
  * the whole order flow can be tested on a computer against the real backend.
+ *
+ * The staff app uses the same calls with its sign-in (staffToken) sent along:
+ * orders made that way belong to the staff ID and are free.
  */
-class PrintApi(base: String, private val http: OkHttpClient = defaultClient()) {
+class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
+               /** The staff app: the sign-in token to send with every request (null: not signed in, or the student app). */
+               private val staffToken: () -> String? = { null }) {
 
     private val base = base.trimEnd('/')
     private val jsonType = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * The staff app: the server said this sign-in is no longer good (a new
+     * password, the ID switched off, or it ran out). Called with the server's words.
+     */
+    @Volatile var onSignedOut: ((String) -> Unit)? = null
+
+    // ---------------------------------------------------------------- staff: sign in, free pages, their prints
+
+    suspend fun staffLogin(username: String, password: String): StaffLogin =
+        post("/api/v1/staff/login", JSON.encodeToString(StaffLoginRequest.serializer(), StaffLoginRequest(username, password)),
+            StaffLogin.serializer(), signIn = true)
+
+    suspend fun staffMe(): StaffMe = get("/api/v1/staff/me", StaffMe.serializer())
+
+    suspend fun staffOrders(): List<StaffOrder> =
+        get("/api/v1/staff/orders", kotlinx.serialization.builtins.ListSerializer(StaffOrder.serializer()))
+
+    /** "Print": free; the server takes the pages from the month and sends the order to the printers in one step. */
+    suspend fun staffPrint(orderId: String): OrderView =
+        post("/api/v1/orders/$orderId/staff-print", null, OrderView.serializer())
 
     // ---------------------------------------------------------------- shop
 
@@ -76,7 +102,7 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient()) {
         post("/api/v1/orders/$orderId/payment/confirm", JSON.encodeToString(ConfirmPayment.serializer(), body),
             OrderView.serializer(), key)
 
-    /** CampusPay: "I have paid". Paid once the bank's message or the counter confirms the money arrived. */
+    /** XeoGo Pay: "I have paid". Paid once the bank's message or the counter confirms the money arrived. */
     suspend fun claimPayment(orderId: String, key: String, body: ClaimPayment): OrderView =
         post("/api/v1/orders/$orderId/payment/claim", JSON.encodeToString(ClaimPayment.serializer(), body),
             OrderView.serializer(), key)
@@ -88,6 +114,27 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient()) {
 
     suspend fun cancel(orderId: String, key: String): OrderView =
         post("/api/v1/orders/$orderId/cancel", null, OrderView.serializer(), key)
+
+    /**
+     * "I'm at the counter": the paid order shows on the staff's screen with
+     * pictures of its files, and they hand the pages over. No pickup code.
+     */
+    suspend fun arrive(orderId: String, key: String, here: Boolean): OrderView =
+        post("/api/v1/orders/$orderId/arrive", JSON.encodeToString(ArriveRequest.serializer(), ArriveRequest(here)),
+            OrderView.serializer(), key)
+
+    /** The Xerox PC's picture (JPEG) of a file's first printed sheet, saved to a file on the phone. */
+    suspend fun preview(orderId: String, key: String, docId: String, to: File) {
+        val request = signed(Request.Builder().url("$base/api/v1/orders/$orderId/documents/$docId/preview"), key).get().build()
+        call(request) { res ->
+            if (!res.isSuccessful) throw ApiException(res.code, "The picture could not be loaded.")
+            val bytes = res.body!!.bytes()
+            val jpeg = bytes.size in 100..400_000 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+            if (!jpeg) throw ApiException(res.code, "The picture could not be loaded.")
+            to.parentFile?.mkdirs()
+            to.writeBytes(bytes)
+        }
+    }
 
     // ---------------------------------------------------------------- files
 
@@ -114,20 +161,31 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient()) {
 
     private suspend fun <T> get(path: String, s: KSerializer<T>, key: String? = null): T = send("GET", path, null, s, key)
 
-    private suspend fun <T> post(path: String, body: String?, s: KSerializer<T>, key: String? = null): T =
-        send("POST", path, body, s, key)
+    private suspend fun <T> post(path: String, body: String?, s: KSerializer<T>, key: String? = null,
+                                 signIn: Boolean = false): T = send("POST", path, body, s, key, signIn)
 
-    private suspend fun <T> send(method: String, path: String, body: String?, s: KSerializer<T>, key: String?): T {
+    /** The order's key (students), and the staff sign-in (the staff app). */
+    private fun signed(builder: Request.Builder, key: String?, signIn: Boolean = false): Request.Builder {
+        if (!key.isNullOrEmpty()) builder.header("X-Order-Key", key)
+        if (!signIn) staffToken()?.takeIf { it.isNotEmpty() }?.let { builder.header("X-Staff-Session", it) }
+        return builder
+    }
+
+    private suspend fun <T> send(method: String, path: String, body: String?, s: KSerializer<T>, key: String?,
+                                 signIn: Boolean = false): T {
         val requestBody = when {
             body != null -> body.toRequestBody(jsonType)
             method == "POST" -> ByteArray(0).toRequestBody(null)
             else -> null
         }
-        val builder = Request.Builder().url(base + path).method(method, requestBody)
-        if (key != null) builder.header("X-Order-Key", key)
+        val builder = signed(Request.Builder().url(base + path).method(method, requestBody), key, signIn)
         val text = call(builder.build()) { res ->
             val t = res.body?.string().orEmpty()
-            if (!res.isSuccessful) throw errorOf(res.code, t)
+            if (!res.isSuccessful) {
+                val error = errorOf(res.code, t)
+                if (!signIn && (error.code == "STAFF_SIGNED_OUT" || error.code == "STAFF_OFF")) onSignedOut?.invoke(error.message)
+                throw error
+            }
             t
         }
         return JSON.decodeFromString(s, text)

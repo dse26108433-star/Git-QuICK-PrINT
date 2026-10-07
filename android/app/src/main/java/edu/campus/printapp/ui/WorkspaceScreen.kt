@@ -76,9 +76,12 @@ fun WorkspaceScreen(vm: PrintViewModel, st: SessionState, onAddFiles: () -> Unit
                 GhostButton("+ Add files", onAddFiles, small = true)
             }
         }
-        if (st.docs.isNotEmpty()) item(key = "progress") { QueueProgress(st, session) }
+        // The student app shows the files on their way with a card of its own (UploadStage); the staff app the plain one.
+        if (st.docs.isNotEmpty()) item(key = "progress") { if (LocalLively.current) UploadStage(st, session) else QueueProgress(st, session) }
         items(st.docs, key = { it.local }) { d ->
-            FileCard(vm, st, d, selected = wide && st.selected == d.local) { vm.openEditor(d.local) }
+            // a file that is added, removed or moved slides to its place (the student app)
+            FileCard(vm, st, d, selected = wide && st.selected == d.local,
+                modifier = if (LocalLively.current) Modifier.animateItem() else Modifier) { vm.openEditor(d.local) }
         }
         item(key = "add") {
             Row(
@@ -90,7 +93,7 @@ fun WorkspaceScreen(vm: PrintViewModel, st: SessionState, onAddFiles: () -> Unit
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("Add more files", fontWeight = FontWeight.SemiBold, color = CP.Ink)
-                    Text("PDF, JPG or PNG · choose several at once", fontSize = 13.sp, color = CP.Muted)
+                    Text("PDF, Word, JPG or PNG · choose several at once", fontSize = 13.sp, color = CP.Muted)
                 }
             }
             Spacer(Modifier.size(24.dp))
@@ -114,15 +117,18 @@ private fun QueueProgress(st: SessionState, session: OrderSession) {
                 total += size
                 done += when (d.status) {
                     DocStatus.UPLOADING -> size * d.progress.toDouble()
-                    DocStatus.CHECKING, DocStatus.READY -> size.toDouble()
+                    DocStatus.CHECKING, DocStatus.CONVERTING, DocStatus.READY -> size.toDouble()
                     else -> 0.0
                 }
             }
             val pct = if (total > 0) (done / total * 100).toInt() else 0
+            // everything is sent; only Word files are still being turned into pages
+            val onlyWord = working.all { it.status == DocStatus.CONVERTING }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Uploading " + plural(working.size, "file", "files") + " · $pct %", fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { session.cancelAll() }) { Text("Cancel all", color = CP.Muted) }
+                Text(if (onlyWord) "Turning " + plural(working.size, "Word file", "Word files") + " into pages…"
+                    else "Uploading " + plural(working.size, "file", "files") + " · $pct %", fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(vertical = if (onlyWord) 12.dp else 0.dp))
+                if (!onlyWord) TextButton(onClick = { session.cancelAll() }) { Text("Cancel all", color = CP.Muted) }
             }
             ProgressBar(pct / 100f)
         } else {
@@ -164,13 +170,14 @@ private fun chips(session: OrderSession, d: Doc, n: Normalized): List<String> {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boolean, onOpen: () -> Unit) {
+private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boolean, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val session = vm.session
+    val lively = LocalLively.current
     val n = if (d.status == DocStatus.READY || d.busy) session.norm(d) else null
     val problem = if (d.status == DocStatus.ERROR) d.error else n?.error ?: d.serverError
     val border = when { problem != null -> CP.Danger.copy(alpha = .45f); selected -> CP.Ink; else -> CP.Line }
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(16.dp))
+        modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(16.dp))
             .background(if (problem != null) CP.DangerSoft.copy(alpha = .35f) else CP.Surface)
             .border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(16.dp))
             .clickable(onClick = onOpen)
@@ -181,10 +188,18 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
         Thumb(vm, d, 64)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(d.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = CP.Ink)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(d.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = CP.Ink, modifier = Modifier.weight(1f, fill = false))
+                // the moment the Xerox center accepted the file: a green tick pops in (the student app)
+                if (lively && problem == null) {
+                    Spacer(Modifier.width(6.dp))
+                    CheckPop(d.status == DocStatus.READY, size = 18.dp)
+                }
+            }
             val meta = mutableListOf<String>()
             if (d.type == "PDF" && d.pageCount != null) meta += plural(d.pageCount, "page", "pages")
-            if (d.type != null && d.type != "PDF") meta += "Picture"
+            if (d.word) meta += "Word file" else if (d.type != null && d.type != "PDF") meta += "Picture"
             if (d.size > 0) meta += fileSize(d.size)
             if (meta.isNotEmpty()) Text(meta.joinToString(" · "), fontSize = 13.sp, color = CP.Muted)
             Spacer(Modifier.size(6.dp))
@@ -194,14 +209,44 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
                 }
             }
             when (d.status) {
-                DocStatus.READING -> StateLine("Reading the file…")
+                DocStatus.READING -> {
+                    StateLine("Reading the file…")
+                    if (lively) FlowBar(null, Modifier.padding(top = 5.dp), colors = Glow.flow)
+                }
                 DocStatus.QUEUED -> { StateLine("Waiting to upload…"); Actions { SmallAction("Cancel") { session.cancelUpload(d.local) } } }
                 DocStatus.UPLOADING -> {
                     StateLine("Uploading ${(d.progress * 100).toInt()} %")
-                    ProgressBar(d.progress, modifier = Modifier.padding(top = 4.dp))
+                    if (lively) FlowBar(d.progress, Modifier.padding(top = 5.dp), colors = Glow.flow)
+                    else ProgressBar(d.progress, modifier = Modifier.padding(top = 4.dp))
                     Actions { SmallAction("Cancel") { session.cancelUpload(d.local) } }
                 }
-                DocStatus.CHECKING -> StateLine("Checking the file…")
+                DocStatus.CHECKING -> {
+                    if (lively) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StateLine("Checking the file")
+                            Spacer(Modifier.width(4.dp))
+                            Dots(Modifier.padding(top = 4.dp))
+                        }
+                        FlowBar(null, Modifier.padding(top = 5.dp), color = CP.Accent)
+                    } else {
+                        StateLine("Checking the file…")
+                    }
+                }
+                DocStatus.CONVERTING -> {
+                    // a Word file: the Xerox center's computer is turning it into pages
+                    val line = "Turning it into pages at the Xerox center" +
+                        (if (d.ahead > 0) " · " + plural(d.ahead, "file", "files") + " ahead" else "")
+                    if (lively) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StateLine(line)
+                            Spacer(Modifier.width(4.dp))
+                            Dots(Modifier.padding(top = 4.dp))
+                        }
+                        FlowBar(null, Modifier.padding(top = 5.dp), colors = Glow.flow)
+                    } else {
+                        StateLine("$line…")
+                    }
+                }
                 DocStatus.CANCELLED -> {
                     StateLine("Upload cancelled")
                     Actions { SmallAction("Try again") { session.retry(d.local) }; SmallAction("Remove") { vm.removeDoc(d.local) } }
@@ -219,7 +264,8 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
         }
         Column(horizontalAlignment = Alignment.End) {
             val p = if (n != null && n.error == null) session.price(d, n) else null
-            Text(if (p != null) rupees(p.amount) else "", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CP.Ink)
+            Text(if (p == null || n == null) "" else if (st.staffApp) plural(session.pages(n), "page", "pages") else rupees(p.amount),
+                fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CP.Ink)
             IconButton(onClick = { vm.removeDoc(d.local) }, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Filled.Close, "Remove ${d.name}", tint = CP.Faint)
             }
@@ -265,13 +311,16 @@ fun Thumb(vm: PrintViewModel, d: Doc, sizeDp: Int) {
     val img by produceState<android.graphics.Bitmap?>(null, d.file, d.type) {
         val f = d.file
         val t = d.type
-        value = if (f != null && t != null) runCatching { vm.images.thumb(f, t, sizeDp * 3) }.getOrNull() else null
+        // (a Word file has no picture until the Xerox center's computer has turned it into pages)
+        value = if (f != null && t != null && t != "DOCX") runCatching { vm.images.thumb(f, t, sizeDp * 3) }.getOrNull() else null
     }
+    // until the first page is drawn: a light passes over the empty box (the student app)
     Box(Modifier.size(sizeDp.dp, (sizeDp * 1.25f).dp).clip(RoundedCornerShape(8.dp)).background(Color.White)
+        .shimmer(img == null && d.file != null && d.type != null && !d.word)
         .border(1.dp, CP.Line, RoundedCornerShape(8.dp))) {
         img?.let { Image(it.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         d.type?.let {
-            Text(if (it == "JPEG") "JPG" else it, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color.White,
+            Text(if (it == "JPEG") "JPG" else if (it == "DOCX") "WORD" else it, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color.White,
                 modifier = Modifier.align(Alignment.BottomStart).padding(3.dp).clip(RoundedCornerShape(4.dp))
                     .background(CP.Ink2).padding(horizontal = 5.dp, vertical = 1.dp))
         }
@@ -288,7 +337,8 @@ fun CheckoutBar(vm: PrintViewModel, st: SessionState) {
         Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(if (st.docs.isEmpty()) "–" else rupees(c.total), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink,
+                Text(if (st.docs.isEmpty()) "–" else if (st.staffApp) plural(c.pages, "page", "pages") else rupees(c.total),
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold, color = if (c.over) CP.Danger else CP.Ink,
                     modifier = Modifier.testTag("total"))
                 if (c.why != null && st.docs.isNotEmpty()) {
                     Text(c.why, fontSize = 12.5.sp, color = CP.Warn, fontWeight = FontWeight.Medium,
@@ -297,6 +347,7 @@ fun CheckoutBar(vm: PrintViewModel, st: SessionState) {
                             .testTag("why"))
                 } else {
                     Text(if (st.docs.isEmpty()) "" else plural(c.files, "file", "files") + " · " + plural(c.sheets, "sheet", "sheets") +
+                        (st.staff?.takeIf { st.staffApp }?.let { " · ${it.leftPages} free left" } ?: "") +
                         (if (c.uploading) " · uploading…" else ""), fontSize = 13.sp, color = CP.Muted)
                 }
             }

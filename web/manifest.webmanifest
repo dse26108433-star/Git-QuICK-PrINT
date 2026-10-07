@@ -1,7 +1,8 @@
 {
-  "name": "Campus Print",
-  "short_name": "Campus Print",
-  "description": "Print from your phone and collect at the Xerox center with a pickup code.",
+  "id": "xeogo",
+  "name": "XeoGo - QuICK PrINT",
+  "short_name": "XeoGo",
+  "description": "Print from your phone, pay with UPI, and collect at the Xerox center by showing your files. No code.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

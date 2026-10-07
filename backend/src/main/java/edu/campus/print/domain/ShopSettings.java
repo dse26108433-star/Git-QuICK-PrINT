@@ -19,13 +19,17 @@ public class ShopSettings {
     @Column(name = "price_bw_paise", nullable = false) private int priceBwPaise;
     @Column(name = "price_color_paise", nullable = false) private int priceColorPaise;
     @Column(nullable = false) private String currency = "INR";
-    /** Print the pickup code small on each document's first page. Staff can switch it off for a while. */
+    /** Print the order number small on each document's first page. Staff can switch it off for a while. */
     @Column(name = "stamp_code", nullable = false) private boolean stampCode = true;
 
     /** Paper size / paper type surcharges and finishing prices. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "pricing", nullable = false)
     private PricingRules pricing = PricingRules.DEFAULT;
+
+    /** Free printing for college staff: pages per staff ID per month, and whether colour is free too. */
+    @Column(name = "staff_monthly_pages", nullable = false) private int staffMonthlyPages = 1000;
+    @Column(name = "staff_color", nullable = false) private boolean staffColor;
 
     @Column(name = "updated_at") private Instant updatedAt;
 
@@ -44,5 +48,9 @@ public class ShopSettings {
     public void setStampCode(boolean v) { this.stampCode = v; }
     public PricingRules getPricing() { return pricing == null ? PricingRules.DEFAULT : pricing; }
     public void setPricing(PricingRules v) { this.pricing = v; }
+    public int getStaffMonthlyPages() { return staffMonthlyPages; }
+    public void setStaffMonthlyPages(int v) { this.staffMonthlyPages = v; }
+    public boolean isStaffColor() { return staffColor; }
+    public void setStaffColor(boolean v) { this.staffColor = v; }
     public void setUpdatedAt(Instant v) { this.updatedAt = v; }
 }

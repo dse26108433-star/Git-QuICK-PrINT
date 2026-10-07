@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The paper sizes Campus Print knows (same list as the server's PaperSize),
+ * The paper sizes XeoGo knows (same list as the server's PaperSize),
  * and how to find each among what a printer's driver offers. Matched by size
  * (within 2 mm), never by name: drivers name the same paper differently.
  */

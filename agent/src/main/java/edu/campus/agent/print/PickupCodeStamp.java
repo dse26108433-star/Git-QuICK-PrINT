@@ -19,14 +19,16 @@ import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 
 /**
- * Prints the pickup code small in the bottom-right corner of the FIRST page,
- * instead of spending a whole extra sheet on a cover page:
+ * Prints the order's number small in the bottom-right corner of the FIRST
+ * page, instead of spending a whole extra sheet on a cover page:
  *
- *     [ Pickup K7M4X · 2/3 · 3 sheets × 2 ]
+ *     [ Order K7M4X · 2/3 · 3 sheets × 2 ]
  *
  * (file 2 of the order's 3, 3 sheets of paper per copy, 2 copies). Every copy
  * starts with that page, so staff can see where each file (and each copy)
- * begins in the printer tray, and how many sheets to count.
+ * begins in the printer tray, and how many sheets to count. The same number
+ * is on the counter screen and on the student's phone next to the files; it
+ * is a label for sorting paper, not a code anyone has to show or type.
  *
  * The student's layout is kept: if that corner of the page is blank (almost
  * always - documents have a bottom margin) the label goes into the margin and
@@ -62,7 +64,7 @@ public final class PickupCodeStamp {
         PDPage page = doc.getPage(0);
         PageView v = PageView.of(page);
 
-        String before = "Pickup ";
+        String before = "Order ";
         String code = job.pickupCode();
         String after = label(job, sheetsPerCopy);
         float wBefore = width(regular, TEXT_SIZE, before);

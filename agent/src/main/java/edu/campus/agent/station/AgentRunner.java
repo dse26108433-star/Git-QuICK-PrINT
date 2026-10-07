@@ -111,6 +111,19 @@ public class AgentRunner {
             }
         }
         m.put("printers", list);
+        // Word files: can this PC turn them into PDFs (its Microsoft Word passed the test), or why not
+        edu.campus.agent.core.WordFiles w = supervisor == null ? null : supervisor.wordFiles();
+        if (w != null) {
+            Map<String, Object> word = new LinkedHashMap<>();
+            word.put("ready", w.state().ready());
+            word.put("note", w.state().note());
+            m.put("word", word);
+        }
         return m;
+    }
+
+    /** Staff pressed "Check again" for Word files (Word was installed or activated meanwhile). */
+    public synchronized void checkWordNow() {
+        if (supervisor != null && supervisor.wordFiles() != null) supervisor.wordFiles().checkAgain();
     }
 }
