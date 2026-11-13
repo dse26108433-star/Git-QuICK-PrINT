@@ -120,6 +120,30 @@ Station asks that address from outside every minute, so the lamp means what it s
 If it says the network blocks the tunnel: ask whoever runs the network to allow outgoing port **7844**
 (TCP and UDP) to Cloudflare, or connect the PC to another internet connection.
 
+### Testing before you have a domain (free, temporary)
+
+For trying the server out (on a laptop first, for example) there is a free way that needs no domain and no
+account: Cloudflare's *quick tunnel*.
+
+1. Set up the PC with **This PC is the XeoGo server** (payment *Test only*). Leave the internet address boxes empty.
+2. Double-click **`FREE-TEST-ADDRESS.bat`** (next to the installer). After a few seconds it shows an address like
+   `https://some-random-words.trycloudflare.com`. Keep that window open while testing.
+3. Make a **test copy of the website**: copy the `web` folder, set `apiBase` in its `config.js` to that address,
+   and put it on a **second** Netlify site (Netlify → *Add new site → Deploy manually* → drag the folder; free).
+   Never change the live site's `config.js` for a test.
+4. On a phone **on mobile data** (Wi-Fi off), open the test site: add a PDF, a photo and a Word file, pay (test),
+   and watch it print on that PC.
+
+Limits: the address changes every time the window is closed or the PC restarts (then put the new one in the test
+`config.js` and drag the folder again); Cloudflare gives no guarantee for quick tunnels and allows about 200
+requests at the same moment. Fine for testing, not for the shop. The apps cannot be pointed at a test address
+(they follow the real move later, through `MOVED_TO`); they talk to the server exactly as the website does.
+
+**Keep the Xerox center's PC on the cloud server until the domain is ready.** Updating its Station to 5.0.0 and
+leaving it on Render ("The server is somewhere else") is safe and already tests the new Station with the real
+printers. Switching it to "This PC is the XeoGo server" means the orders students send to Render stop printing
+there, so do that once, for real, on the evening you have the domain and the tunnel (steps 2 and 3).
+
 ### 4. Payments, and the copy in the cloud
 
 Station → **Settings → The server on this PC**:
