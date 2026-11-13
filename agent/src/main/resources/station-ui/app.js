@@ -335,7 +335,7 @@ function fillServerForm() {
   const srv = (state.local && state.local.server) || {};
   if (!srv.enabled) return;
   const set = srv.settings, st = srv.status;
-  $("srvLocalTarget").textContent = "http://localhost:" + st.httpPort;
+  $("srvLocalTarget").textContent = "http://127.0.0.1:" + st.httpPort;
   $("srvPublicUrl").value = set.publicUrl || "";
   $("srvTunnelToken").value = "";
   $("srvTunnelHint").textContent = set.hasTunnelToken ? "A token is saved. Paste a new one only to replace it." : "";

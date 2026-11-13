@@ -280,7 +280,9 @@ public class LocalServer {
         HttpResponse<String> shop = call("GET", url + "/api/v1/shop", null, null);
         if (shop == null || shop.statusCode() != 200) {
             throw new UserProblem("Cannot reach the XeoGo server at " + url
-                    + ". Check the address and the internet connection.");
+                    + ". Check the address and the internet connection."
+                    + (!here && serverActions.available() && !serverActions.fresh()
+                        ? " If this PC itself is the XeoGo server, choose \"This PC is the XeoGo server\" instead." : ""));
         }
         HttpResponse<String> summary = call("GET", url + "/api/v1/counter/summary", password, null);
         if (summary == null) throw new UserProblem("The server did not answer. Try again.");
@@ -302,6 +304,14 @@ public class LocalServer {
             JsonNode e = JSON.readTree(enrolled.body());
             cfg.agentId = e.path("agentId").asText();
             cfg.agentSecret = e.path("agentSecret").asText();
+        }
+        // The address may lead back to this very PC: its own server, reached through its internet address. Then this
+        // PC stays the server (switching it off would take the address away from everyone) and prints from it
+        // directly, without the detour through the internet. Its own server knows the sign-in just made: that is the test.
+        if (!here && serverActions.enabled() && stillRegistered(serverActions.localUrl())) {
+            log.info("{} leads to this PC's own server: printing from it directly", url);
+            here = true;
+            url = serverActions.localUrl();
         }
         cfg.backendUrl = url;
         cfg.pcName = pcName;

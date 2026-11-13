@@ -55,6 +55,11 @@ final class ServerActions {
         return server.counterPassword;
     }
 
+    /** No database has been made on this PC yet (it has never been the server). */
+    boolean fresh() {
+        return stack == null || stack.isFresh();
+    }
+
     // ------------------------------------------------------------------ what the screens show
 
     /** How the server is doing and how it is set up. Secrets are never sent to the screen, only "is set". */

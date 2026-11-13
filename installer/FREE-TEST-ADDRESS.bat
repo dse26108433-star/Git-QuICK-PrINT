@@ -27,7 +27,7 @@ echo   - For testing only. The real shop needs your own domain
 echo     (Guides\own-server.md, step 3).
 echo  ==========================================================================
 echo.
-"%CF%" tunnel --no-autoupdate --url http://localhost:47810
+"%CF%" tunnel --no-autoupdate --url http://127.0.0.1:47810
 echo.
 echo  The test address has ended.
 pause

@@ -110,7 +110,7 @@ Do it on an evening after closing, when no paid order is waiting.
       install the tunnel on Windows with a long token that starts with `eyJ…`. **Copy that line.** Do not
       run it: the Station runs the tunnel itself.
 - [ ] In the same tunnel: **Public hostname → Add**: subdomain `print`, your domain, type **HTTP**, URL
-      `localhost:47810` → Save.
+      `127.0.0.1:47810` → Save.
 - [ ] Station → **Settings → The server on this PC → Internet address**: paste the line (or just the token),
       type `https://print.yourdomain` → **Save**.
 
@@ -239,7 +239,8 @@ Windows user can read it. Do not send it to anyone.
 | **Server problem**: "The print service stopped: …" again and again | The words after the colon say why (for example a payment setting). Correct it under *How students pay*. Still there: send `logs\server.log`. |
 | Internet address: "Cloudflare does not accept the tunnel token" | Copy the token again from the tunnel's page at Cloudflare and paste it. |
 | Internet address: "This PC cannot reach Cloudflare… port 7844" | The network blocks the tunnel: see step 3. |
-| Internet address: "The address exists, but it does not lead to this PC yet" | In Cloudflare the tunnel's public hostname must be type HTTP, URL `localhost:47810`. |
+| On the server PC itself, "The server is somewhere else" with the PC's own internet address was chosen | From 5.0.0 the Station notices the address leads to itself and stays the server. If the server was already switched off: Settings → Disconnect this PC → choose **This PC is the XeoGo server** (its database is used as it is). |
+| Internet address: "The address exists, but it does not lead to this PC yet" | In Cloudflare the tunnel's public hostname must be type HTTP, URL `127.0.0.1:47810`. |
 | Backup: "The copy in the cloud did not work: the cloud project is paused" | supabase.com → your project → **Restore**. Backups on the PC went on meanwhile. |
 | Students: "The Xerox center's computer is not on right now" while it is on | Station → Settings → the *Internet address* lamp says what is wrong. |
 | A notice: "The database was put back from the backup of …" | See the table above. The damaged data is in `server\pgdata.damaged-…`; keep it until you are sure nothing is missing. |
