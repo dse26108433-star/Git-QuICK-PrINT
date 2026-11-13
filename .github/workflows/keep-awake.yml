@@ -1,0 +1,32 @@
+# Keeps the cloud service awake while it is the live one (Render + Supabase free plans):
+# - Render's free plan puts the server to sleep after 15 minutes without a visitor (the next one waits a minute);
+# - Supabase's free plan pauses the database after a week without use (until someone switches it on by hand).
+# Every 10 minutes GitHub asks the server for the shop's details. That wakes the server if needed, and the server
+# then uses the database (it does every few seconds while awake), so neither goes to sleep.
+# GitHub sends an email to the repository's owner when the server does not answer.
+# Once the Xerox center's PC is the server, this can be switched off: GitHub -> Actions -> "Keep XeoGo awake" -> ... -> Disable.
+name: Keep XeoGo awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Ask the print service for the shop's details
+        run: |
+          url="https://campus-print-backend.onrender.com/api/v1/shop"
+          for try in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$url" || true)
+            echo "try $try: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "The print service did not answer: look at Render (render.com -> your service -> Events / Logs)."
+          exit 1

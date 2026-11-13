@@ -164,9 +164,10 @@ Station → **Settings → The server on this PC**:
 
 - [ ] **Website**: in `web/config.js` set `apiBase: "https://print.yourdomain"` and, if you like,
       `openHours: "9:30 AM to 6 PM"`. Put the `web` folder on Netlify again.
-- [ ] **Apps**: XeoGo 3.4.0 and XeoGo Staff 3.4.0 go to the new address by themselves once the old server
-      says so (next step); nothing has to be reinstalled for that. For new phones later, build the apps with
-      the address inside: `gradlew assembleStudentDist assembleStaffDist -PapiBase=https://print.yourdomain`.
+- [ ] **Apps**: XeoGo 3.4.0 and XeoGo Staff 3.4.0 have the address inside: `https://xeogo.mindfulshapesyoga.com`
+      (the Xerox PC's tunnel "xeogo"). Use exactly that address for the Xerox PC, and hand the apps out once it
+      works (before that they say "closed right now"). For another address: `gradlew assembleStudentDist
+      assembleStaffDist -PapiBase=https://...`.
 - [ ] **The old cloud server** (Render): push this version to GitHub so Render runs it, then Render →
       Environment → add `MOVED_TO` = `https://print.yourdomain` → Save. From then on it tells every website
       and app that asks where XeoGo is now, and takes no new orders (an app older than 3.4.0 shows "XeoGo has

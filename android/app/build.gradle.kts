@@ -33,7 +33,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Where the print service runs: the live one, unless built with -PapiBase=http://... (see AppConfig.kt)
-        val apiBase = testServer ?: (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
+        // The print service on the Xerox center's PC (Cloudflare tunnel "xeogo"). -PapiBase=... builds for another one.
+        val apiBase = testServer ?: (project.findProperty("apiBase") as String?) ?: "https://xeogo.mindfulshapesyoga.com"
         manifestPlaceholders["appLabel"] = "@string/app_name"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("boolean", "STAFF", "false")
