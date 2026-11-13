@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>XeoGo poster (A4)</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 210mm; height: 296mm; overflow: hidden; }
+  body {
+    font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #0B1437;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff; overflow: hidden;
+  }
+  .page { position: relative; width: 210mm; height: 296mm; overflow: hidden; page-break-after: avoid; break-after: avoid; }
+
+  /* ---------- the night-blue top ---------- */
+  .top {
+    position: absolute; inset: 0 0 auto 0; height: 168mm; color: #fff; overflow: hidden;
+    background: linear-gradient(150deg, #030B33 0%, #0A1F78 52%, #1840C8 100%);
+  }
+  .glow { position: absolute; border-radius: 50%; filter: blur(14mm); }
+  .g1 { width: 120mm; height: 120mm; right: -38mm; top: -40mm; background: rgba(53, 204, 255, .45); }
+  .g2 { width: 95mm; height: 95mm; left: -35mm; top: 70mm; background: rgba(122, 77, 255, .45); }
+  .g3 { width: 60mm; height: 60mm; right: 18mm; top: 95mm; background: rgba(255, 166, 43, .30); }
+  /* sheets of paper flying out of the corner, as in the logo */
+  .sheet { position: absolute; width: 17mm; height: 22mm; border-radius: 2.2mm; background: rgba(255, 255, 255, .13);
+           border: .35mm solid rgba(255, 255, 255, .22); }
+  .sheet::before, .sheet::after { content: ""; position: absolute; left: 3mm; right: 3mm; height: 1.1mm; border-radius: 1mm;
+           background: rgba(255, 255, 255, .28); }
+  .sheet::before { top: 5mm; } .sheet::after { top: 8.5mm; right: 6mm; }
+  .s1 { right: 16mm; top: 20mm; transform: rotate(14deg); }
+  .s2 { right: 44mm; top: 9mm; transform: rotate(-10deg) scale(.75); opacity: .8; }
+  .s3 { right: 9mm; top: 52mm; transform: rotate(28deg) scale(.6); opacity: .6; }
+  .s4 { right: 62mm; top: 34mm; transform: rotate(6deg) scale(.5); opacity: .5; }
+
+  .brand { position: absolute; left: 16mm; top: 14mm; display: flex; align-items: center; gap: 4mm; }
+  .brand img { width: 17mm; height: 17mm; border-radius: 4.5mm; box-shadow: 0 2mm 6mm rgba(0, 0, 0, .35); }
+  .brand b { display: block; font-size: 11mm; line-height: 1; letter-spacing: -.3mm; }
+  .brand span { display: block; font-size: 3.6mm; color: #A9C0FF; margin-top: 1.2mm; letter-spacing: .2mm; }
+
+  .official { position: absolute; left: 16mm; top: 38mm; display: inline-flex; align-items: center; gap: 2mm;
+              padding: 1.6mm 4mm 1.6mm 2.6mm; border-radius: 10mm; background: rgba(255, 255, 255, .12);
+              border: .3mm solid rgba(255, 255, 255, .28); font-size: 3.5mm; font-weight: 600; letter-spacing: .15mm; }
+  .official i { width: 5mm; height: 5mm; border-radius: 50%; background: #16995B; display: grid; place-items: center; }
+  .official i svg { width: 3.2mm; height: 3.2mm; }
+
+  .hook { position: absolute; left: 16mm; right: 16mm; top: 52mm; }
+  .hook .q { font-size: 7.4mm; font-weight: 600; color: #A9C0FF; letter-spacing: .1mm; }
+  .hook h1 { font-size: 17mm; line-height: 1.02; font-weight: 800; letter-spacing: -.6mm; margin-top: 3mm; }
+  .hook h1 em { font-style: normal; background: linear-gradient(90deg, #35CCFF, #8FE3FF); -webkit-background-clip: text;
+                background-clip: text; color: transparent; }
+  .hook p { font-size: 5mm; color: rgba(255, 255, 255, .86); margin-top: 5mm; }
+
+  /* ---------- the QR card, half over the blue ---------- */
+  .card { position: absolute; left: 16mm; right: 16mm; top: 120mm; height: 82mm; background: #fff; border-radius: 7mm;
+          box-shadow: 0 6mm 16mm rgba(11, 20, 55, .28); display: flex; align-items: center; padding: 7mm; gap: 8mm; }
+  .qr { flex: none; width: 66mm; height: 66mm; padding: 4mm; border-radius: 4mm; border: .6mm solid #E2E7F0; background: #fff;
+        position: relative; }
+  .qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .corner { position: absolute; width: 9mm; height: 9mm; border: 1.4mm solid #2B59F3; }
+  .c1 { left: -2.2mm; top: -2.2mm; border-right: 0; border-bottom: 0; border-radius: 3mm 0 0 0; }
+  .c2 { right: -2.2mm; top: -2.2mm; border-left: 0; border-bottom: 0; border-radius: 0 3mm 0 0; }
+  .c3 { left: -2.2mm; bottom: -2.2mm; border-right: 0; border-top: 0; border-radius: 0 0 0 3mm; }
+  .c4 { right: -2.2mm; bottom: -2.2mm; border-left: 0; border-top: 0; border-radius: 0 0 3mm 0; }
+  .scan { flex: 1; }
+  .scan .big { font-size: 10mm; font-weight: 800; line-height: 1.05; letter-spacing: -.3mm; }
+  .scan .big span { color: #2B59F3; }
+  .scan .sub { font-size: 4.3mm; color: #5E6A85; margin-top: 3mm; line-height: 1.35; }
+  .scan .url { display: inline-block; margin-top: 5mm; font-size: 3.7mm; font-weight: 600; color: #0B1437; background: #EDF0F7;
+               padding: 1.6mm 3.4mm; border-radius: 10mm; }
+
+  /* ---------- three steps ---------- */
+  .steps { position: absolute; left: 16mm; right: 16mm; top: 212mm; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; }
+  .step { text-align: center; }
+  .step .ic { width: 15mm; height: 15mm; margin: 0 auto; border-radius: 4.5mm; background: #E8EEFF; display: grid; place-items: center;
+              position: relative; }
+  .step .ic svg { width: 8mm; height: 8mm; }
+  .step .n { position: absolute; right: -2mm; top: -2mm; width: 6mm; height: 6mm; border-radius: 50%; background: #2B59F3; color: #fff;
+             font-size: 3.4mm; font-weight: 700; display: grid; place-items: center; border: .7mm solid #fff; }
+  .step b { display: block; font-size: 5mm; margin-top: 3mm; }
+  .step span { display: block; font-size: 3.6mm; color: #5E6A85; margin-top: .8mm; }
+  .arrow { position: absolute; top: 5mm; width: 9mm; height: 4mm; }
+
+  /* ---------- trust ---------- */
+  .trust { position: absolute; left: 16mm; right: 16mm; top: 248mm; display: flex; justify-content: center; gap: 3mm; flex-wrap: wrap; }
+  .trust span { display: inline-flex; align-items: center; gap: 1.6mm; font-size: 3.5mm; font-weight: 600; color: #14603A;
+                background: #E1F5EA; padding: 1.6mm 3.2mm; border-radius: 10mm; }
+  .trust svg { width: 3.4mm; height: 3.4mm; }
+
+  /* ---------- staff ---------- */
+  .staff { position: absolute; left: 16mm; right: 16mm; bottom: 12mm; height: 19mm; border-radius: 5mm;
+           background: linear-gradient(90deg, #0A1F78, #1840C8); color: #fff; display: flex; align-items: center; padding: 0 6mm; gap: 4mm; }
+  .staff .ic { width: 10mm; height: 10mm; border-radius: 3mm; background: rgba(255, 255, 255, .15); display: grid; place-items: center; flex: none; }
+  .staff .ic svg { width: 6mm; height: 6mm; }
+  .staff b { font-size: 4.6mm; display: block; }
+  .staff span { font-size: 3.5mm; color: #C9D6FF; }
+  .staff .free { margin-left: auto; font-size: 5.4mm; font-weight: 800; color: #35CCFF; letter-spacing: .3mm; }
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="top">
+    <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+    <div class="sheet s1"></div><div class="sheet s2"></div><div class="sheet s3"></div><div class="sheet s4"></div>
+
+    <div class="brand"><img src="logo.png" alt=""><div><b>XeoGo</b><span>QUICK PRINT · COLLEGE XEROX CENTER</span></div></div>
+    <div class="official"><i><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i>
+      The official app of our Xerox center</div>
+
+    <div class="hook">
+      <div class="q">Still standing in the Xerox queue?</div>
+      <h1>Send it now.<br><em>Pick it up ready.</em></h1>
+      <p>Your prints wait for you, not the other way round.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="qr"><img src="qr.png" alt="QR code"><i class="corner c1"></i><i class="corner c2"></i><i class="corner c3"></i><i class="corner c4"></i></div>
+    <div class="scan">
+      <div class="big">Scan.<br>Install.<br><span>Skip the queue.</span></div>
+      <div class="sub">Point your phone camera here.<br>The XeoGo app downloads by itself.</div>
+      <div class="url">gitquickprint.netlify.app</div>
+    </div>
+  </section>
+
+  <section class="steps">
+    <div class="step"><div class="ic"><i class="n">1</i>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#2B59F3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 15l3-3 3 3"/></svg></div>
+      <b>Add your files</b><span>PDF · Word · photos</span></div>
+    <div class="step"><div class="ic"><i class="n">2</i>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#2B59F3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/></svg></div>
+      <b>Pay with UPI</b><span>GPay · PhonePe · Paytm</span></div>
+    <div class="step"><div class="ic"><i class="n">3</i>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#2B59F3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg></div>
+      <b>Collect &amp; go</b><span>show your files at the counter</span></div>
+  </section>
+
+  <section class="trust">
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#16995B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>No sign-up</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#16995B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>No ads</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#16995B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Files deleted after printing</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#16995B" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>See the price before you pay</span>
+  </section>
+
+  <section class="staff">
+    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg></div>
+    <div><b>Teachers &amp; staff</b><span>Free pages every month with your staff ID · XeoGo Staff app</span></div>
+    <div class="free">FREE</div>
+  </section>
+</div>
+</body>
+</html>

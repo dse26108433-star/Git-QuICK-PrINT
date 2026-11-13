@@ -405,8 +405,8 @@ The project was checked: no passwords or keys will be uploaded (`backend/.env` s
 - [ ] In `web/config.js` set `apiBase: "https://<your-service>.onrender.com"` → `git commit -am "Backend address"` → `git push`
 - [ ] netlify.com → **Add new site** → **Import an existing project** → GitHub → `campus-print`
       → Base directory `web` · Build command *(empty)* · Publish directory `web` → **Deploy**
-- [ ] Site configuration → **Change site name** → e.g. `gitprint` → your site is `https://gitprint.netlify.app`
-- [ ] Back on Render → Environment → `WEB_ORIGINS` = `https://gitprint.netlify.app` → Save (it restarts)
+- [ ] Site configuration → **Change site name** → e.g. `gitquickprint` → your site is `https://gitquickprint.netlify.app`
+- [ ] Back on Render → Environment → `WEB_ORIGINS` = `https://gitquickprint.netlify.app` → Save (it restarts)
 
 **E. Xerox center PC**
 - [ ] Build the installer with the address inside:
@@ -421,7 +421,7 @@ The project was checked: no passwords or keys will be uploaded (`backend/.env` s
 - [ ] Razorpay → **Activate account** (KYC: PAN, bank account, business details). Razorpay usually checks that the website
       has Contact, Terms, Privacy and Refund pages — ask Claude to add them with your real details.
 - [ ] After approval: Razorpay → Live mode → API keys → put `rzp_live_…` keys in Render → Save
-- [ ] Print the poster from `https://gitprint.netlify.app/poster.html` and put it up. Share the link in class groups.
+- [ ] Print the poster from `https://gitquickprint.netlify.app/poster.html` and put it up. Share the link in class groups.
 - [ ] Stop the backend on this laptop (it is in demo mode) and use only the online one.
 
 **Good to know**
@@ -681,7 +681,7 @@ numbers, and what could not be tested from a laptop, are in `docs/own-server.md`
 - [ ] 4. Website: `apiBase` (and `openHours`) in `web/config.js`, publish on Netlify.
 - [ ] 5. Old cloud server (Render): after pushing this version, add `MOVED_TO` = the new address.
 - [ ] 6. 📱 Apps by QR code: publish the `web` folder (it carries `download/XeoGo.apk` and `XeoGo-Staff.apk`),
-      print the poster for `https://gitprint.netlify.app/app` (`docs/installing-the-app.md`). Students with the
+      print the poster for `https://gitquickprint.netlify.app/app` (`docs/installing-the-app.md`). Students with the
       old app **uninstall it once first** (3.4.0 has a new signing key; orders are not lost). Shop phone: new
       server address and token in XeoGo Pay Verifier (1.1.0, unchanged).
 - [ ] 5b. **Payments to XeoGo Pay (UPI) before handing out app 3.4.0.** The live server was on Razorpay (cards)

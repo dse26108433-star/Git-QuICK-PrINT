@@ -6,15 +6,15 @@ keep those warnings as few and as mild as possible, and exactly what students ta
 
 ## How it is set up
 
-- **The QR code opens `https://gitprint.netlify.app/app`** and **the download of `XeoGo.apk` starts by
+- **The QR code opens `https://gitquickprint.netlify.app/app`** and **the download of `XeoGo.apk` starts by
   itself**. The page that stays on screen (`web/app.html`) explains the taps for Android's install questions,
   has a *Download for Android* button to download again, *Use XeoGo in the browser* for iPhones, and a small
   link for the staff app. (A QR code straight to the file also works:
-  `https://gitprint.netlify.app/download/XeoGo.apk`, but then students see no help.)
+  `https://gitquickprint.netlify.app/download/XeoGo.apk`, but then students see no help.)
 - **The apps are on the website itself**: `web/download/XeoGo.apk` and `web/download/XeoGo-Staff.apk`, sent
   as Android app files (`web/_headers`). Keep those two names: a new version only replaces the files, and the
   QR code never changes.
-- **The poster**: open `https://gitprint.netlify.app/poster.html?url=https://gitprint.netlify.app/app`, check
+- **The poster**: open `https://gitquickprint.netlify.app/poster.html?url=https://gitquickprint.netlify.app/app`, check
   the address in the box, print on A4. A ready QR picture of that address is in the delivery folder too.
   (Your site has another address? Use it in both places.)
 - Publish as before: drag the whole `web` folder onto Netlify. The delivery folder's `web` already has both
@@ -65,7 +65,7 @@ account. It may help, it is not guaranteed, and Google says it does not reply.
    - *SHA256 hash*: the one from step 1.
    - *Additional information* (paste):
      > XeoGo is the printing app of our college's Xerox center. Students download it from our own website
-     > (https://gitprint.netlify.app/app) to send files to the center's printers and pay with UPI. It asks only
+     > (https://gitquickprint.netlify.app/app) to send files to the center's printers and pay with UPI. It asks only
      > for internet and network-state access and lists UPI apps for payment; no SMS, contacts, location,
      > camera, storage or accessibility, and no third-party SDKs that need permissions. It is signed with our own release key (certificate SHA-256
      > 01:09:A8:E5:82:29:94:20:A7:1C:FE:C2:93:5C:80:E0:C9:69:B7:73:94:77:E0:F9:D5:4C:76:E2:A2:B0:D4:62).
