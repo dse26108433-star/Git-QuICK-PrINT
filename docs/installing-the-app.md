@@ -38,6 +38,10 @@ keep those warnings as few and as mild as possible, and exactly what students ta
 once whether Chrome may install apps, and Play Protect may ask to scan an app it has not seen on many phones
 yet. The download page tells students what to tap for each of these. Only apps from the Play Store skip them.
 
+**Before handing out 3.4.0: payments must be XeoGo Pay (UPI).** The apps no longer take cards. A server set to
+Razorpay (as the cloud server was on 13 November 2026) makes the app send students to the website to pay.
+Switch to XeoGo Pay in the Station (Settings → How students pay) or `PAYMENT_MODE=upi` on Render.
+
 ## What a student taps (also on the download page)
 
 1. **Download for Android**. Chrome: *"File might be harmful"* → **Download anyway**.

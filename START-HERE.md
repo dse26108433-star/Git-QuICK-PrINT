@@ -684,6 +684,8 @@ numbers, and what could not be tested from a laptop, are in `docs/own-server.md`
       print the poster for `https://gitprint.netlify.app/app` (`docs/installing-the-app.md`). Students with the
       old app **uninstall it once first** (3.4.0 has a new signing key; orders are not lost). Shop phone: new
       server address and token in XeoGo Pay Verifier (1.1.0, unchanged).
+- [ ] 5b. **Payments to XeoGo Pay (UPI) before handing out app 3.4.0.** The live server was on Razorpay (cards)
+      on 13 Nov 2026; the apps no longer take cards (they send students to the website for that).
 - [ ] 6b. Ask Google's Play Protect team to review the app (`docs/installing-the-app.md`, "Asking Google to
       review the app"), and copy `D:\Downloads\XeoGo\signing-key-KEEP-SAFE` to a pen drive today.
 - [ ] 7. Switch the PC off and on once: half a minute after signing in it says **Ready to print** again.
