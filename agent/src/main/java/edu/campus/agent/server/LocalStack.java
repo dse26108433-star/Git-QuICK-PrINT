@@ -733,7 +733,13 @@ public final class LocalStack {
             return;
         }
         if (tunnelReady()) {
-            if (!tunnelState.isRunning()) log.info("Tunnel: connected");
+            if (!tunnelState.isRunning()) {
+                log.info("Tunnel: connected");
+                // a check made while it was still connecting said "not this PC": ask again in a few seconds
+                publicOk = null;
+                publicNote = "";
+                nextPublicCheck = System.currentTimeMillis() + 5_000;
+            }
             tunnelState = Part.running("");
         } else if (System.currentTimeMillis() - tunnelStartedAt > 45_000) {
             tunnelState = Part.problem(tunnelProblem());
@@ -799,9 +805,10 @@ public final class LocalStack {
                 publicOk = false;
                 publicNote = r.statusCode() == 530 || r.statusCode() == 502 || r.statusCode() == 1033
                         ? "The address exists, but it does not lead to this PC yet (answer " + r.statusCode()
-                          + "). In Cloudflare, the tunnel's public hostname must point to http://localhost:" + cfg.httpPort + "."
+                          + "). In Cloudflare, the tunnel's route (published application) must point to http://127.0.0.1:" + cfg.httpPort
+                          + ". Just after starting this is normal for a few seconds."
                         : "The address answered " + r.statusCode() + ", not XeoGo. Check the address and the tunnel's "
-                          + "public hostname (service: http://localhost:" + cfg.httpPort + ").";
+                          + "route (service: http://127.0.0.1:" + cfg.httpPort + ").";
             }
         } catch (IllegalArgumentException e) {
             publicOk = false;
