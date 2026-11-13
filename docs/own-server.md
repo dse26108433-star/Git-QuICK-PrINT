@@ -136,8 +136,13 @@ account: Cloudflare's *quick tunnel*.
 
 Limits: the address changes every time the window is closed or the PC restarts (then put the new one in the test
 `config.js` and drag the folder again); Cloudflare gives no guarantee for quick tunnels and allows about 200
-requests at the same moment. Fine for testing, not for the shop. The apps cannot be pointed at a test address
-(they follow the real move later, through `MOVED_TO`); they talk to the server exactly as the website does.
+requests at the same moment. Fine for testing, not for the shop.
+
+**Testing the app without touching the live website or server:** build a separate **XeoGo TEST** app for the
+free address (`cd android` → `gradlew assembleStudentDist -PtestServer=https://….trycloudflare.com`, file
+`app/build/outputs/apk/student/dist/app-student-dist.apk`). It installs next to the real XeoGo and talks only to
+that address; when the address changes, build it again. In the Station leave *Address students use* empty for a
+free address: upload links then follow whatever address the phone came in on.
 
 **Keep the Xerox center's PC on the cloud server until the domain is ready.** Updating its Station to 5.0.0 and
 leaving it on Render ("The server is somewhere else") is safe and already tests the new Station with the real

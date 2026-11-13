@@ -16,6 +16,10 @@ val releaseKey = Properties().apply {
 }
 val hasReleaseKey = releaseKey.getProperty("storeFile")?.let { file(it).isFile } == true
 
+// -PtestServer=https://...: a separate "XeoGo TEST" app for a test server (for example a laptop behind a free
+// Cloudflare quick tunnel). It installs next to the real XeoGo and never talks to the live server.
+val testServer = (project.findProperty("testServer") as String?)?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+
 android {
     namespace = "edu.campus.printapp"
     compileSdk = 35
@@ -29,7 +33,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Where the print service runs: the live one, unless built with -PapiBase=http://... (see AppConfig.kt)
-        val apiBase = (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
+        val apiBase = testServer ?: (project.findProperty("apiBase") as String?) ?: "https://campus-print-backend.onrender.com"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("boolean", "STAFF", "false")
     }
@@ -76,6 +81,11 @@ android {
             isShrinkResources = false
             signingConfig = if (hasReleaseKey) signingConfigs.getByName("xeogo") else signingConfigs.getByName("debug")
             matchingFallbacks += "release"
+            if (testServer != null) {
+                applicationIdSuffix = ".test"
+                versionNameSuffix = "-test"
+                manifestPlaceholders["appLabel"] = "XeoGo TEST"
+            }
         }
     }
 
