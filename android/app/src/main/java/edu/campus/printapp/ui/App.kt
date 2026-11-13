@@ -61,7 +61,6 @@ import edu.campus.printapp.flow.NoticeKind
 import edu.campus.printapp.flow.OrderSession
 import edu.campus.printapp.flow.SessionState
 import edu.campus.printapp.flow.Step
-import edu.campus.printapp.net.PaymentStart
 
 /**
  * The whole app: Home → your files (each set up on its own) → Review and pay
@@ -74,7 +73,7 @@ import edu.campus.printapp.net.PaymentStart
  * where the student app says "Pay".
  */
 @Composable
-fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout: (PaymentStart) -> Unit,
+fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit,
                    upiApps: () -> List<UpiApp> = { emptyList() }, onOpenUpi: (String, String?) -> Unit = { _, _ -> }) {
     val st by vm.session.state.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -102,7 +101,6 @@ fun CampusPrintApp(vm: PrintViewModel, onChooseFiles: () -> Unit, onOpenCheckout
             snack.showSnackbar(n.text, duration = if (n.kind == NoticeKind.BAD) SnackbarDuration.Long else SnackbarDuration.Short)
         }
     }
-    LaunchedEffect(Unit) { vm.session.checkout.collect { onOpenCheckout(it) } }
     // the printers' options stay up to date while the app is on screen
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -217,27 +215,30 @@ private fun Header(st: SessionState) = BoxWithConstraints(Modifier.fillMaxWidth(
     val narrow = maxWidth < 420.dp
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.logo), contentDescription = null,
-            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)))
-        Spacer(Modifier.width(10.dp))
+            modifier = Modifier.size(40.dp).softShadow(RoundedCornerShape(12.dp), 6.dp).clip(RoundedCornerShape(12.dp)))
+        Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text(if (st.staffApp) "XeoGo Staff" else "XeoGo", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = CP.Ink, maxLines = 1)
+            Text(if (st.staffApp) "XeoGo Staff" else "XeoGo", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = CP.Ink, maxLines = 1,
+                letterSpacing = (-0.2).sp)
             Text(st.shop?.centerName ?: "Xerox center", fontSize = 13.sp, color = CP.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val shop = st.shop
         val online = shop != null && (shop.bwOnline || shop.colorOnline)
-        Row(Modifier.clip(RoundedCornerShape(20.dp)).background(CP.Surface).border(1.dp, CP.Line, RoundedCornerShape(20.dp))
-            .padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.clip(RoundedCornerShape(50)).background(CP.Surface).border(1.dp, CP.Line, RoundedCornerShape(50))
+            .padding(start = 13.dp, end = 13.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             val waking = shop == null && st.shopError == OrderSession.WAKING
-            Lamp(if (waking) CP.Warn else if (shop == null) CP.Line2 else if (online) CP.Accent else CP.Danger, 9.dp)
-            Spacer(Modifier.width(7.dp))
+            val closed = shop == null && st.shopError == OrderSession.CLOSED
+            Lamp(if (waking || closed) CP.Warn else if (shop == null) CP.Line2 else if (online) CP.Accent else CP.Danger, 8.dp)
+            Spacer(Modifier.width(9.dp))
             Text(when {
+                closed -> if (narrow) "Closed" else "Closed right now"
                 waking -> if (narrow) "Waking up" else "Service waking up"
                 st.shopError != null && shop == null -> if (narrow) "No service" else "Service unreachable"
                 shop == null -> "…"
                 narrow -> if (online) "Online" else "Offline"
                 online -> "Printers online" + if (shop.ordersWaiting > 0) " · ${shop.ordersWaiting} in queue" else ""
                 else -> "Printers offline"
-            }, fontSize = 12.5.sp, color = CP.Ink2, maxLines = 1)
+            }, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = CP.Ink2, maxLines = 1)
         }
     }
 }
@@ -247,7 +248,7 @@ private fun Header(st: SessionState) = BoxWithConstraints(Modifier.fillMaxWidth(
 private fun StaffStrip(st: SessionState, onSignOut: () -> Unit) {
     val s = st.staff
     val ask = remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().background(CP.Ink).padding(horizontal = 16.dp, vertical = 7.dp),
+    Row(Modifier.fillMaxWidth().background(CP.Night).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Text(s?.name ?: "Signed in", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))

@@ -121,9 +121,12 @@ class AppFlowTest {
         rule.onNodeWithTag("file:in-Notes.pdf").tap()
         rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag("editorList")).fetchSemanticsNodes().isNotEmpty() }
         shot("a02-editor")
-        choice("flip on long edge").tap()
-        waitUntil("two-sided") { doc("Notes.pdf").settings?.duplex == "LONG_EDGE" }
-        shot("a03-two-sided")
+        // (only where a printer of this Xerox center prints on both sides: the price is the same either way)
+        if (vm.session.state.value.offered.duplex) {
+            choice("flip on long edge").tap()
+            waitUntil("two-sided") { doc("Notes.pdf").settings?.duplex == "LONG_EDGE" }
+            shot("a03-two-sided")
+        }
 
         // Assignment: pages 3 and 7 on the page pictures, 2 copies, colour
         rule.onNode(hasContentDescription("Next file")).tap()

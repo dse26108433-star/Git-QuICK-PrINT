@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -52,17 +53,19 @@ fun LoginScreen(st: SessionState, session: OrderSession) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 460.dp).align(Alignment.CenterHorizontally).padding(horizontal = 20.dp)) {
             Spacer(Modifier.size(28.dp))
-            Text("Staff sign in", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
+            Text("Staff sign in", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = CP.Ink, letterSpacing = (-0.3).sp)
             Spacer(Modifier.size(6.dp))
             Text("Free printing for college staff at " + (st.shop?.centerName ?: "the Xerox center") +
                 ". Sign in with the staff ID the Xerox center gave you.", fontSize = 15.sp, color = CP.Muted, lineHeight = 22.sp)
             Spacer(Modifier.size(22.dp))
             OutlinedTextField(username, { username = it.take(60) }, label = { Text("Username") }, singleLine = true,
+                shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false,
                     keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth().testTag("loginUser"))
             Spacer(Modifier.size(12.dp))
             OutlinedTextField(password, { password = it.take(60) }, label = { Text("Password") }, singleLine = true,
+                shape = RoundedCornerShape(14.dp),
                 visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false,
                     keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),

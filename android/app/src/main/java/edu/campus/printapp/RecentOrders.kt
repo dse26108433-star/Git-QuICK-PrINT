@@ -19,6 +19,13 @@ class PhoneStores(context: Context) : OrderMemory, DraftStore, StaffStore {
 
     private val prefs = context.getSharedPreferences("orders", Context.MODE_PRIVATE)
 
+    /** Where the print service moved to, if it said so (null: where the app was built for). */
+    fun movedTo(): String? = prefs.getString("api.moved", null)
+
+    fun saveMovedTo(url: String?) {
+        prefs.edit().apply { if (url == null) remove("api.moved") else putString("api.moved", url) }.apply()
+    }
+
     // The staff app: the sign-in token (the password is never kept).
     override fun token(): String? = prefs.getString("staff.token", null)
 

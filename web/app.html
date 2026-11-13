@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Get the XeoGo app</title>
+<meta name="description" content="Download the XeoGo app for Android: print from your phone at the college Xerox center and skip the queue.">
+<meta name="theme-color" content="#0A1F78">
+<!-- Scanning the QR code starts the download straight away; this page stays, with the taps explained. -->
+<meta http-equiv="refresh" content="1;url=download/XeoGo.apk">
+<link rel="icon" href="favicon.png" type="image/png">
+<style>
+  :root { --ink: #0B1437; --ink2: #263154; --soft: #5E6A85; --line: #E2E7F0; --paper: #F3F5FA; --brand: #2B59F3;
+          --brand-soft: #E8EEFF; --ok: #16995B; --warn-bg: #FDF2E0; --warn: #6E4510; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 560px; margin: 0 auto; padding: 18px 16px 48px; }
+  a { color: var(--brand); }
+  .hero { color: #fff; border-radius: 26px; padding: 26px 22px 22px; position: relative; overflow: hidden;
+          background: linear-gradient(135deg, #040D3A 0%, #0A1F78 55%, #1437B8 100%);
+          box-shadow: 0 22px 40px -24px rgba(10, 31, 120, .8); }
+  .hero::after { content: ""; position: absolute; right: -90px; top: -110px; width: 280px; height: 280px; border-radius: 50%;
+                 background: radial-gradient(closest-side, rgba(47, 107, 255, .55), transparent); }
+  .brand { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1; }
+  .brand img { width: 56px; height: 56px; border-radius: 16px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, .6); }
+  .brand b { font-size: 24px; letter-spacing: -.02em; display: block; line-height: 1.1; }
+  .brand span { color: #A9C0FF; font-size: 14px; }
+  .hero h1 { font-size: 26px; line-height: 1.2; margin: 18px 0 6px; letter-spacing: -.02em; position: relative; z-index: 1; }
+  .hero h1 i { font-style: normal; color: #35CCFF; }
+  .hero p { margin: 0 0 18px; color: rgba(255, 255, 255, .8); position: relative; z-index: 1; }
+  .get { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 58px; border-radius: 16px;
+         background: #fff; color: var(--ink); font-weight: 700; font-size: 18px; text-decoration: none; position: relative; z-index: 1; }
+  .get svg { width: 24px; height: 24px; color: var(--brand); }
+  .meta { text-align: center; color: rgba(255, 255, 255, .7); font-size: 13px; margin-top: 10px; position: relative; z-index: 1; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 18px 18px 8px; margin-top: 16px;
+          box-shadow: 0 14px 30px -22px rgba(11, 20, 55, .35); }
+  .card h2 { font-size: 17px; margin: 0 0 10px; }
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 14px 42px; color: var(--ink2); }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: -1px; width: 28px; height: 28px; border-radius: 50%;
+                        background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 14px;
+                        display: grid; place-items: center; }
+  ol.steps b { color: var(--ink); }
+  .tap { display: inline-block; padding: 0 7px; border-radius: 6px; background: #EDF0F7; font-weight: 600; color: var(--ink); }
+  .note { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin: 0 0 14px; }
+  .web { display: flex; align-items: center; justify-content: center; min-height: 50px; border-radius: 14px; margin: 4px 0 12px;
+         background: var(--brand); color: #fff; font-weight: 700; text-decoration: none;
+         box-shadow: 0 10px 20px -12px rgba(43, 89, 243, .8); }
+  .small { font-size: 13.5px; color: var(--soft); }
+  ul.safe { padding-left: 0; list-style: none; margin: 0 0 10px; }
+  ul.safe li { padding-left: 26px; position: relative; margin-bottom: 6px; color: var(--ink2); }
+  ul.safe li::before { content: "\2713"; position: absolute; left: 4px; color: var(--ok); font-weight: 700; }
+  .staff { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .staff a { white-space: nowrap; font-weight: 600; }
+  footer { text-align: center; margin-top: 22px; font-size: 12.5px; color: var(--soft); }
+  footer code { font-size: 11px; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="brand"><img src="icon-192.png" alt=""><div><b>XeoGo</b><span>The college Xerox center's app</span></div></div>
+    <h1>Print from your phone.<br><i>Skip the queue.</i></h1>
+    <p>Send PDFs, Word files and photos, pay with UPI, and collect your prints at the counter.</p>
+    <a class="get" href="download/XeoGo.apk" download="XeoGo.apk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+      Download for Android</a>
+    <div class="meta">Version 3.4.0 · 7.4 MB · Android 8 or newer</div>
+  </section>
+
+  <section class="card">
+    <h2>Installing takes a minute</h2>
+    <p class="note">Android asks a few questions for every app that does not come from the Play Store. That is normal:
+      XeoGo is the Xerox center's own app.</p>
+    <ol class="steps">
+      <li>The download starts by itself (if not, tap <b>Download for Android</b>). If Chrome asks whether to keep
+        the file (<i>"File might be harmful"</i>), tap <span class="tap">Download anyway</span>.</li>
+      <li>When it has downloaded, tap <span class="tap">Open</span>. (Missed it? Chrome menu &#8942; &rarr; <b>Downloads</b> &rarr; XeoGo.apk.)</li>
+      <li>If your phone asks, allow Chrome to install apps: <span class="tap">Settings</span> &rarr;
+        switch on <b>Allow from this source</b> &rarr; go back.</li>
+      <li>Tap <span class="tap">Install</span>. If Play Protect says it does not know this app, tap
+        <span class="tap">More details</span> &rarr; <span class="tap">Install anyway</span>
+        (or <span class="tap">Scan app</span>, then <span class="tap">Install</span>).</li>
+      <li><b>Had XeoGo before?</b> If it says <i>"App not installed"</i>, uninstall the old XeoGo first (press and
+        hold its icon &rarr; Uninstall), then install again. Your orders are kept by the Xerox center.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Rather not install anything?</h2>
+    <p class="small" style="margin:0 0 10px">The website does everything the app does, right here in Chrome. iPhone users: use this.</p>
+    <a class="web" href="./">Use XeoGo in the browser</a>
+    <p class="small" style="margin:0 0 12px">Tip: in Chrome tap &#8942; &rarr; <b>Add to Home screen</b>, and it opens like an app.</p>
+  </section>
+
+  <section class="card">
+    <h2>What the app can do on your phone</h2>
+    <ul class="safe">
+      <li>Use the internet, to send your files to the Xerox center</li>
+      <li>See which UPI apps you have, to let you pay with one</li>
+      <li>Nothing else: no SMS, contacts, photos library, location, camera or microphone</li>
+      <li>No account needed, no ads; your files are deleted after printing (<a href="privacy.html">privacy</a>)</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="staff">
+      <div><h2 style="margin:0">College staff</h2><p class="small" style="margin:2px 0 10px">Free printing with your staff ID.</p></div>
+      <a href="download/XeoGo-Staff.apk" download="XeoGo-Staff.apk">XeoGo Staff app</a>
+    </div>
+  </section>
+
+  <footer>
+    XeoGo 3.4.0 · signed by XeoGo<br>
+    <code>certificate SHA-256 01:09:A8:E5:82:29:94:20:A7:1C:FE:C2:93:5C:80:E0:C9:69:B7:73:94:77:E0:F9:D5:4C:76:E2:A2:B0:D4:62</code>
+  </footer>
+</main>
+</body>
+</html>

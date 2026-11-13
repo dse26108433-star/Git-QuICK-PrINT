@@ -139,14 +139,12 @@ fun EditorScreen(vm: PrintViewModel, st: SessionState, d: Doc, fullScreen: Boole
         }
         // ---- bottom: this file's price
         if (fullScreen) {
-            Divider()
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically) {
+            BottomBar {
                 val p = if (n != null && n.error == null) session.price(d, n) else null
                 val problem = n != null && (n.error != null || d.serverError != null)
                 Column(Modifier.weight(1f)) {
                     Text(if (p == null || n == null) "–" else if (st.staffApp) plural(session.pages(n), "page", "pages") else rupees(p.amount),
-                        fontSize = 22.sp, fontWeight = FontWeight.Bold, color = CP.Ink, modifier = Modifier.testTag("editorPrice"))
+                        fontSize = 24.sp, fontWeight = FontWeight.Bold, color = CP.Ink, modifier = Modifier.testTag("editorPrice"))
                     Text(if (problem) "needs a change" else if (n != null) plural(n.plan.sheets * n.settings.copies, "sheet", "sheets") else "",
                         fontSize = 13.sp, color = if (problem) CP.Warn else CP.Muted)
                 }
@@ -214,8 +212,8 @@ private fun PageTile(vm: PrintViewModel, file: File, page: Int, on: Boolean, mod
     }
     Column(
         modifier.clip(RoundedCornerShape(10.dp))
-            .border(2.dp, if (on) CP.Ink else Color.Transparent, RoundedCornerShape(10.dp))
-            .background(if (on) CP.Sunk else Color.Transparent)
+            .border(2.dp, if (on) CP.Brand else Color.Transparent, RoundedCornerShape(10.dp))
+            .background(if (on) CP.BrandSoft else Color.Transparent)
             .clickable(onClick = onClick)
             .semantics { contentDescription = "Page $page"; selected = on }
             .padding(5.dp),
@@ -228,7 +226,7 @@ private fun PageTile(vm: PrintViewModel, file: File, page: Int, on: Boolean, mod
                     modifier = Modifier.fillMaxSize().alpha(if (on) 1f else 0.38f))
             }
             Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).clip(CircleShape)
-                .background(if (on) CP.Ink else Color.White).border(2.dp, if (on) CP.Ink else CP.Line2, CircleShape),
+                .background(if (on) CP.Brand else Color.White).border(2.dp, if (on) CP.Brand else CP.Line2, CircleShape),
                 contentAlignment = Alignment.Center) {
                 if (on) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
             }

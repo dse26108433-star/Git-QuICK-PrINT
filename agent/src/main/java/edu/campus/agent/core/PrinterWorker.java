@@ -44,6 +44,9 @@ public class PrinterWorker implements Runnable {
     public void start() {
         thread = new Thread(this, "printer-" + config.get().name());
         thread.setDaemon(true);
+        // Laying out a big, picture-heavy document keeps a processor busy for a while. When this PC is also the
+        // XeoGo server, students' phones come first: printing takes the processor time that is left over.
+        thread.setPriority(Thread.MIN_PRIORITY + 1);
         thread.start();
     }
 

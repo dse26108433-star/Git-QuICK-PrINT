@@ -13,21 +13,15 @@ import androidx.activity.viewModels
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.IntentCompat
 import androidx.core.graphics.drawable.toBitmap
-import com.razorpay.Checkout
-import com.razorpay.PaymentData
-import com.razorpay.PaymentResultWithDataListener
-import edu.campus.printapp.net.PaymentStart
 import edu.campus.printapp.flow.Step
 import edu.campus.printapp.ui.CampusPrintApp
 import edu.campus.printapp.ui.UpiApp
-import org.json.JSONObject
 
 /**
- * The only screen. Razorpay requires the Activity itself to receive the
- * payment result, so that part lives here; the order is in flow/OrderSession
- * and what you see in ui/.
+ * The only screen: picking and sharing files, and opening a UPI app to pay.
+ * The order is in flow/OrderSession and what you see in ui/.
  */
-class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
+class MainActivity : ComponentActivity() {
 
     private val vm: PrintViewModel by viewModels()
 
@@ -63,7 +57,6 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
                     picker.launch(arrayOf("application/pdf", "image/png", "image/jpeg",
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"))
                 },
-                onOpenCheckout = ::openCheckout,
                 upiApps = ::upiApps,
                 onOpenUpi = ::openUpi
             )
@@ -125,38 +118,5 @@ class MainActivity : ComponentActivity(), PaymentResultWithDataListener {
             Intent.ACTION_VIEW -> listOfNotNull(intent.data)
             else -> emptyList()
         }
-    }
-
-    private fun openCheckout(start: PaymentStart) {
-        val checkout = Checkout()
-        checkout.setKeyID(start.keyId)
-        val options = JSONObject().apply {
-            put("name", vm.session.state.value.shop?.centerName ?: "XeoGo")
-            put("description", start.description)
-            put("order_id", start.gatewayOrderId)     // created by OUR backend, never by the app
-            put("amount", start.amountPaise)
-            put("currency", start.currency)
-            put("theme", JSONObject().put("color", "#0E1A2B"))
-            put("retry", JSONObject().put("enabled", true).put("max_count", 4))
-        }
-        try {
-            checkout.open(this, options)
-        } catch (e: Exception) {
-            vm.session.onPaymentError("Could not open the payment screen: ${e.message}")
-        }
-    }
-
-    // ---- Razorpay calls these when its screen closes ----
-
-    override fun onPaymentSuccess(razorpayPaymentId: String?, data: PaymentData?) {
-        vm.session.onPaymentSuccess(data?.paymentId ?: razorpayPaymentId, data?.signature)
-    }
-
-    override fun onPaymentError(code: Int, response: String?, data: PaymentData?) {
-        val reason = runCatching { JSONObject(response ?: "").optJSONObject("error")?.optString("description") }.getOrNull()
-        vm.session.onPaymentError(
-            if (reason.isNullOrBlank()) "Payment was not completed. No money was taken for this attempt."
-            else "Payment failed: $reason. No money was taken for this attempt."
-        )
     }
 }

@@ -9,7 +9,7 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        mavenCentral()     // Razorpay's SDK is here
+        mavenCentral()
     }
 }
 rootProject.name = "CampusPrint"

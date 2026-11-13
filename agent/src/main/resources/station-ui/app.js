@@ -90,29 +90,97 @@ function setupStep(n) {
     $("ss" + i).className = i < n ? "done" : i === n ? "on" : "";
   }
 }
+/** "here": this PC is the XeoGo server (only offered when the Station came with the server programs). */
+function setupMode() {
+  const srv = (state.local && state.local.server) || {};
+  const picked = document.querySelector('input[name="suWhere"]:checked');
+  return srv.available && picked && picked.value === "here" ? "here" : "cloud";
+}
+function setupFrom() {
+  const srv = (state.local && state.local.server) || {};
+  const picked = document.querySelector('input[name="suFrom"]:checked');
+  return srv.fresh && picked ? picked.value : "empty";
+}
+function showSetupMode() {
+  const here = setupMode() === "here";
+  $("suHere").classList.toggle("hidden", !here);
+  $("suCloud").classList.toggle("hidden", here);
+  $("suConnect").textContent = here ? "Start the server" : "Connect";
+  $("suFromDb").classList.toggle("hidden", setupFrom() !== "cloud-database");
+  $("suFromBackup").classList.toggle("hidden", setupFrom() !== "cloud-backup");
+}
+document.querySelectorAll('input[name="suWhere"], input[name="suFrom"]').forEach(r => { r.onchange = showSetupMode; });
+
 function startSetup() {
   $("app").classList.add("hidden");
   $("setup").classList.remove("hidden");
-  $("suUrl").value = state.local.backendUrl || state.local.defaultBackendUrl || "";
+  const srv = state.local.server || {};
+  $("suWhere").classList.toggle("hidden", !srv.available);
+  // A database is already on this PC (set up before, then disconnected): it is used as it is.
+  $("suFromBox").classList.toggle("hidden", !srv.fresh);
+  const wasHere = /^http:\/\/127\.0\.0\.1[:/]/.test(state.local.backendUrl || "");
+  $("suUrl").value = wasHere ? (state.local.defaultBackendUrl || "") : (state.local.backendUrl || state.local.defaultBackendUrl || "");
   $("suName").value = state.local.pcName || "";
+  $("suHereName").value = state.local.pcName || "";
   $("suPassword").value = "";
+  $("suNewPassword").value = "";
   showError("suError", null);
+  $("suProgress").classList.add("hidden");
   setupStep(1);
-  ($("suUrl").value ? $("suPassword") : $("suUrl")).focus();
+  showSetupMode();
+  if (setupMode() === "here") $("suNewPassword").focus();
+  else ($("suUrl").value ? $("suPassword") : $("suUrl")).focus();
 }
-$("suConnect").onclick = () => busy($("suConnect"), "Connecting…", async () => {
+
+/** The server on this PC was asked to start: wait until it answers, saying what it is doing meanwhile. */
+async function waitForServer() {
+  const started = Date.now();
+  for (;;) {
+    const s = await local("GET", "state");
+    state.local = s;
+    const st = s.server.status;
+    if (st.ready) return;
+    $("suProgress").classList.remove("hidden");
+    $("suProgress").textContent = st.stage +
+      (Date.now() - started > 60000 ? " The first start can take a few minutes; later ones are quicker." : "");
+    if (Date.now() - started > 30 * 60000) {
+      throw new Error("The server did not start: " + st.stage + " Close XeoGo, restart this PC and try again.");
+    }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+}
+
+$("suConnect").onclick = () => busy($("suConnect"), setupMode() === "here" ? "Starting…" : "Connecting…", async () => {
   showError("suError", null);
   try {
-    state.local = await local("POST", "connect", {
-      backendUrl: $("suUrl").value, password: $("suPassword").value, pcName: $("suName").value
-    });
+    if (setupMode() === "here") {
+      const from = setupFrom();
+      $("suProgress").classList.remove("hidden");
+      $("suProgress").textContent = from === "cloud-database" ? "Copying the shop's data from the cloud database…"
+        : from === "cloud-backup" ? "Looking for the backup in the cloud…" : "Starting the server on this PC…";
+      state.local = await local("POST", "server/setup", {
+        password: $("suNewPassword").value, from,
+        dbAddress: $("suDbAddress").value, dbUser: $("suDbUser").value, dbPassword: $("suDbPassword").value,
+        cloudUrl: $("suCloudUrl").value, cloudKey: $("suCloudKey").value
+      });
+      $("suDbPassword").value = "";
+      await waitForServer();
+      $("suProgress").textContent = "Connecting this PC to its server…";
+      state.local = await local("POST", "connect", { local: true, pcName: $("suHereName").value });
+    } else {
+      state.local = await local("POST", "connect", {
+        backendUrl: $("suUrl").value, password: $("suPassword").value, pcName: $("suName").value
+      });
+    }
+    $("suProgress").classList.add("hidden");
     setupStep(2);
     await loadPrinterEditor("suPrinterList");
   } catch (e) {
+    $("suProgress").classList.add("hidden");
     showError("suError", e.message);
   }
 });
-["suUrl", "suPassword", "suName"].forEach(id => $(id).addEventListener("keydown", e => {
+["suUrl", "suPassword", "suName", "suNewPassword", "suHereName"].forEach(id => $(id).addEventListener("keydown", e => {
   if (e.key === "Enter") $("suConnect").click();
 }));
 $("suSavePrinters").onclick = () => busy($("suSavePrinters"), "Saving…", async () => {
@@ -124,6 +192,8 @@ $("suSavePrinters").onclick = () => busy($("suSavePrinters"), "Saving…", async
     $("suAutostartLine").textContent = state.local.autostart
       ? "XeoGo starts together with Windows and keeps printing when this window is closed."
       : "XeoGo keeps printing when this window is closed (the icon next to the clock stays).";
+    const srv = state.local.server || {};
+    $("suServerLine").classList.toggle("hidden", !(srv.enabled && !(srv.settings && srv.settings.hasTunnelToken)));
     setupStep(3);
   } catch (e) {
     showError("suPrintersError", e.message);
@@ -160,7 +230,14 @@ async function refreshLocal() {
   }
   const p = state.local.printing;
   const missing = p.printers.filter(x => !x.found).length;
+  const srv = state.local.server || {};
+  const st = srv.enabled ? srv.status : null;
   if (!state.local.configured) setPc("stop", "Not connected", "Finish the setup to start printing.");
+  else if (st && !st.ready) {
+    // this PC is the server, and the server is not up (yet): that comes first, printing follows by itself
+    const bad = st.database.state === "problem" || st.service.state === "problem";
+    setPc(bad ? "stop" : "work", bad ? "Server problem" : "Starting the server…", st.stage);
+  }
   else if (!p.running) setPc("stop", "Not printing", p.problem || "");
   else if (!p.connected) setPc("work", "Connecting…", p.problem || "Waiting for the XeoGo server.");
   else setPc(p.busy ? "work" : "ready", p.busy ? "Printing an order" : "Ready to print",
@@ -168,7 +245,162 @@ async function refreshLocal() {
   $("navPrinters").classList.toggle("hidden", missing === 0);
   if (state.view === "settings") fillPcInfo();
   renderWord(p.word);
+  renderServer();
 }
+
+/* ------------------------------------------------------------------ this PC is the XeoGo server */
+function lampOf(part) {
+  return part.state === "running" ? "ready" : part.state === "problem" ? "stop" : part.state === "off" ? "" : "work";
+}
+/** The lamps of the server card in Settings, and the banner on every page when students cannot reach this PC. */
+function renderServer() {
+  const srv = (state.local && state.local.server) || {};
+  const on = !!srv.enabled;
+  $("serverCard").classList.toggle("hidden", !on);
+  const banner = $("srvBanner");
+  if (!on) { banner.classList.add("hidden"); $("srvRepair").classList.add("hidden"); return; }
+  const st = srv.status, set = srv.settings;
+
+  $("srvDbLamp").className = "lamp " + lampOf(st.database);
+  $("srvDb").textContent = st.database.state === "running"
+    ? "Running." + (st.freeGb != null ? " " + st.freeGb + " GB free on the disk." : "")
+    : (st.database.detail || "Not running");
+  $("srvSvcLamp").className = "lamp " + lampOf(st.service);
+  $("srvSvc").textContent = st.service.state === "running" ? "Running on this PC." : (st.service.detail || "Not running");
+
+  let lamp, text, trouble = "";
+  if (!set.hasTunnelToken) {
+    lamp = ""; text = "Not set up yet: only this PC can reach the server.";
+    trouble = "Only this PC can reach the server so far. Give it its internet address (Settings → The server on this PC), so students' phones can send files.";
+  } else if (st.tunnel.state !== "running") {
+    lamp = lampOf(st.tunnel); text = st.tunnel.detail;
+    if (st.tunnel.state === "problem") trouble = "Students cannot reach this PC right now. " + st.tunnel.detail;
+  } else if (!set.publicUrl) {
+    lamp = "work"; text = "Connected to Cloudflare. Type the address students use, so it can be checked from outside.";
+  } else if (st.public.ok === true) {
+    lamp = "ready"; text = set.publicUrl + " · " + st.public.detail;
+  } else if (st.public.ok === false) {
+    lamp = "stop"; text = st.public.detail;
+    trouble = "Students cannot reach this PC right now. " + st.public.detail;
+  } else {
+    lamp = "work"; text = "Checking " + set.publicUrl + "…";
+  }
+  $("srvNetLamp").className = "lamp " + lamp;
+  $("srvNet").textContent = text;
+
+  const bk = st.backup;
+  $("srvBakLamp").className = "lamp " + (bk.problem ? "stop" : !bk.lastAt ? "work" : (bk.cloud && !bk.cloudProblem && bk.cloudAt) ? "ready" : bk.cloudProblem ? "stop" : "work");
+  $("srvBak").textContent = bk.detail;
+
+  // the one-line state of each part that is set once (shown on its folded line)
+  const parts = serverParts(set, lamp);
+  for (const [id, p] of Object.entries(parts)) {
+    $(id + "State").textContent = p.text;
+    $(id + "State").classList.toggle("todo", !p.done);
+    $(id + "Lamp").className = "lamp " + p.lamp;
+  }
+
+  banner.textContent = st.ready ? trouble : "";
+  banner.classList.toggle("hidden", !(st.ready && trouble));
+  $("srvRepairText").textContent = st.repaired || "";
+  $("srvRepair").classList.toggle("hidden", !st.repaired);
+}
+/** How the parts of the server card that are set once stand: done or not, in a few words. */
+function serverParts(set, netLamp) {
+  let host = "";
+  try { host = set.cloudUrl ? new URL(set.cloudUrl).host : ""; } catch (e) { host = set.cloudUrl || ""; }
+  const pay = set.paymentMode === "upi" ? { done: true, lamp: "ready", text: "XeoGo Pay (UPI)" + (set.upiId ? " · " + set.upiId : "") }
+    : set.paymentMode === "razorpay" ? { done: true, lamp: "ready", text: "Razorpay" }
+    : set.paymentMode === "demo" ? { done: false, lamp: "work", text: "Test only: orders print WITHOUT payment" }
+    : { done: false, lamp: "stop", text: "Off: nobody can pay yet" };
+  return {
+    foldNet: set.hasTunnelToken
+      ? { done: true, lamp: netLamp, text: set.publicUrl || "Connected; type the address students use" }
+      : { done: false, lamp: "", text: "Not set up yet: only this PC can reach the server" },
+    foldPay: pay,
+    foldCloud: set.cloudUrl
+      ? { done: true, lamp: "ready", text: "On · " + host }
+      : { done: false, lamp: "work", text: "Not set: backups stay on this PC only" }
+  };
+}
+/** When Settings opens: the parts still to be set are open, the ones that are done are folded away. */
+function foldServerParts() {
+  const srv = (state.local && state.local.server) || {};
+  if (!srv.enabled) return;
+  const parts = serverParts(srv.settings, "");
+  for (const [id, p] of Object.entries(parts)) $(id).open = !p.done;
+}
+/** The boxes of the server card: filled when Settings opens (not while someone types in them). */
+function fillServerForm() {
+  const srv = (state.local && state.local.server) || {};
+  if (!srv.enabled) return;
+  const set = srv.settings, st = srv.status;
+  $("srvLocalTarget").textContent = "http://localhost:" + st.httpPort;
+  $("srvPublicUrl").value = set.publicUrl || "";
+  $("srvTunnelToken").value = "";
+  $("srvTunnelHint").textContent = set.hasTunnelToken ? "A token is saved. Paste a new one only to replace it." : "";
+  $("srvPayMode").value = set.paymentMode || "";
+  $("srvUpiId").value = set.upiId || "";
+  $("srvUpiName").value = set.upiName || "";
+  $("srvUpiToken").textContent = set.upiAlertToken || "";
+  $("srvVerifierUrl").textContent = set.publicUrl || "(set the internet address first)";
+  $("srvRzpId").value = set.razorpayKeyId || "";
+  $("srvRzpSecret").value = "";
+  $("srvRzpSecret").placeholder = set.hasRazorpaySecret ? "Saved. Type a new one only to replace it." : "";
+  $("srvCloudUrl").value = set.cloudUrl || "";
+  $("srvCloudKey").value = "";
+  $("srvCloudKey").placeholder = set.hasCloudKey ? "Saved. Type a new one only to replace it." : "";
+  showPayFields();
+  ["srvNetSaved", "srvPaySaved", "srvCloudSaved"].forEach(id => { $(id).textContent = ""; });
+}
+function showPayFields() {
+  $("srvPayUpi").classList.toggle("hidden", $("srvPayMode").value !== "upi");
+  $("srvPayRazorpay").classList.toggle("hidden", $("srvPayMode").value !== "razorpay");
+}
+$("srvPayMode").onchange = showPayFields;
+async function saveServer(button, said, body, done) {
+  await busy(button, "Saving…", async () => {
+    try {
+      state.local = await local("POST", "server/settings", body);
+      state.summary = null;
+      $(said).textContent = done;
+      fillServerForm();
+      $(said).textContent = done;
+      renderServer();
+    } catch (e) { $(said).textContent = ""; toast(e.message, "stop"); }
+  });
+}
+$("srvSaveNet").onclick = () => saveServer($("srvSaveNet"), "srvNetSaved",
+  { publicUrl: $("srvPublicUrl").value, tunnelToken: $("srvTunnelToken").value },
+  "Saved. Connecting takes a few seconds.");
+$("srvSavePay").onclick = () => {
+  if ($("srvPayMode").value === "demo" &&
+      !confirm("Test mode prints orders WITHOUT payment. Use it only for trying things out. Switch it on?")) return;
+  saveServer($("srvSavePay"), "srvPaySaved", {
+    paymentMode: $("srvPayMode").value, upiId: $("srvUpiId").value, upiName: $("srvUpiName").value,
+    razorpayKeyId: $("srvRzpId").value, razorpayKeySecret: $("srvRzpSecret").value
+  }, "Saved. The print service restarts: about half a minute.");
+};
+$("srvSaveCloud").onclick = () => saveServer($("srvSaveCloud"), "srvCloudSaved",
+  { cloudUrl: $("srvCloudUrl").value, cloudKey: $("srvCloudKey").value },
+  $("srvCloudUrl").value.trim() ? "Saved. The first copy is being sent now." : "Saved: backups stay on this PC only.");
+$("srvBackupNow").onclick = () => busy($("srvBackupNow"), "Backing up…", async () => {
+  try {
+    const r = await local("POST", "server/backup");
+    state.local = r;
+    renderServer();
+    toast(r.message || "Backup made", "ok");
+  } catch (e) { toast(e.message, "stop"); }
+});
+$("srvOpenBackups").onclick = () => local("POST", "server/open-folder", { which: "backups" }).catch(e => toast(e.message, "stop"));
+$("srvCopyToken").onclick = async () => {
+  try { await navigator.clipboard.writeText($("srvUpiToken").textContent); toast("Token copied", "ok"); }
+  catch (e) { toast("Select the token and press Ctrl+C.", "stop"); }
+};
+$("srvRepairOk").onclick = async () => {
+  $("srvRepair").classList.add("hidden");
+  await local("POST", "server/seen-repair").catch(() => {});
+};
 
 /* Word files: can this PC turn them into pages (its Microsoft Word passed the test), or why not. */
 function renderWord(w) {
@@ -917,6 +1149,8 @@ document.querySelectorAll("[data-scan]").forEach(b => {
 /* ------------------------------------------------------------------ settings */
 async function fillSettings() {
   fillPcInfo();
+  fillServerForm();
+  foldServerParts();
   try {
     const s = state.summary || await server("GET", "summary");
     state.summary = s;
@@ -933,7 +1167,13 @@ function fillPcInfo() {
   const l = state.local;
   if (!l) return;
   $("setPcName").textContent = l.pcName;
-  $("setServer").textContent = l.backendUrl || "–";
+  const here = l.server && l.server.enabled;
+  $("setServer").textContent = here ? "This PC" + (l.server.settings.publicUrl ? " · " + l.server.settings.publicUrl : "")
+    : (l.backendUrl || "–");
+  $("passwordHelp").textContent = here ? "Type a new password to change it (8 or more characters)."
+    : "Changed the password on the server? Type the new one here.";
+  // a Station that is connected to a server somewhere else, and came with the server programs
+  $("becomeServerRow").classList.toggle("hidden", !(l.server && l.server.available && !l.server.enabled));
   $("setPrinting").textContent = !l.printing.running ? "Stopped" : l.printing.connected ? "Running" : "Connecting…";
   $("autostartToggle").checked = l.autostart;
   $("autostartToggle").disabled = !l.autostartSupported;
@@ -1032,6 +1272,14 @@ $("savePassword").onclick = () => busy($("savePassword"), null, async () => {
   } catch (e) { toast(e.message, "stop"); }
 });
 $("openLogs").onclick = () => local("POST", "open-logs").catch(e => toast(e.message, "stop"));
+// From a server somewhere else to "this PC is the server": the setup again, WITHOUT disconnecting first, so the
+// server (with the shop's data brought over) still knows this PC and its printers.
+$("becomeServer").onclick = () => {
+  if (!confirm("Make this PC the XeoGo server?\n\nDo this after closing time, when no paid order is waiting. " +
+      "Have the cloud database's DB_URL, DB_USER and DB_PASSWORD at hand if you want to bring the shop's data over.")) return;
+  document.querySelector('input[name="suWhere"][value="here"]').checked = true;
+  startSetup();
+};
 $("disconnect").onclick = () => busy($("disconnect"), null, async () => {
   if (!confirm("Disconnect this PC? It stops printing, and its printers are removed from XeoGo.")) return;
   try {

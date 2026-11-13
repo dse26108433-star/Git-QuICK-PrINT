@@ -42,6 +42,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(body("VALIDATION_FAILED", message));
     }
 
+    /**
+     * An address with something that is not an order or file number in it
+     * (a mistyped link, a scanner trying its luck): the same "not found" as for
+     * a number that does not exist, and nothing in the error log.
+     */
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    ResponseEntity<Map<String, Object>> handle(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body("NOT_FOUND", "That was not found."));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<Map<String, Object>> handle(HttpMessageNotReadableException e) {
         return ResponseEntity.badRequest().body(body("BAD_REQUEST", "The request body could not be read."));

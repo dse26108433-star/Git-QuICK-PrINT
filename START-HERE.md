@@ -29,6 +29,7 @@ If something goes wrong, look in `docs/troubleshooting.md`.
 | ★★ Version 4: many files per order, every print option, printer-aware | ✅ Done and tested · ✅ live Supabase upgraded · ✅ backend live on Render · ⏳ website on Netlify · 🖨️ install Station 4.1.0 (see ★★ below) |
 | ★★★ XeoGo Pay: your own UPI payment gateway, automatic | ✅ Done and tested (server, website, app 3.2.0, Station 4.2.0, Verifier 1.0.0) · ⏳ your UPI ID + token on the server · 📱 Verifier on the shop phone (see ★★★ below) |
 | ★★★★ Version 5 — **XeoGo**: no pickup code (show your files), free staff printing, updates with one push | ✅ Done and tested (server, both websites, both apps, Station 4.3.1, Verifier 1.1.0) · 🖨️ install Station 4.3.1 · 📱 install the new apps · make the staff IDs (see ★★★★ below) |
+| ★★★★★ Station 5.0.0: **the Xerox PC is the server** (own database, files in pieces, uploads that mend themselves) | ✅ Done and tested (server, Station, both websites, apps 3.4.0), measured with 400 students · ⏳ your domain + Cloudflare tunnel · 🖨️ install at the Xerox center (see ★★★★★ below) |
 
 ---
 
@@ -577,14 +578,14 @@ says whether this PC can do it ("Ready: Microsoft Word 2016") or why not. It nee
 PC and works while the Station is on; otherwise, and for old `.doc` files, students are told to save as PDF.
 Details: `docs/how-it-works.md` → *Word files*.
 
-**Hundreds of customers at once.** Tried with 500 customers arriving within 40 seconds: every order printed,
-no wrong answer. What makes that hold: each phone is told by the server how soon to ask again (every few
-seconds while it prints or the student stands at the counter, seldom while nothing can change, and less often
-for everybody when the server is busy); big uploads are checked one after the other, small ones together, so
-memory cannot run out; a busy server makes a file wait its turn instead of failing; two printers finishing files
-of one order at the same instant no longer trip over each other in the database. The limit of new orders from
-one network address is 1000 a minute (a whole campus shares one address). What the free plans can carry, and
-when to pay for more: `docs/troubleshooting.md` → *Many customers at once*.
+**Hundreds of customers at once.** *Corrected in November 2026.* This paragraph used to say "tried with 500
+customers arriving within 40 seconds: every order printed". That run was on a test computer with a test
+database, not on the live service, and the live service (Render's free plan: a tenth of a processor) did hang
+when many students used it. The claim should never have read like a promise about the live service. What
+holds now, and what was really measured (400 students, real files up to 50 MB, with the numbers and the
+conditions), is in the ★★★★★ section below and in `docs/own-server.md`.
+What the server does to stay calm in a rush is unchanged: each phone is told how soon to ask again, big uploads
+are checked one after the other, a busy server makes a file wait its turn instead of failing.
 
 **"Waking up the print service".** On Render's free plan the server sleeps after about 15 quiet minutes and
 needs a minute or two for the first visitor. The website and the apps now say exactly that, calmly, keep asking
@@ -602,7 +603,7 @@ Content-Security-Policy; pages typed and then left at once were lost → kept.
 
 - [x] Server: hand-over without a code, first-sheet pictures, ready-time estimate, staff IDs and the monthly
       limit inside the database, database self-update, Word files, the asking pace · 126 automatic tests
-      against a real PostgreSQL, and a run with 500 customers at once
+      against a real PostgreSQL (the "run with 500 customers" was on a test computer: see the correction above)
 - [x] Student website and staff website (`staff.html`): driven in Edge on phone and laptop sizes
 - [x] Android: XeoGo 3.3.0 (students, with the opening and the animated uploads) and XeoGo Staff 3.3.0 from the
       same code · XeoGo Pay Verifier 1.1.0
@@ -619,6 +620,73 @@ Content-Security-Policy; pages typed and then left at once were lost → kept.
 - [ ] 5. 📱 Shop phone, only with XeoGo Pay: `XeoGoPay-Verifier-1.1.0.apk` over the old one.
 - [ ] 6. One test order from a phone: pay → see the file and the times → **I'm at the counter** → **Handed
       over** → **Collected**. One staff order: sign in → **Print now · free** → the pages left go down.
+
+---
+
+## ★★★★★ Station 5.0.0 — the Xerox center's PC is the server  (new)
+
+**What was wrong.** With many students at once the app hung; an upload that broke off (the phone lost its
+connection) left the app unable to send new files; the Station's screens were slow. Measured on the live
+service on 11 November 2026: after a quiet time it gave no answer for more than three minutes, and every
+small question took about half a second, because the server was Render's free plan (a tenth of a processor,
+512 MB, in Singapore) with the database in Mumbai. At 100 files a day the free Supabase file traffic (5 GB a
+month) would also have run out within about a week.
+
+**What is different now.**
+
+- **The Xerox PC can be the server.** Station 5.0.0 brings the print service, its database and the tunnel to
+  the internet with it. Setup: one choice ("This PC is the XeoGo server") and a counter password. From then on
+  they start with the Station (which starts with Windows), are restarted if one stops, and survive the PC being
+  switched off every evening. Nobody starts a server or a database by hand, ever. Everything about it:
+  **[`docs/own-server.md`](docs/own-server.md)**.
+- **Files travel once, in pieces.** Phone → Xerox PC, 2 MB at a time. A connection that drops loses one piece;
+  the upload carries on from there by itself.
+- **Uploads mend themselves** (website and apps, also with a cloud server): no call waits for ever any more; a
+  file that stopped for lack of a connection is sent again by itself when the connection is back; a file that
+  did arrive is never "already uploaded" for ever; an order that ran out while the phone was away is replaced by
+  a new one with the same files; choosing the same file again means "try again"; new files are never held up by
+  one that is stuck.
+- **"Closed right now".** When the Xerox PC is off, the website and the apps say so calmly and carry on by
+  themselves when it is back (put `openHours` in `web/config.js` to show the hours).
+- **Backups.** The database is copied every half hour, on the PC and into your Supabase project. A damaged
+  database is replaced by the latest backup by itself (the damaged one is kept aside); a new PC is set up from
+  the cloud copy.
+- **Moving without reinstalling apps.** The old cloud server can say "XeoGo has moved to …" (`MOVED_TO`): the
+  website and the apps (3.4.0) go there and remember it.
+
+**Measured** (a 2016 laptop with an i5 and 8 GB, running server, database, Station and the test itself):
+400 students within four minutes, 584 real files (1.98 GB, eight just under 50 MB): all 400 orders paid within
+4 minutes 25 seconds, no error, all 400 printed. A power cut in the rush, an update in the middle of the queue,
+a damaged database, a replaced PC and a lost password were all tried on purpose: nothing paid was lost. The
+numbers, and what could not be tested from a laptop, are in `docs/own-server.md` → *What was measured*.
+
+- [x] Server: files on its own disk in pieces (8 tests), an ordinary PostgreSQL set up by itself, "moved to" ·
+      135 automatic tests
+- [x] Station 5.0.0: starts and watches database, print service and tunnel; backups, cloud copy, restore, repair;
+      setup and settings screens; keeps Windows awake while the server runs · 38 automatic tests, and installed
+      on this laptop: first start 37 s, later starts 22–34 s, update in place, power cut, restore
+- [x] Websites: uploads in pieces and self-mending, driven in Microsoft Edge with the network cut on purpose
+- [x] Android: XeoGo 3.4.0 and XeoGo Staff 3.4.0 · 77 automatic tests (13 for "the connection was lost") · a new,
+      cleaner look (the logo's blue for every button, one dark panel with "Add files to print", softer cards),
+      driven on an Android emulator through a whole order · signed with XeoGo's own key instead of a development
+      key · no card payment library any more (UPI only; cards on the website), so the apps ask for internet
+      access and nothing else (see `docs/installing-the-app.md`)
+- [x] Station: the same look; the server card folds away the parts that are already set
+- [ ] 1. A domain name and a free Cloudflare account; make the tunnel (`docs/own-server.md`, step 3).
+- [ ] 2. 🖨️ Xerox PC, after closing time: Windows active hours 9–19; run `XeoGoStation-Setup-5.0.0.exe`;
+      **Settings → This PC → Make this PC the XeoGo server** (bring the data over from the cloud database);
+      paste the tunnel token and the address; set how students pay; add the cloud copy.
+- [ ] 3. **Test from a phone on mobile data** (not the center's Wi-Fi): a PDF and a photo, pay, print, collect.
+      This is the one path that could not be tested from here: the college's network must let the tunnel out.
+- [ ] 4. Website: `apiBase` (and `openHours`) in `web/config.js`, publish on Netlify.
+- [ ] 5. Old cloud server (Render): after pushing this version, add `MOVED_TO` = the new address.
+- [ ] 6. 📱 Apps by QR code: publish the `web` folder (it carries `download/XeoGo.apk` and `XeoGo-Staff.apk`),
+      print the poster for `https://gitprint.netlify.app/app` (`docs/installing-the-app.md`). Students with the
+      old app **uninstall it once first** (3.4.0 has a new signing key; orders are not lost). Shop phone: new
+      server address and token in XeoGo Pay Verifier (1.1.0, unchanged).
+- [ ] 6b. Ask Google's Play Protect team to review the app (`docs/installing-the-app.md`, "Asking Google to
+      review the app"), and copy `D:\Downloads\XeoGo\signing-key-KEEP-SAFE` to a pen drive today.
+- [ ] 7. Switch the PC off and on once: half a minute after signing in it says **Ready to print** again.
 
 ---
 

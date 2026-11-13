@@ -7,7 +7,7 @@
  * pictures of its files, in a dead spot at the counter). It never touches the
  * print service (orders, payments), config.js, or any other website.
  */
-const CACHE = "campusprint-v7";
+const CACHE = "campusprint-v9";
 const SHELL = ["./", "index.html", "staff.html", "css/app.css", "js/print-core.js", "js/upi-pay.js", "js/app.js", "logo.png",
                "favicon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "staff.webmanifest"];
 
@@ -25,8 +25,9 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.endsWith("/config.js")) {
-    return;                                   // the browser handles it as usual
+  if (e.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.endsWith("/config.js")
+      || url.pathname.endsWith(".apk")) {
+    return;                                   // the browser handles it as usual (an app download is never kept here)
   }
   e.respondWith(
     fetch(e.request)

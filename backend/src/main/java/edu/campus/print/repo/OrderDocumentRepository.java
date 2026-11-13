@@ -31,6 +31,11 @@ public interface OrderDocumentRepository extends JpaRepository<OrderDocument, UU
 
     long countByOrderId(UUID orderId);
 
+    /** Documents of an order whose file is still kept (waiting to be printed, or kept for "Print again"). */
+    @Query(value = "select count(*) from order_documents where order_id = :orderId and not file_deleted",
+            nativeQuery = true)
+    long countFilesKept(@Param("orderId") UUID orderId);
+
     @Query(value = "select coalesce(max(position), 0) from order_documents where order_id = :orderId",
             nativeQuery = true)
     int maxPosition(@Param("orderId") UUID orderId);

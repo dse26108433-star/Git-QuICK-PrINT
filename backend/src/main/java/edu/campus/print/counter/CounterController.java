@@ -23,7 +23,7 @@ import edu.campus.print.repo.PrinterRepository;
 import edu.campus.print.repo.ShopSettingsRepository;
 import edu.campus.print.security.CounterSessions;
 import edu.campus.print.staff.StaffService;
-import edu.campus.print.storage.SupabaseStorage;
+import edu.campus.print.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
@@ -61,7 +61,7 @@ public class CounterController {
     private final PrinterRepository printers;
     private final AgentRepository agents;
     private final ShopSettingsRepository settings;
-    private final SupabaseStorage storage;
+    private final FileStorage storage;
     private final PaymentGateway gateway;
     private final UpiLedger upi;
     private final AgentProperties agentProps;
@@ -71,7 +71,7 @@ public class CounterController {
     private final JdbcTemplate jdbc;
 
     public CounterController(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
-                             AgentRepository agents, ShopSettingsRepository settings, SupabaseStorage storage,
+                             AgentRepository agents, ShopSettingsRepository settings, FileStorage storage,
                              PaymentGateway gateway, UpiLedger upi, AgentProperties agentProps,
                              PreviewStore previews, CounterSessions sessions, StaffService staff, JdbcTemplate jdbc) {
         this.orders = orders;

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.campus.print.common.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -27,9 +28,14 @@ import java.util.regex.Pattern;
  * path, and the Xerox PC holding an order gets a five-minute download URL for
  * that one object. Documents are never public. The backend reads each file
  * once (probe) to check it and count its pages for the price.
+ *
+ * Used when STORAGE_MODE is "supabase" (or not set): a server in the cloud.
+ * A server on the Xerox center's own PC keeps the files on its disk instead
+ * (LocalFileStorage).
  */
 @Component
-public class SupabaseStorage {
+@ConditionalOnProperty(name = "campus.storage.mode", havingValue = "supabase", matchIfMissing = true)
+public class SupabaseStorage implements FileStorage {
 
     private static final Logger log = LoggerFactory.getLogger(SupabaseStorage.class);
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -43,17 +49,11 @@ public class SupabaseStorage {
 
     public SupabaseStorage(SupabaseProperties props) {
         this.props = props;
-        this.base = props.url().trim().replaceAll("/+$", "") + "/storage/v1";
-    }
-
-    public record SignedUpload(String url, String token, String path) {
-    }
-
-    /** What the server learned by reading the start of an uploaded object. */
-    public record Probe(long totalSize, byte[] prefix) {
-        public boolean isComplete() {
-            return prefix.length >= totalSize;
+        if (props.url() == null || props.url().isBlank()) {
+            throw new IllegalStateException("SUPABASE_URL is not set. Set SUPABASE_URL and SUPABASE_SERVICE_KEY, "
+                    + "or keep the files on this computer with STORAGE_MODE=local.");
         }
+        this.base = props.url().trim().replaceAll("/+$", "") + "/storage/v1";
     }
 
     /**
@@ -61,6 +61,7 @@ public class SupabaseStorage {
      * phone PUTs the file straight to storage with it. "Upsert" lets a failed
      * or cancelled upload be tried again on the same path.
      */
+    @Override
     public SignedUpload createSignedUpload(String objectPath) {
         JsonNode body = postJson(base + "/object/upload/sign/" + props.bucket() + "/" + objectPath, "{}",
                 "Could not prepare the upload", "x-upsert", "true");
@@ -84,6 +85,7 @@ public class SupabaseStorage {
      * A short-lived read URL: for the Xerox PC holding the document, or for
      * the student's own device (to show a draft again after a page reload).
      */
+    @Override
     public String createSignedDownload(String objectPath) {
         String payload = "{\"expiresIn\":" + props.downloadUrlTtlSeconds() + "}";
         JsonNode body = postJson(base + "/object/sign/" + props.bucket() + "/" + objectPath, payload,
@@ -102,6 +104,7 @@ public class SupabaseStorage {
      * arrived). Bounded, so a hostile upload cannot make the server allocate a
      * large buffer.
      */
+    @Override
     public Optional<Probe> probe(String objectPath, int maxBytes) {
         HttpResponse<byte[]> res;
         try {
@@ -151,6 +154,7 @@ public class SupabaseStorage {
     }
 
     /** Called when a job finishes or is abandoned, so documents do not accumulate. */
+    @Override
     public void delete(String objectPath) {
         try {
             HttpRequest req = authorised(HttpRequest.newBuilder(

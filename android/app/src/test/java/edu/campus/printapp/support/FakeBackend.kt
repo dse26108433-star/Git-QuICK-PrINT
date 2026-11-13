@@ -67,6 +67,21 @@ class FakeBackend : Dispatcher() {
     /** XeoGo Pay: the Xerox center's Verifier phone is on, so payments confirm by themselves */
     var autoConfirm = true
     var uploadDelayMs = 0L
+    /** > 0: a server that keeps the files on its own disk: files are sent in pieces of this many bytes */
+    @Volatile var pieceBytes = 0
+    /** the connection drops while this many of the next pieces are being sent (what arrived of them is lost) */
+    @Volatile var dropPieces = 0
+    /** the server checks this many of the next files, but its answer never reaches the phone */
+    @Volatile var loseCheckAnswers = 0
+    /** ...and with that lost answer the phone's connection is gone altogether (until a test sets down = false) */
+    @Volatile var downAfterCheck = false
+    /** the Xerox center's own computer is switched off: its address answers "nothing behind me" (Cloudflare's 530) */
+    @Volatile var closed = false
+    /** this is the OLD print service: it has moved to this address (and takes no new orders itself) */
+    @Volatile var movedTo: String? = null
+    /** how many pieces arrived in all, and how many bytes (so a test can see nothing was sent twice) */
+    val piecesReceived = java.util.concurrent.atomic.AtomicInteger()
+    val bytesReceived = java.util.concurrent.atomic.AtomicLong()
     /** file name -> why the server refuses its settings on review */
     val refuse = mutableMapOf<String, String>()
     /** the server tidies pages differently from what was sent (should never happen; proves the app keeps the server's answer) */
@@ -121,7 +136,7 @@ class FakeBackend : Dispatcher() {
     fun shop() = ShopView("Main Xerox Center", 200, 1000, "INR", 50L shl 20, 300, 2000, 50, maxDocuments, paymentMode,
         bwAvailable = true, colorAvailable = true, bwOnline = true, colorOnline = true, ordersWaiting = 0,
         printing = Printing(printers, papers, mapOf("STAPLE_TOP_LEFT" to "Staple: top left"), emptyMap(), rules, PrintSettings()),
-        wordFiles = word)
+        wordFiles = word, movedTo = movedTo)
 
     /** The Xerox PC finished a Word file: it is a PDF of this many pages now. */
     fun wordReady(docId: String, pages: Int) = synchronized(this) {
@@ -150,6 +165,7 @@ class FakeBackend : Dispatcher() {
         var source: String? = null            // "DOCX": a Word file that was turned into a PDF
         var status = "UPLOADING"
         var bytes: ByteArray? = null
+        var partial: ByteArray? = null         // what has arrived of a file being sent in pieces
         var pageCount: Int? = null
         var image: ImageInfo? = null
         var settings: PrintSettings? = null
@@ -186,12 +202,13 @@ class FakeBackend : Dispatcher() {
         val p = path.split('/').filter { it.isNotEmpty() }
         try {
             when {
+                closed -> MockResponse().setResponseCode(530).setBody("error code: 1033")
                 request.method == "GET" && path == "/api/v1/shop" && waking > 0 -> {
                     waking--
                     MockResponse().setResponseCode(503).setBody("Service Unavailable")
                 }
                 request.method == "GET" && path == "/api/v1/shop" -> json(ShopView.serializer(), shop())
-                request.method == "PUT" && p[0] == "upload" -> upload(p[1], request)
+                (request.method == "PUT" || request.method == "GET") && p[0] == "upload" -> upload(p[1], request)
                 request.method == "GET" && p[0] == "files" -> MockResponse().setBody(okio.Buffer().write(doc(p[1]).bytes!!))
                 request.method == "POST" && path == "/api/v1/staff/login" -> {
                     val req = PrintApi.JSON.decodeFromString(StaffLoginRequest.serializer(), request.body.readUtf8())
@@ -218,6 +235,7 @@ class FakeBackend : Dispatcher() {
                         })
                 }
                 request.method == "POST" && path == "/api/v1/orders" -> {
+                    if (movedTo != null) refuse(410, "MOVED", "XeoGo has moved to a new address. Update the app.")
                     val o = Order(UUID.randomUUID().toString(), "key-" + UUID.randomUUID(), "K7M4X")
                     o.staff = staffOf(request)
                     orders[o.id] = o
@@ -258,7 +276,7 @@ class FakeBackend : Dispatcher() {
                 view(o)
             }
             m == "POST" && rest == listOf("documents") -> {
-                if (o.status != "AWAITING_UPLOAD") refuse(409, "BAD_STATE", "This order can no longer be changed.")
+                if (o.status != "AWAITING_UPLOAD") refuse(409, "BAD_STATE", "This order can no longer be changed. Start a new one.")
                 if (o.docs.size >= maxDocuments) refuse(400, "TOO_MANY_DOCUMENTS", "One order can have up to $maxDocuments files.")
                 val req = PrintApi.JSON.decodeFromString(AddDocumentRequest.serializer(), request.body.readUtf8())
                 if (req.fileType == "DOCX" && !word) refuse(409, "WORD_NOT_AVAILABLE", WORD_OFF)
@@ -266,9 +284,24 @@ class FakeBackend : Dispatcher() {
                 o.docs += d
                 ticket(d)
             }
-            m == "POST" && rest.size == 3 && rest[2] == "upload-url" -> ticket(o.docs.first { it.id == rest[1] })
+            m == "POST" && rest.size == 3 && rest[2] == "upload-url" -> {
+                val d = o.docs.firstOrNull { it.id == rest[1] } ?: refuse(404, "NOT_FOUND", "That file was not found.")
+                if (d.status != "UPLOADING") {
+                    // as the real server: "already uploaded", with the file as it stands
+                    throw Refused(409, buildJsonObject {
+                        put("error", "ALREADY_UPLOADED")
+                        put("message", "This file is already uploaded.")
+                        put("document", PrintApi.JSON.encodeToJsonElement(DocumentView.serializer(), dv(d)))
+                    }.toString())
+                }
+                if (o.status != "AWAITING_UPLOAD") refuse(409, "BAD_STATE", "This order can no longer be changed. Start a new one.")
+                ticket(d)
+            }
             m == "POST" && rest.size == 3 && rest[2] == "uploaded" -> {
-                val d = o.docs.first { it.id == rest[1] }
+                val d = o.docs.firstOrNull { it.id == rest[1] } ?: refuse(404, "NOT_FOUND", "That file was not found.")
+                if (d.status != "UPLOADING") return json(DocumentView.serializer(), dv(d))        // asked again: harmless
+                if (o.status != "AWAITING_UPLOAD") refuse(409, "BAD_STATE", "This order can no longer be changed. Start a new one.")
+                if (d.partial != null) refuse(400, "UPLOAD_MISSING", "The file did not arrive. Check your internet and try again.")
                 val file = File.createTempFile("fake", ".bin").apply { writeBytes(d.bytes ?: refuse(409, "NOT_UPLOADED", "The file has not arrived yet.")) }
                 when (FileTypes.detect(file)) {
                     "PDF" -> { d.status = "READY"; d.pageCount = Regex("/Type /Page\\b(?!s)").findAll(file.readText(Charsets.ISO_8859_1)).count() }
@@ -290,6 +323,12 @@ class FakeBackend : Dispatcher() {
                         }
                     }
                     else -> { d.status = "REJECTED"; d.problem = "This is not a PDF, JPG or PNG file." }
+                }
+                if (loseCheckAnswers > 0) {
+                    loseCheckAnswers--
+                    if (downAfterCheck) { downAfterCheck = false; down = true }
+                    // checked, but the phone never hears of it (it walked out of its signal)
+                    return MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST)
                 }
                 json(DocumentView.serializer(), dv(d))
             }
@@ -358,9 +397,53 @@ class FakeBackend : Dispatcher() {
     }
 
     private fun upload(docId: String, request: RecordedRequest): MockResponse {
-        doc(docId).bytes = request.body.readByteArray()
-        return MockResponse().setResponseCode(200).apply { if (uploadDelayMs > 0) setHeadersDelay(uploadDelayMs, TimeUnit.MILLISECONDS) }
+        val d = doc(docId)
+        val state = { received: Long, complete: Boolean ->
+            MockResponse().setBody("{\"received\":$received,\"complete\":$complete}").setHeader("Content-Type", "application/json")
+        }
+        if (request.method == "GET") {                       // "how much have you got?"
+            return d.bytes?.let { state(it.size.toLong(), true) } ?: state((d.partial?.size ?: 0).toLong(), false)
+        }
+        val range = request.getHeader("Content-Range")
+        if (range == null) {                                 // the whole file in one go
+            d.bytes = request.body.readByteArray()
+            d.partial = null
+            return MockResponse().setResponseCode(200).apply { if (uploadDelayMs > 0) setHeadersDelay(uploadDelayMs, TimeUnit.MILLISECONDS) }
+        }
+        val (start, end, total) = Regex("bytes (\\d+)-(\\d+)/(\\d+)").find(range)!!.destructured.toList().map { it.toLong() }
+        if (dropPieces > 0) {
+            dropPieces--
+            return MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST)
+        }
+        val have = (d.partial?.size ?: 0).toLong()
+        if (d.bytes != null && d.bytes!!.size.toLong() == total) return state(total, true)        // the last piece again
+        if (start > have) {
+            throw Refused(409, "{\"error\":\"GAP\",\"message\":\"The upload carries on from where it stopped.\",\"received\":$have,\"complete\":false}")
+        }
+        val piece = request.body.readByteArray()
+        check(piece.size.toLong() == end - start + 1) { "a piece of the wrong length" }
+        piecesReceived.incrementAndGet()
+        bytesReceived.addAndGet(piece.size.toLong())
+        d.partial = (d.partial ?: ByteArray(0)).copyOf(start.toInt()) + piece
+        val now = d.partial!!.size.toLong()
+        if (now == total) {
+            d.bytes = d.partial
+            d.partial = null
+        }
+        return state(now, now == total).apply { if (uploadDelayMs > 0) setHeadersDelay(uploadDelayMs, TimeUnit.MILLISECONDS) }
     }
+
+    /** The order waited too long and ran out (the phone was away for hours; the center closed for the night). */
+    fun expire(orderId: String) = synchronized(this) {
+        orders.getValue(orderId).status = "EXPIRED"
+    }
+
+    /** The orders that are open (not run out), newest last. */
+    fun openOrders(): List<String> = synchronized(this) {
+        orders.values.filter { it.status == "AWAITING_UPLOAD" }.map { it.id }
+    }
+
+    fun fileNames(orderId: String): List<String> = synchronized(this) { orders.getValue(orderId).docs.map { it.name } }
 
     private fun review(o: Order, request: RecordedRequest): MockResponse {
         if (o.status != "AWAITING_UPLOAD" && !(o.status == "AWAITING_PAYMENT" && !o.paymentStarted)) {
@@ -401,6 +484,7 @@ class FakeBackend : Dispatcher() {
             put("document", PrintApi.JSON.encodeToJsonElement(DocumentView.serializer(), dv(d)))
             put("uploadUrl", server.url("/upload/" + d.id).toString())
             put("uploadContentType", if (d.type == "PDF") "application/pdf" else "image/" + d.type.lowercase())
+            if (pieceBytes > 0) put("uploadChunkBytes", pieceBytes)
         }
         return MockResponse().setBody(body.toString()).setHeader("Content-Type", "application/json")
     }

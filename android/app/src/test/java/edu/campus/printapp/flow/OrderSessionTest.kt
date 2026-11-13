@@ -608,6 +608,23 @@ class OrderSessionTest {
         assertNull(store.load())
     }
 
+    /** The apps carry no card payment library: a shop set to cards (Razorpay) is paid on the website. */
+    @Test
+    fun aShopThatTakesCardsIsPaidOnTheWebsiteNotInTheApp() {
+        backend.paymentMode = "razorpay"
+        runBlocking { session.loadShop() }
+        addAndWait(TestFiles.pdf("Notes.pdf", 2))
+        session.review()
+        waitFor("review") { it.step == Step.REVIEW }
+        session.pay()
+        val st = waitFor("the card message") { it.payError != null }
+        assertEquals(OrderSession.CARD_ON_WEBSITE, st.payError)
+        assertEquals(Step.REVIEW, st.step)
+        assertFalse(st.paymentStarted)                                   // the order can still be changed or cancelled
+        assertFalse(st.paying)
+        assertFalse(backend.requests.any { it.contains("/payment") })    // no payment was started on the server
+    }
+
     @Test
     fun aFailedUpiPaymentSaysNoMoneyWasTaken() {
         toUpiScreen()

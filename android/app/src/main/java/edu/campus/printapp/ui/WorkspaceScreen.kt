@@ -67,7 +67,7 @@ fun WorkspaceScreen(vm: PrintViewModel, st: SessionState, onAddFiles: () -> Unit
         item(key = "head") {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("Your files", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
+                    Text("Your files", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = CP.Ink, letterSpacing = (-0.2).sp)
                     Text(if (st.docs.isEmpty()) "Add the files you want to print."
                         else plural(st.docs.size, "file", "files") + " · set up each one, then review your order.",
                         fontSize = 14.sp, color = CP.Muted)
@@ -85,11 +85,13 @@ fun WorkspaceScreen(vm: PrintViewModel, st: SessionState, onAddFiles: () -> Unit
         }
         item(key = "add") {
             Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(16.dp))
-                    .border(1.5.dp, CP.Line2, RoundedCornerShape(16.dp)).clickable(onClick = onAddFiles).padding(18.dp),
+                Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(20.dp))
+                    .dashedBorder(CP.Brand.copy(alpha = 0.45f), 20.dp).clickable(onClick = onAddFiles).padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Add, null, tint = CP.Ink)
+                Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(CP.BrandSoft), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Add, null, tint = CP.Brand)
+                }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("Add more files", fontWeight = FontWeight.SemiBold, color = CP.Ink)
@@ -175,11 +177,12 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
     val lively = LocalLively.current
     val n = if (d.status == DocStatus.READY || d.busy) session.norm(d) else null
     val problem = if (d.status == DocStatus.ERROR) d.error else n?.error ?: d.serverError
-    val border = when { problem != null -> CP.Danger.copy(alpha = .45f); selected -> CP.Ink; else -> CP.Line }
+    val border = when { problem != null -> CP.Danger.copy(alpha = .45f); selected -> CP.Brand; else -> CP.Line }
+    val shape = RoundedCornerShape(20.dp)
     Row(
-        modifier.fillMaxWidth().padding(bottom = 10.dp).clip(RoundedCornerShape(16.dp))
-            .background(if (problem != null) CP.DangerSoft.copy(alpha = .35f) else CP.Surface)
-            .border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(16.dp))
+        modifier.fillMaxWidth().padding(bottom = 10.dp).softShadow(shape).clip(shape)
+            .background(if (problem != null) Color(0xFFFFF8F7) else CP.Surface)
+            .border(if (selected) 2.dp else 1.dp, border, shape)
             .clickable(onClick = onOpen)
             .semantics { contentDescription = "File ${st.docs.indexOf(d) + 1}: ${d.name}" }
             .padding(12.dp)
@@ -267,7 +270,7 @@ private fun FileCard(vm: PrintViewModel, st: SessionState, d: Doc, selected: Boo
             Text(if (p == null || n == null) "" else if (st.staffApp) plural(session.pages(n), "page", "pages") else rupees(p.amount),
                 fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CP.Ink)
             IconButton(onClick = { vm.removeDoc(d.local) }, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Filled.Close, "Remove ${d.name}", tint = CP.Faint)
+                Icon(Icons.Filled.Close, "Remove ${d.name}", tint = CP.Faint, modifier = Modifier.size(20.dp))
             }
             // the order of the list is the order the files print in
             val i = st.docs.indexOf(d)
@@ -332,13 +335,11 @@ fun Thumb(vm: PrintViewModel, d: Doc, sizeDp: Int) {
 fun CheckoutBar(vm: PrintViewModel, st: SessionState) {
     val session = vm.session
     val c = session.checkout(st)
-    Column(Modifier.fillMaxWidth().background(CP.Surface)) {
-        Divider()
-        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically) {
+    run {
+        BottomBar {
             Column(Modifier.weight(1f)) {
                 Text(if (st.docs.isEmpty()) "–" else if (st.staffApp) plural(c.pages, "page", "pages") else rupees(c.total),
-                    fontSize = 22.sp, fontWeight = FontWeight.Bold, color = if (c.over) CP.Danger else CP.Ink,
+                    fontSize = 24.sp, fontWeight = FontWeight.Bold, color = if (c.over) CP.Danger else CP.Ink,
                     modifier = Modifier.testTag("total"))
                 if (c.why != null && st.docs.isNotEmpty()) {
                     Text(c.why, fontSize = 12.5.sp, color = CP.Warn, fontWeight = FontWeight.Medium,

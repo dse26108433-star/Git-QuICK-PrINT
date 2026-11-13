@@ -6,10 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,7 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,8 +40,12 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +80,9 @@ fun priceExtras(s: ShopView, st: SessionState): String {
 }
 
 /**
+ * The first page: one dark panel in the logo's night blue with the one thing to do here ("Add files to print"),
+ * the three steps in a row, the prices, and the orders made on this phone.
+ *
  * arrived: the opening is over (or there is none): the page is shown. In the
  * student app its parts then arrive one after the other (Modifier.riseIn).
  */
@@ -77,64 +90,61 @@ fun priceExtras(s: ShopView, st: SessionState): String {
 fun HomeScreen(st: SessionState, session: OrderSession, onChooseFiles: () -> Unit, arrived: Boolean = true) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally).padding(horizontal = 16.dp)) {
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(6.dp))
             // an order that is not finished yet
             if (st.docs.isNotEmpty() || st.draft != null) {
-                CardBox(Modifier.padding(bottom = 16.dp).riseIn(arrived, 0), border = CP.Ink) {
-                    Text("Your order is not finished", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                CardBox(Modifier.padding(bottom = 14.dp).riseIn(arrived, 0), border = CP.Brand.copy(alpha = 0.45f)) {
+                    Text("Your order is not finished", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CP.Ink)
                     Text(if (st.docs.isEmpty()) "Continue where you stopped." else plural(st.docs.size, "file", "files") +
                         (if (st.staffApp) " waiting to be set up and sent to print." else " waiting to be set up and paid."),
                         fontSize = 14.sp, color = CP.Muted)
-                    Spacer(Modifier.size(10.dp))
+                    Spacer(Modifier.size(12.dp))
                     PrimaryButton("Continue your order", { session.continueOrder() }, Modifier.fillMaxWidth().testTag("continue"))
                 }
             }
-            Text(if (st.staffApp) "Staff printing." else "Print from your phone.", fontSize = 32.sp, fontWeight = FontWeight.Bold,
-                lineHeight = 36.sp, color = CP.Ink, modifier = Modifier.riseIn(arrived, 0))
-            Text(if (st.staffApp) "Free, from your desk." else "Skip the queue.", fontSize = 32.sp, fontWeight = FontWeight.Bold,
-                lineHeight = 36.sp, color = CP.Muted, modifier = Modifier.riseIn(arrived, 1))
-            Spacer(Modifier.size(10.dp))
-            Text(if (st.staffApp) "Add all your PDFs, Word files and photos at once, choose pages, sides, paper and copies for each, and press " +
-                    "Print. Nothing to pay: it comes from your free pages for the month. Show your files at the counter and take your prints."
-                else "Add all your PDFs, Word files and photos at once, choose pages, sides, paper and copies for each, and pay with UPI. " +
-                    "Your files stay on your phone: show them at the counter and take your prints.", fontSize = 16.sp,
-                color = CP.Muted, lineHeight = 23.sp, modifier = Modifier.riseIn(arrived, 2))
-            Spacer(Modifier.size(14.dp))
-            (if (st.staffApp) listOf("Many files in one order", "See every page before printing",
-                    (st.staff?.monthlyPages?.toString() ?: "Free") + " free pages every month", "Only your staff ID · files deleted after printing")
-                else listOf("Many files in one order", "See every page before paying", "Pay only for the pages you pick",
-                    "No account · files deleted after printing")).forEach {
-                Row(Modifier.padding(vertical = 3.dp).riseIn(arrived, 3), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Check, null, tint = CP.Accent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(it, fontSize = 15.sp, color = CP.Ink2)
-                }
-            }
-            Spacer(Modifier.size(18.dp))
-            // choose files
+
+            // ---- the dark panel: what this is, and the one button
+            val panel = RoundedCornerShape(28.dp)
             Column(
-                Modifier.fillMaxWidth().riseIn(arrived, 4, distance = 30.dp).clip(RoundedCornerShape(22.dp)).background(CP.Surface)
-                    .border(1.5.dp, CP.Line2, RoundedCornerShape(22.dp)).clickable(onClick = onChooseFiles)
-                    .padding(vertical = 30.dp, horizontal = 16.dp).testTag("chooseFiles"),
-                horizontalAlignment = Alignment.CenterHorizontally
+                Modifier.fillMaxWidth().riseIn(arrived, 0).softShadow(panel, 18.dp, Color(0xFF0A1F78)).clip(panel)
+                    .background(CP.Night).nightGlow().padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 20.dp)
             ) {
-                // "+": a soft ring keeps growing out from behind it (the student app), so the eye lands here
-                Box(Modifier.size(64.dp).pulseBehind(CP.Ink, enabled = arrived).clip(RoundedCornerShape(18.dp)).background(CP.Ink),
-                    contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                Text(if (st.staffApp) "Staff printing." else "Print from your phone.", fontSize = 27.sp, fontWeight = FontWeight.Bold,
+                    lineHeight = 32.sp, letterSpacing = (-0.3).sp, color = Color.White)
+                Text(if (st.staffApp) "Free, from your desk." else "Skip the queue.", fontSize = 27.sp, fontWeight = FontWeight.Bold,
+                    lineHeight = 32.sp, letterSpacing = (-0.3).sp, color = Glow.Cyan)
+                Spacer(Modifier.size(10.dp))
+                Text(if (st.staffApp) "Add your PDFs, Word files and photos, choose pages and copies, and press Print. " +
+                        "It comes from your free pages for the month."
+                    else "Add your PDFs, Word files and photos, pay with UPI, and take your prints at the counter.",
+                    fontSize = 14.5.sp, color = Color.White.copy(alpha = 0.80f), lineHeight = 21.sp)
+                Spacer(Modifier.size(18.dp))
+                val button = RoundedCornerShape(16.dp)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(button).background(Color.White)
+                        .clickable(role = Role.Button, onClick = onChooseFiles).padding(horizontal = 16.dp).testTag("chooseFiles"),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(CP.Brand), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text("Add files to print", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
                 }
                 Spacer(Modifier.size(14.dp))
-                Text("Add files to print", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text("Choose several at once, or share them to XeoGo" + (if (st.staffApp) " Staff" else ""), fontSize = 14.sp,
-                    color = CP.Muted, textAlign = TextAlign.Center)
-                Spacer(Modifier.size(14.dp))
-                PrimaryButton("Choose files", onChooseFiles)
-                Spacer(Modifier.size(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    listOf("PDF", "Word", "JPG", "PNG").forEach { Chip(it) }
-                    st.shop?.let { Text("up to ${it.maxFileSizeBytes / 1048576} MB each", fontSize = 13.sp, color = CP.Faint) }
+                    listOf("PDF", "Word", "JPG", "PNG").forEach {
+                        Text(it, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.92f),
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f))
+                                .padding(horizontal = 9.dp, vertical = 3.dp))
+                    }
+                    st.shop?.let {
+                        Text("up to ${it.maxFileSizeBytes / 1048576} MB each", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.66f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
+
             // The print service is not there yet. Waking up (it sleeps after a quiet time) is said calmly, with
             // something moving in the student app; anything else is an error.
             var slow by remember { mutableStateOf(false) }
@@ -147,7 +157,7 @@ fun HomeScreen(st: SessionState, session: OrderSession, onChooseFiles: () -> Uni
             }
             if (st.shop == null && (st.shopError == OrderSession.WAKING || (st.shopError == null && slow))) {
                 Spacer(Modifier.size(12.dp))
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CP.WarnSoft).padding(14.dp).testTag("waking"),
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CP.WarnSoft).padding(14.dp).testTag("waking"),
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -162,20 +172,52 @@ fun HomeScreen(st: SessionState, session: OrderSession, onChooseFiles: () -> Uni
                         if (LocalLively.current) FlowBar(null, Modifier.padding(top = 10.dp), color = CP.Warn, track = Color.White)
                     }
                 }
+            } else if (st.shop == null && st.shopError == OrderSession.CLOSED) {
+                Spacer(Modifier.size(12.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CP.WarnSoft).padding(14.dp).testTag("closed"),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("The Xerox center is closed right now", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = CP.Ink)
+                        Text("Its computer is on while the center is open. The app finds it by itself as soon as it is back: " +
+                            "then you can add your files.",
+                            fontSize = 13.sp, color = CP.Ink2, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
             } else st.shopError?.let {
                 Spacer(Modifier.size(12.dp))
                 ErrorLine(it)
             }
+
+            // ---- the three steps
+            Spacer(Modifier.size(16.dp))
+            Row(Modifier.fillMaxWidth().riseIn(arrived, 1), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StepTile("1", "Add files", "PDF, Word, photos", Modifier.weight(1f))
+                StepTile("2", if (st.staffApp) "Set up & print" else "Set up & pay", if (st.staffApp) "pages, sides, copies" else "pages, copies, UPI",
+                    Modifier.weight(1f))
+                StepTile("3", "Collect", "at the counter", Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp).riseIn(arrived, 2), horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Lock, null, tint = CP.Faint, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (st.staffApp) "Only your staff ID · files are deleted after printing" else "No account needed · files are deleted after printing",
+                    fontSize = 12.5.sp, color = CP.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+
             // the staff app: the free pages of the month, instead of prices
             st.staff?.takeIf { st.staffApp }?.let { s ->
                 Spacer(Modifier.size(16.dp))
                 CardBox {
                     Text("Left this month", fontSize = 13.sp, color = CP.Muted)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(s.leftPages.toString(), fontSize = 28.sp, fontWeight = FontWeight.Bold,
+                        Text(s.leftPages.toString(), fontSize = 30.sp, fontWeight = FontWeight.Bold,
                             color = if (s.leftPages <= 0) CP.Danger else CP.Ink, modifier = Modifier.testTag("leftBig"))
-                        Text("  of ${s.monthlyPages} free pages", fontSize = 14.sp, color = CP.Muted, modifier = Modifier.padding(bottom = 4.dp))
+                        Text("  of ${s.monthlyPages} free pages", fontSize = 14.sp, color = CP.Muted, modifier = Modifier.padding(bottom = 5.dp))
                     }
+                    Spacer(Modifier.size(8.dp))
+                    ProgressBar(if (s.monthlyPages > 0) s.leftPages.coerceAtLeast(0) / s.monthlyPages.toFloat() else 0f,
+                        if (s.leftPages <= 0) CP.Danger else CP.Accent)
+                    Spacer(Modifier.size(8.dp))
                     Text(s.month + " · used ${s.usedPages} · one printed side is one page", fontSize = 13.sp, color = CP.Muted)
                 }
                 Hint((if (s.colorAllowed) "Colour and special paper are free too." else "Free staff printing is black & white on the usual paper.") +
@@ -184,49 +226,80 @@ fun HomeScreen(st: SessionState, session: OrderSession, onChooseFiles: () -> Uni
             // prices
             st.shop?.takeIf { !st.staffApp }?.let { shop ->
                 Spacer(Modifier.size(16.dp))
-                Row(Modifier.riseIn(arrived, 5), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CardBox(Modifier.weight(1f)) {
-                        Text("Black & white", fontSize = 13.sp, color = CP.Muted)
-                        Text(rupees(shop.priceBwPaise), fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        Text("per printed side", fontSize = 13.sp, color = CP.Muted)
-                    }
-                    CardBox(Modifier.weight(1f)) {
-                        Text("Colour", fontSize = 13.sp, color = CP.Muted)
-                        Text(rupees(shop.priceColorPaise), fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        Text("per printed side", fontSize = 13.sp, color = CP.Muted)
+                CardBox(Modifier.riseIn(arrived, 3), padding = PaddingValues(horizontal = 6.dp, vertical = 14.dp)) {
+                    Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                        PriceCell("Black & white", rupees(shop.priceBwPaise), Modifier.weight(1f))
+                        Box(Modifier.fillMaxHeight().width(1.dp).background(CP.Line))
+                        PriceCell("Colour", rupees(shop.priceColorPaise), Modifier.weight(1f))
                     }
                 }
                 val extra = priceExtras(shop, st)
-                if (extra.isNotEmpty()) Hint(extra)
+                if (extra.isNotEmpty()) Hint(extra, Modifier.padding(horizontal = 4.dp))
             }
             // orders made on this phone
             if (st.recent.isNotEmpty()) {
                 Spacer(Modifier.size(24.dp))
-                Text(if (st.staffApp) "Your prints" else "Your orders on this phone", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                if (st.staffApp) Text("On every device signed in with your staff ID.", fontSize = 13.sp, color = CP.Muted)
-                Spacer(Modifier.size(8.dp))
+                Text(if (st.staffApp) "Your prints" else "Your orders on this phone", fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                    color = CP.Ink, modifier = Modifier.padding(horizontal = 4.dp))
+                if (st.staffApp) Text("On every device signed in with your staff ID.", fontSize = 13.sp, color = CP.Muted,
+                    modifier = Modifier.padding(horizontal = 4.dp))
+                Spacer(Modifier.size(10.dp))
                 st.recent.forEach { (order, view) ->
-                    CardBox(Modifier.padding(bottom = 8.dp).riseIn(arrived, 6).clickable { session.openStatus(order) }, padding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
+                    CardBox(Modifier.padding(bottom = 8.dp).riseIn(arrived, 4).clickable { session.openStatus(order) },
+                        padding = PaddingValues(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Lamp(lampFor(view))
-                            Spacer(Modifier.width(10.dp))
-                            Text(clockText(java.time.Instant.ofEpochMilli(order.at).toString(), System.currentTimeMillis()),
-                                fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = CP.Ink2)
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(order.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-                                Text(view?.stage ?: "…", fontSize = 13.sp, color = CP.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(order.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.SemiBold, color = CP.Ink)
+                                Text(clockText(java.time.Instant.ofEpochMilli(order.at).toString(), System.currentTimeMillis()) +
+                                    " · " + (view?.stage ?: "…"), fontSize = 13.sp, color = CP.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = CP.Faint)
                         }
                     }
                 }
             }
             Spacer(Modifier.size(28.dp))
-            Text("Designed & developed by Vedant Pravin Surve", fontSize = 12.sp, color = CP.Muted,
+            Text("Designed & developed by Vedant Pravin Surve", fontSize = 12.sp, color = CP.Faint,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.size(24.dp))
         }
     }
+}
+
+/** One of the three steps on the first page: its number, what to do, and a few words more. */
+@Composable
+private fun StepTile(number: String, title: String, sub: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(modifier.softShadow(shape, 6.dp).clip(shape).background(CP.Surface).border(1.dp, CP.Line, shape)
+        .padding(horizontal = 8.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(28.dp).clip(RoundedCornerShape(50)).background(CP.BrandSoft), contentAlignment = Alignment.Center) {
+            Text(number, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CP.Brand)
+        }
+        Spacer(Modifier.size(8.dp))
+        Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = CP.Ink, textAlign = TextAlign.Center, maxLines = 1,
+            overflow = TextOverflow.Ellipsis)
+        Text(sub, fontSize = 11.5.sp, color = CP.Muted, textAlign = TextAlign.Center, lineHeight = 15.sp, maxLines = 2)
+    }
+}
+
+@Composable
+private fun PriceCell(label: String, price: String, modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 13.sp, color = CP.Muted)
+        Text(price, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = CP.Ink)
+        Text("per printed side", fontSize = 12.5.sp, color = CP.Muted)
+    }
+}
+
+/** Two soft lights on the night-blue panel, in the colours of the logo's swoosh. */
+private fun Modifier.nightGlow(): Modifier = drawBehind {
+    val a = Offset(size.width * 0.98f, size.height * 0.02f)
+    drawCircle(Brush.radialGradient(listOf(Glow.Blue.copy(alpha = 0.60f), Color.Transparent), a, size.width * 0.62f), size.width * 0.62f, a)
+    val b = Offset(size.width * 0.02f, size.height * 1.02f)
+    drawCircle(Brush.radialGradient(listOf(Glow.Violet.copy(alpha = 0.34f), Color.Transparent), b, size.width * 0.55f), size.width * 0.55f, b)
 }
 
 /** Retry link under an error box. */

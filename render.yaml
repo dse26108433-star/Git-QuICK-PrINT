@@ -11,6 +11,11 @@
 # Optional values you can add under Environment (see backend/.env.example):
 #   UPI_SMS_SENDERS, UPI_TRUSTED_APPS, SHOP_TIME_ZONE, DB_AUTO_SETUP
 #
+# Moving to a server on the Xerox center's own PC (docs/own-server.md)? When that one is up,
+# add here:  MOVED_TO = https://print.yourcollege.in  (its address). This server then tells the
+# website and the apps where XeoGo is now, and takes no new orders. It costs nothing to keep it
+# for that.
+#
 # The service keeps its first name (campus-print-backend): the name is
 # part of its address, which the websites, apps and Stations point at.
 # ---------------------------------------------------------------

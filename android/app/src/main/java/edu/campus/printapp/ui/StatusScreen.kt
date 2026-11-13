@@ -114,14 +114,15 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 620.dp).align(Alignment.CenterHorizontally).padding(16.dp)) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CP.Surface)
-                .then(if (st.atCounter) Modifier.border(3.dp, CP.Accent, RoundedCornerShape(24.dp)) else Modifier)) {
+            Column(Modifier.fillMaxWidth().softShadow(RoundedCornerShape(26.dp), 14.dp).clip(RoundedCornerShape(26.dp)).background(CP.Surface)
+                .then(if (st.atCounter) Modifier.border(3.dp, CP.Accent, RoundedCornerShape(26.dp)) else Modifier)) {
 
                 // how far it is, and when
-                Column(Modifier.fillMaxWidth().background(if (collected) CP.Accent else CP.Ink).padding(vertical = 20.dp, horizontal = 16.dp),
+                Column(Modifier.fillMaxWidth().then(if (collected) Modifier.background(CP.Accent) else Modifier.background(CP.Night))
+                    .padding(vertical = 22.dp, horizontal = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(((st.shop?.centerName ?: "Xerox center") + " · your prints").uppercase(), fontSize = 12.sp, letterSpacing = 2.sp,
-                        color = if (collected) Color(0xFFE3F3EA) else Color(0xFF9FB0C3), fontWeight = FontWeight.SemiBold,
+                        color = if (collected) Color(0xFFE3F3EA) else Color(0xFFA9C0FF), fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.size(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +133,7 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
                     }
                     val times = v?.let { whenLine(it, nowMs) }.orEmpty()
                     if (times.isNotEmpty()) {
-                        Text(times, fontSize = 14.sp, color = if (collected) Color(0xFFE3F3EA) else Color(0xFFC9D3DE),
+                        Text(times, fontSize = 14.sp, color = if (collected) Color(0xFFE3F3EA) else Color(0xFFD5DFFA),
                             textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp).testTag("times"))
                     }
                 }
@@ -172,7 +173,7 @@ fun StatusScreen(st: SessionState, session: OrderSession) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                             docs.forEachIndexed { k, d ->
                                 Box(Modifier.size(width = 46.dp, height = 58.dp).clip(RoundedCornerShape(6.dp))
-                                    .border(2.dp, if (k == i) CP.Ink else CP.Line, RoundedCornerShape(6.dp)).background(CP.Sunk)
+                                    .border(2.dp, if (k == i) CP.Brand else CP.Line, RoundedCornerShape(6.dp)).background(CP.Sunk)
                                     .clickable { index = k }, contentAlignment = Alignment.Center) {
                                     FilePicture(st.pictures[d.id], d, large = false)
                                     Text("${k + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White,
@@ -328,7 +329,13 @@ private fun FilePicture(path: String?, sd: DocumentView, large: Boolean) {
 @Composable
 private fun Track(label: String, done: Boolean, now: Boolean) {
     Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        Lamp(if (done) CP.Accent else if (now) CP.Warn else CP.Line2)
+        // done: a green tick; now: the lamp, working; later: an empty ring
+        Box(Modifier.size(22.dp).clip(RoundedCornerShape(50))
+            .then(if (done) Modifier.background(CP.Accent) else if (now) Modifier.background(CP.WarnSoft)
+                else Modifier.border(1.5.dp, CP.Line2, RoundedCornerShape(50))), contentAlignment = Alignment.Center) {
+            if (done) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
+            else if (now) Lamp(CP.Warn, 8.dp)
+        }
         Spacer(Modifier.width(12.dp))
         Text(label, fontSize = 15.sp, color = if (done || now) CP.Ink else CP.Faint,
             fontWeight = if (now) FontWeight.SemiBold else FontWeight.Normal)

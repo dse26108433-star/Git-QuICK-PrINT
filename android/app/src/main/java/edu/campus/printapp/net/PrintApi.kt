@@ -1,6 +1,7 @@
 package edu.campus.printapp.net
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -30,9 +31,51 @@ import kotlin.coroutines.resumeWithException
  */
 class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
                /** The staff app: the sign-in token to send with every request (null: not signed in, or the student app). */
-               private val staffToken: () -> String? = { null }) {
+               private val staffToken: () -> String? = { null },
+               /** Between two tries of a piece of an upload (tests make it short). */
+               private val pieceRetryMs: Long = 1_500,
+               /** The address the print service moved to, as the phone remembers it (null: it has not moved). */
+               moved: String? = null) {
 
-    private val base = base.trimEnd('/')
+    /** The address the app was built with (see AppConfig). It knows where the print service is, if it ever moves. */
+    val home: String = base.trimEnd('/')
+
+    /**
+     * Where the print service is now. It starts as the address the phone remembers (moved) or the one the app
+     * was built with, and changes when the print service says it has moved ("movedTo" in its shop details):
+     * for example from the cloud to the Xerox center's own PC. No new version of the app is needed for that.
+     */
+    @Volatile var base: String = (moved?.let { validBase(it, base.startsWith("http://")) } ?: base).trimEnd('/')
+        private set
+
+    /** Goes to the new address. False: it is not an address the app accepts (https only), or it is already there. */
+    fun moveTo(url: String?): Boolean {
+        val to = validBase(url, home.startsWith("http://")) ?: return false
+        if (to == base) return false
+        base = to
+        return true
+    }
+
+    /**
+     * The address in use does not answer. Has the print service moved again, or back? The address the app was
+     * built with knows. True when the app now uses another address than before.
+     */
+    suspend fun askHome(): Boolean {
+        if (base == home) return false
+        return try {
+            val text = call(Request.Builder().url("$home/api/v1/shop").get().build()) { res ->
+                if (res.isSuccessful) res.body?.string().orEmpty() else null
+            } ?: return false
+            val shop = JSON.decodeFromString(ShopView.serializer(), text)
+            if (shop.movedTo != null) moveTo(shop.movedTo) else { base = home; true }
+        } catch (e: IOException) {
+            false
+        } catch (e: kotlinx.serialization.SerializationException) {
+            false
+        }
+    }
+    /** For the one call that may take long: the server's check of a big file. */
+    private val patient: OkHttpClient = http.newBuilder().readTimeout(3, TimeUnit.MINUTES).build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     /**
@@ -73,9 +116,12 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
     suspend fun uploadUrl(orderId: String, key: String, docId: String): UploadTicket =
         post("/api/v1/orders/$orderId/documents/$docId/upload-url", null, UploadTicket.serializer(), key)
 
-    /** The upload finished: the server checks the file and counts its pages. */
+    /**
+     * The upload finished: the server checks the file and counts its pages. A big file on a small server takes
+     * a while, so this one call waits longer for its answer than the others.
+     */
     suspend fun documentUploaded(orderId: String, key: String, docId: String): DocumentView =
-        post("/api/v1/orders/$orderId/documents/$docId/uploaded", null, DocumentView.serializer(), key)
+        send("POST", "/api/v1/orders/$orderId/documents/$docId/uploaded", null, DocumentView.serializer(), key, client = patient)
 
     suspend fun removeDocument(orderId: String, key: String, docId: String): OrderView =
         send("DELETE", "/api/v1/orders/$orderId/documents/$docId", null, OrderView.serializer(), key)
@@ -139,14 +185,72 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
     // ---------------------------------------------------------------- files
 
     /**
-     * Sends a file straight to storage with a link from the server. Cancelling
-     * the coroutine stops the upload at once.
+     * Sends a file with a link from the server. Cancelling the coroutine stops it at once.
+     *
+     * pieceBytes > 0 (the server takes pieces): the file goes in pieces of that size. A connection that drops
+     * loses one piece; what arrived stays, and sending carries on from there, now or at the next try. A piece
+     * that fails is tried a few times with a short wait before the whole upload is given up (to be tried
+     * again later). pieceBytes = 0 (cloud storage): the whole file in one request.
      */
-    suspend fun upload(url: String, contentType: String, file: File, onProgress: (Float) -> Unit) {
-        val request = Request.Builder().url(url).put(ProgressBody(file, contentType.toMediaType(), onProgress)).build()
-        call(request) { res ->
-            if (!res.isSuccessful) throw ApiException(res.code, "The file could not be sent (${res.code}). Try again.")
+    suspend fun upload(url: String, contentType: String, file: File, pieceBytes: Int = 0, onProgress: (Float) -> Unit) {
+        if (pieceBytes <= 0) {
+            val request = Request.Builder().url(url).put(ProgressBody(file, contentType.toMediaType(), 0, file.length(), onProgress)).build()
+            call(request) { res ->
+                if (!res.isSuccessful) throw ApiException(res.code, "The file could not be sent (${res.code}). Try again.")
+            }
+            return
         }
+        val total = file.length()
+        var at = received(url, total) ?: 0L
+        var hiccups = 0
+        onProgress(at.toFloat() / total.coerceAtLeast(1))
+        while (at < total) {
+            val start = at
+            val end = minOf(start + pieceBytes, total)
+            try {
+                val body = ProgressBody(file, contentType.toMediaType(), start, end - start) { p ->
+                    onProgress((start + p * (end - start)) / total.coerceAtLeast(1))
+                }
+                val request = Request.Builder().url(url).header("Content-Range", "bytes $start-${end - 1}/$total").put(body).build()
+                val state = call(request) { res ->
+                    val text = res.body?.string().orEmpty()
+                    if (!res.isSuccessful) throw errorOf(res.code, text)
+                    runCatching { JSON.decodeFromString(UploadState.serializer(), text) }.getOrNull()
+                }
+                at = when {
+                    state == null -> end
+                    state.complete -> total
+                    else -> state.received.coerceIn(0, total)
+                }
+                hiccups = 0
+            } catch (e: ApiException) {
+                when {
+                    e.status == 409 && e.received != null -> at = e.received.coerceIn(0, total)     // the server says where to carry on
+                    e.temporary || e.status == 400 -> {
+                        if (++hiccups > PIECE_TRIES) throw e
+                        delay(if (e.status == 503) pieceRetryMs * 2 else pieceRetryMs * hiccups)
+                        at = received(url, total) ?: at
+                    }
+                    else -> throw e                                 // refused (too big, the link ran out): trying again will not help
+                }
+            } catch (e: IOException) {
+                if (++hiccups > PIECE_TRIES) throw e
+                delay(pieceRetryMs * hiccups)
+                at = received(url, total) ?: at
+            }
+            onProgress(at.toFloat() / total.coerceAtLeast(1))
+        }
+    }
+
+    /** How much of the file the server has (null: it could not be asked just now). */
+    private suspend fun received(url: String, total: Long): Long? = try {
+        call(Request.Builder().url(url).get().build()) { res ->
+            if (!res.isSuccessful) null
+            else runCatching { JSON.decodeFromString(UploadState.serializer(), res.body?.string().orEmpty()) }.getOrNull()
+                ?.let { if (it.complete) total else it.received.coerceIn(0, total) }
+        }
+    } catch (e: IOException) {
+        null
     }
 
     /** Fetches a file from a short-lived link (a restored draft whose copy on the phone is gone). */
@@ -172,14 +276,14 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
     }
 
     private suspend fun <T> send(method: String, path: String, body: String?, s: KSerializer<T>, key: String?,
-                                 signIn: Boolean = false): T {
+                                 signIn: Boolean = false, client: OkHttpClient = http): T {
         val requestBody = when {
             body != null -> body.toRequestBody(jsonType)
             method == "POST" -> ByteArray(0).toRequestBody(null)
             else -> null
         }
         val builder = signed(Request.Builder().url(base + path).method(method, requestBody), key, signIn)
-        val text = call(builder.build()) { res ->
+        val text = call(builder.build(), client) { res ->
             val t = res.body?.string().orEmpty()
             if (!res.isSuccessful) {
                 val error = errorOf(res.code, t)
@@ -196,12 +300,12 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
      * network work (closing reads what is left of the body), so all of it
      * happens off the main thread: Android refuses network on the main thread.
      */
-    private suspend fun <R> call(request: Request, handle: (Response) -> R): R =
-        withContext(Dispatchers.IO) { execute(request).use(handle) }
+    private suspend fun <R> call(request: Request, client: OkHttpClient = http, handle: (Response) -> R): R =
+        withContext(Dispatchers.IO) { execute(request, client).use(handle) }
 
     /** Runs a call; cancelling the coroutine cancels the call. */
-    private suspend fun execute(request: Request): Response = suspendCancellableCoroutine { cont ->
-        val call = http.newCall(request)
+    private suspend fun execute(request: Request, client: OkHttpClient): Response = suspendCancellableCoroutine { cont ->
+        val call = client.newCall(request)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -214,21 +318,25 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
         })
     }
 
+    /** A part of a file (from start, length bytes) as a request body; onProgress: 0..1 of this part. */
     private class ProgressBody(
         private val file: File,
         private val type: MediaType,
+        private val start: Long,
+        private val length: Long,
         private val onProgress: (Float) -> Unit
     ) : RequestBody() {
         override fun contentType(): MediaType = type
-        override fun contentLength(): Long = file.length()
+        override fun contentLength(): Long = length
         override fun writeTo(sink: BufferedSink) {
-            val total = file.length().coerceAtLeast(1L)
+            val total = length.coerceAtLeast(1L)
             var done = 0L
             var shown = -1
-            file.inputStream().use { input ->
+            java.io.RandomAccessFile(file, "r").use { input ->
+                input.seek(start)
                 val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val n = input.read(buffer)
+                while (done < length) {
+                    val n = input.read(buffer, 0, minOf(buffer.size.toLong(), length - done).toInt())
                     if (n == -1) break
                     sink.write(buffer, 0, n)
                     done += n
@@ -243,15 +351,34 @@ class PrintApi(base: String, private val http: OkHttpClient = defaultClient(),
         /** Sends every field, nulls included, so the server reads exactly what the app shows. */
         val JSON = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = true; coerceInputValues = true }
 
+        /** How often one piece of an upload is tried before the upload is given up for now. */
+        const val PIECE_TRIES = 5
+
+        /**
+         * An address the app will go to: https only. http: an app that was itself built for an http address
+         * (a developer's laptop, a test) may also go to one.
+         */
+        fun validBase(url: String?, http: Boolean = false): String? {
+            val u = url?.trim()?.trimEnd('/') ?: return null
+            val ok = Regex("https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\\d{1,5})?").matches(u) ||
+                (http && Regex("http://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:\\d{1,5})?").matches(u))
+            return if (ok) u else null
+        }
+
+        /**
+         * No call waits for ever. A phone that walks out of its signal in the middle of an upload must notice
+         * within about a minute (not five), or the upload sits there holding its place while new files wait.
+         */
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.MINUTES)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .build()
 
         internal fun errorOf(status: Int, text: String): ApiException {
             val e = runCatching { JSON.decodeFromString(ApiError.serializer(), text) }.getOrNull()
-            return ApiException(status, e?.message ?: "Something went wrong ($status).", e?.error, e?.documents ?: emptyList())
+            return ApiException(status, e?.message ?: "Something went wrong ($status).", e?.error, e?.documents ?: emptyList(),
+                e?.document, e?.received)
         }
     }
 }

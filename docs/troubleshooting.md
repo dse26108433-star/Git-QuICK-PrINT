@@ -28,19 +28,46 @@ If it stays for more than five minutes: Render → your service → **Logs**. A 
 
 ## Many customers at once
 
-Tried on a test computer: 500 customers arriving within 40 seconds, every order printed, no wrong answer.
-Whether the real service carries that depends on what it runs on:
+**With the server on the Xerox center's own PC** (`docs/own-server.md`): measured with 400 students ordering
+within four minutes, 584 real files (1.98 GB, eight just under 50 MB), on a 2016 laptop that also ran the test
+itself: every order taken in and paid without an error, every order printed. The numbers and the conditions
+are in `docs/own-server.md` → *What was measured*. How long the last student waits for paper depends on the
+printers, not on the software.
 
-- **Render's free plan** has a tenth of a processor: fine for a quiet shop, slow in a rush (the service does not
-  break; phones are told to ask less often and files wait their turn). For hundreds of customers in a break
-  take the paid **Starter** plan or bigger.
+**With the server in the cloud**, it depends on what it runs on:
+
+- **Render's free plan** has a tenth of a processor and sleeps after 15 quiet minutes. Measured on the live
+  service on 11 November 2026: more than three minutes without an answer after a quiet time, about half a second
+  for every small question. It does hang when many students come at once. For hundreds of customers in a break
+  take a plan with a whole processor and 2 GB, or make the Xerox PC the server.
 - **Supabase's free plan** has 1 GB for files and about 5 GB of traffic a month. Every file is fetched twice
-  (checked by the server, printed by the Xerox PC): 300 orders a day of 3 MB each is about 2 GB a day. For that
-  volume take the **Pro** plan. Files are deleted after printing, so the space itself rarely fills up.
+  (checked by the server, printed by the Xerox PC): 100 files a day of 4 MB each is about 0.8 GB a day, so the
+  month's traffic is used up in about a week, and the project is then restricted. For that volume take the
+  **Pro** plan (or the Xerox PC as the server: files then never go through Supabase).
 - Put the server and the database **in the same region** (for India: both in Mumbai or Singapore). Far apart,
   every answer waits several times for the distance.
 - With a paid database set `DB_POOL_SIZE=15` on the server (Render → Environment). The free pooler has few slots;
   5 is the safe number there.
+
+## Installing the app
+
+| What you see | What to do |
+|---|---|
+| "App not installed" / "conflicts with an existing package" when installing XeoGo 3.4.0 | 3.4.0 is signed with XeoGo's new key. Uninstall the old XeoGo first, then install. Orders are kept on the server. |
+| "Unsafe app blocked", "App scan recommended", "Play Protect doesn't recognise this app's developer" | Tap **More details → Install anyway** (or **Scan app → Install**). Or use the website: nothing to install. The download page (`/app`) shows each tap: `docs/installing-the-app.md`. |
+| XeoGo Pay Verifier "blocked to protect your device" | Expected in India for an SMS-reading app from WhatsApp or a browser. Install it from a computer by USB: `docs/installing-the-app.md`. |
+
+## Uploads (website and apps)
+
+| What you see | What to do |
+|---|---|
+| "The upload stopped. It carries on by itself when the connection is back." | Nothing: when the phone has a connection again the file is sent again by itself (from where it stopped, with the server on the Xerox PC). After about ten minutes without a connection it waits for **Try again**. |
+| A file stays at "Uploading 37 %" for a long time | The connection is very slow or gone. After at most a minute without a byte moving it is given up and tried again by itself. |
+| "Your unfinished order had run out. A new one was started with the same files." | The files had been waiting for more than two hours (or overnight). Nothing to do: they were sent again into a new order. |
+| "This file has to be added again" | The copy of the file on this phone is gone (the browser's page was reloaded and the order had run out). Add the file again. |
+| "The Xerox center's computer is not on right now" / "Closed right now" | The Xerox center's PC (which is the server) is off, or its internet is down. The page and the app find it by themselves when it is back. Staff: Station → Settings → the *Internet address* lamp. |
+| "XeoGo has moved to a new address. Update the app" | An app older than 3.4.0, after the server moved. Install the current app (or open the website). |
+| "The Xerox center's computer is out of space right now" | The PC's disk has less than 2 GB free. Free some space on it. |
 
 ## Collecting (show your files, no code)
 

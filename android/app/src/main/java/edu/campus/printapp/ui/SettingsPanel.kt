@@ -124,7 +124,7 @@ private fun PagesField(d: Doc, n: Normalized, session: OrderSession, onPickPages
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
                 shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CP.Line2, focusedBorderColor = CP.Ink),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = CP.Line2, focusedBorderColor = CP.Brand),
                 modifier = Modifier.weight(1f).testTag("pagesText").onFocusChanged { f ->
                     if (focused && !f.isFocused && !isPageError(n.error)) text = displaySpec(n.settings.pages)
                     focused = f.isFocused
@@ -448,10 +448,10 @@ private fun PriceBlock(d: Doc, n: Normalized, st: SessionState, session: OrderSe
     val p = if (n.error == null) session.price(d, n) else null
     val s = n.settings
     Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(CP.Sunk).padding(14.dp),
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(CP.BrandSoft).padding(14.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("This file", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = CP.Ink2)
+                Text("This file", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = CP.Ink)
                 Text(
                     if (p != null) (if (d.type == "PDF") plural(n.plan.printPages, "page", "pages") + " → " else "") +
                         plural(n.plan.sheets, "sheet", "sheets") + (if (s.copies > 1) " × ${s.copies} copies" else "") +

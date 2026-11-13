@@ -77,7 +77,8 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
     val docs = v.live
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 760.dp).align(Alignment.CenterHorizontally).padding(16.dp)) {
-            Text(if (st.staffApp) "Review and print" else "Review and pay", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(if (st.staffApp) "Review and print" else "Review and pay", fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                color = CP.Ink, letterSpacing = (-0.2).sp)
             Text("Checked by the Xerox center. This is exactly what will be printed.", fontSize = 14.sp, color = CP.Muted)
             if (v.editable && !st.paymentStarted) {
                 Spacer(Modifier.size(12.dp))
@@ -126,7 +127,7 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
                 Divider()
                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    Text(rupees(total), fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("rvTotal"))
+                    Text(rupees(total), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = CP.Ink, modifier = Modifier.testTag("rvTotal"))
                 }
                 if (tag > 0) Hint("The few paise tell the bank's message which payment is yours.")
                 else if (total > sum) Hint("Online payments start at ₹1.")
@@ -144,8 +145,8 @@ fun ReviewScreen(vm: PrintViewModel, st: SessionState) {
                         rupees(total) + if (upiMode) " with UPI" else "",
                     { session.pay() }, Modifier.fillMaxWidth().testTag("payBtn"), enabled = !st.paying)
                 st.payError?.let { ErrorLine(it) }
-                Text(if (upiMode) "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app"
-                    else "Secure payment by Razorpay · UPI, cards, wallets", fontSize = 12.5.sp, color = CP.Muted,
+                Text(if (shop?.paymentMode == "demo") "Test mode · nothing is paid"
+                    else "Pay the Xerox center directly · Google Pay, PhonePe, Paytm, BHIM or any UPI app", fontSize = 12.5.sp, color = CP.Muted,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 TextButton(onClick = { askCancel = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     Text("Cancel this order", color = CP.Muted)

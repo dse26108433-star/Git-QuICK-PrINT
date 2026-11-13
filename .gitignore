@@ -1,6 +1,10 @@
 # secrets - never commit
 backend/.env
 agent/winsw/agent.yml
+# the Android apps' signing key and its password (they live outside this folder; see android/app/build.gradle.kts)
+android/keystore.properties
+*.jks
+*.keystore
 
 # build output
 **/target/
@@ -17,3 +21,9 @@ android/local.properties
 agent/packaging/build/
 agent/packaging/out/
 installer/*.exe
+
+# PostgreSQL and cloudflared, downloaded once by build-installer.ps1 (about 390 MB)
+agent/packaging/cache/
+
+# the Android apps on the download page: copied in for publishing, not kept in git
+web/download/*.apk

@@ -41,7 +41,57 @@
     <div class="card" id="setupConnect">
       <h1>Connect this PC</h1>
       <p class="lead">XeoGo needs to know where your online shop lives. You only do this once.</p>
-      <div class="form">
+
+      <!-- shown when this Station came with the server programs -->
+      <div class="where hidden" id="suWhere" role="radiogroup" aria-label="Where the XeoGo server runs">
+        <label class="where-card"><input type="radio" name="suWhere" value="here" checked>
+          <span><b>This PC is the XeoGo server <i class="badge ready">Recommended</i></b>
+            <small>Students' files come straight to this PC: fast, free, and no cloud limits. The server starts by
+              itself together with XeoGo, and works while this PC is on.</small></span></label>
+        <label class="where-card"><input type="radio" name="suWhere" value="cloud">
+          <span><b>The server is somewhere else</b>
+            <small>A XeoGo server on the internet (for example on Render). This PC only prints.</small></span></label>
+      </div>
+
+      <!-- the server on this PC -->
+      <div class="form hidden" id="suHere">
+        <label class="field"><span>Counter password</span>
+          <input class="input" id="suNewPassword" type="password" autocomplete="new-password">
+          <small>Choose the staff password of this shop: 8 or more characters. It is remembered on this PC.</small>
+        </label>
+        <label class="field"><span>Name of this PC</span>
+          <input class="input" id="suHereName" maxlength="60">
+          <small>Shown on the counter screen, e.g. "Front desk PC".</small>
+        </label>
+        <div class="field" id="suFromBox">
+          <span>The shop's data</span>
+          <label class="pick"><input type="radio" name="suFrom" value="empty" checked> Start with an empty shop</label>
+          <label class="pick"><input type="radio" name="suFrom" value="cloud-database"> Bring everything over from the cloud
+            database this shop used until now (staff IDs, prices, printers, orders)</label>
+          <div class="form sub hidden" id="suFromDb">
+            <label class="field"><span>Database address (DB_URL)</span>
+              <input class="input" id="suDbAddress" autocomplete="off" spellcheck="false"
+                     placeholder="jdbc:postgresql://aws-0-ap-south-1.pooler.supabase.com:5432/postgres"></label>
+            <label class="field"><span>Database user (DB_USER)</span>
+              <input class="input" id="suDbUser" placeholder="postgres.abcdefghijklmnop" autocomplete="off" spellcheck="false"></label>
+            <label class="field"><span>Database password (DB_PASSWORD)</span>
+              <input class="input" id="suDbPassword" type="password" autocomplete="off">
+              <small>The three values the cloud server uses (on Render: your service &rarr; Environment). They are used
+                once, now, and not kept.</small></label>
+          </div>
+          <label class="pick"><input type="radio" name="suFrom" value="cloud-backup"> This PC replaces another XeoGo server
+            PC: put its latest backup back</label>
+          <div class="form sub hidden" id="suFromBackup">
+            <label class="field"><span>Cloud project address</span>
+              <input class="input" id="suCloudUrl" placeholder="https://abcdefgh.supabase.co" autocomplete="off" spellcheck="false"></label>
+            <label class="field"><span>Its secret key</span>
+              <input class="input" id="suCloudKey" type="password" autocomplete="off"></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- a server somewhere else -->
+      <div class="form" id="suCloud">
         <label class="field"><span>XeoGo server address</span>
           <input class="input" id="suUrl" placeholder="https://your-print-server.example.com" autocomplete="off" spellcheck="false">
           <small>The address of your backend. Ask the person who set up the website if you do not know it.</small>
@@ -55,6 +105,7 @@
           <small>Shown on the counter screen, e.g. "Front desk PC".</small>
         </label>
       </div>
+      <div id="suProgress" class="notice work hidden" style="margin-top:16px" role="status"></div>
       <div id="suError" class="notice stop hidden" style="margin-top:16px" role="alert"></div>
       <div class="form-actions">
         <span class="small muted">Version <span class="ver"></span> &middot; by Vedant Pravin Surve</span>
@@ -92,6 +143,8 @@
         <li>Each file's first page has a small order number in the corner, so piles are easy to tell apart (no cover sheets).</li>
         <li>Students only see the paper sizes and options your printers can really do.</li>
         <li id="suAutostartLine">XeoGo starts together with Windows and keeps printing when this window is closed.</li>
+        <li id="suServerLine" class="hidden">Next: give this PC its internet address (Settings &rarr; The server on this
+          PC), so students' phones can reach it. Until then only this PC can.</li>
         <li>The printer icon next to the clock opens this screen again.</li>
       </ul>
       <div class="form-actions">
@@ -125,6 +178,9 @@
 
   <main class="main">
     <div id="demoBanner" class="demo-banner hidden">Test payment mode: orders print without real money. Switch the server to XeoGo Pay (PAYMENT_MODE=upi) or Razorpay before real use.</div>
+    <div id="srvBanner" class="demo-banner hidden" role="status"></div>
+    <div id="srvRepair" class="notice work hidden" style="margin-bottom:16px" role="alert">
+      <span id="srvRepairText"></span> <button class="btn ghost xs" id="srvRepairOk" style="margin-left:8px">OK</button></div>
     <div id="appError" class="notice stop hidden" style="margin-bottom:16px" role="alert"></div>
 
     <!-- ------------------------------ COUNTER ------------------------------ -->
@@ -252,6 +308,91 @@
     <!-- ------------------------------ SETTINGS ------------------------------ -->
     <section id="view-settings" class="hidden">
       <div class="page-head"><div><h1>Settings</h1><p class="sub">Prices, the label on pages, and this PC.</p></div></div>
+      <!-- ---- only when this PC is the XeoGo server ---- -->
+      <div class="card hidden" id="serverCard" style="margin-bottom:14px">
+        <h2>The server on this PC</h2>
+        <p class="small muted" style="margin-bottom:12px">This PC is the XeoGo server. The database, the print service and
+          the PC's address on the internet start by themselves when XeoGo starts, and are started again if one of them stops.</p>
+        <div class="srv-rows">
+          <div class="srv-row"><span class="lamp" id="srvDbLamp"></span><div><b>Database</b><small id="srvDb"></small></div></div>
+          <div class="srv-row"><span class="lamp" id="srvSvcLamp"></span><div><b>Print service</b><small id="srvSvc"></small></div></div>
+          <div class="srv-row"><span class="lamp" id="srvNetLamp"></span><div><b>Internet address</b><small id="srvNet"></small></div></div>
+          <div class="srv-row"><span class="lamp" id="srvBakLamp"></span><div><b>Backup</b><small id="srvBak"></small></div>
+            <span class="srv-buttons"><button class="btn ghost sm" id="srvBackupNow">Back up now</button>
+              <button class="btn ghost sm" id="srvOpenBackups">Open folder</button></span></div>
+        </div>
+
+        <div class="folds">
+          <details class="fold" id="foldNet">
+            <summary><span class="lamp" id="foldNetLamp"></span>Internet address <span class="state" id="foldNetState"></span></summary>
+            <div class="fold-body">
+            <p class="small muted" style="margin-bottom:10px">How students' phones reach this PC, from anywhere, without
+              opening anything in the router: a free Cloudflare Tunnel. Once: put your domain on Cloudflare, make a
+              tunnel there (Networks &rarr; Tunnels), give it a public hostname such as <b>print.yourcollege.in</b> that
+              points to <b id="srvLocalTarget">http://localhost:47810</b>, and paste its token here.</p>
+            <div class="form">
+              <label class="field"><span>Address students use</span>
+                <input class="input" id="srvPublicUrl" placeholder="https://print.yourcollege.in" autocomplete="off" spellcheck="false"></label>
+              <label class="field"><span>Cloudflare tunnel token</span>
+                <input class="input" id="srvTunnelToken" type="password" autocomplete="off"
+                       placeholder="Paste the token (or the whole install line) from Cloudflare">
+                <small id="srvTunnelHint"></small></label>
+            </div>
+            <div class="page-actions"><span class="small muted" id="srvNetSaved"></span><button class="btn" id="srvSaveNet">Save</button></div>
+            </div>
+          </details>
+
+          <details class="fold" id="foldPay">
+            <summary><span class="lamp" id="foldPayLamp"></span>How students pay <span class="state" id="foldPayState"></span></summary>
+            <div class="fold-body">
+            <div class="form">
+              <label class="field"><span>Payment</span>
+                <select class="input" id="srvPayMode">
+                  <option value="upi">XeoGo Pay: UPI straight to the shop's account</option>
+                  <option value="razorpay">Razorpay: cards, on the website only (the apps pay by UPI)</option>
+                  <option value="demo">Test only: prints WITHOUT payment</option>
+                  <option value="">Off: nobody can pay</option>
+                </select></label>
+              <div class="form sub hidden" id="srvPayUpi">
+                <label class="field"><span>The shop's UPI ID</span>
+                  <input class="input" id="srvUpiId" placeholder="xeroxshop@okaxis   (or the text of the shop's UPI QR code)" autocomplete="off" spellcheck="false">
+                  <small>A business UPI ID works best. Never an account number or IFSC.</small></label>
+                <label class="field"><span>Name students see in their UPI app</span>
+                  <input class="input" id="srvUpiName" maxlength="50"></label>
+                <div class="field"><span>For the XeoGo Pay Verifier app on the shop's phone</span>
+                  <small>Server address: <b id="srvVerifierUrl"></b></small>
+                  <div style="display:flex;gap:8px;align-items:center"><code id="srvUpiToken" class="token"></code>
+                    <button class="btn ghost xs" id="srvCopyToken">Copy token</button></div></div>
+              </div>
+              <div class="form sub hidden" id="srvPayRazorpay">
+                <label class="field"><span>Razorpay Key ID</span>
+                  <input class="input" id="srvRzpId" placeholder="rzp_live_..." autocomplete="off" spellcheck="false"></label>
+                <label class="field"><span>Razorpay Key Secret</span>
+                  <input class="input" id="srvRzpSecret" type="password" autocomplete="off"></label>
+              </div>
+            </div>
+            <div class="page-actions"><span class="small muted" id="srvPaySaved"></span><button class="btn" id="srvSavePay">Save</button></div>
+            </div>
+          </details>
+
+          <details class="fold" id="foldCloud">
+            <summary><span class="lamp" id="foldCloudLamp"></span>A copy of the database in the cloud <span class="state" id="foldCloudState"></span></summary>
+            <div class="fold-body">
+            <p class="small muted" style="margin-bottom:10px">Every backup is also sent to your Supabase project, so a
+              broken disk or a stolen PC loses at most half an hour. The shop keeps working when the cloud cannot be reached.</p>
+            <div class="form">
+              <label class="field"><span>Cloud project address</span>
+                <input class="input" id="srvCloudUrl" placeholder="https://abcdefgh.supabase.co" autocomplete="off" spellcheck="false"></label>
+              <label class="field"><span>Its secret key</span>
+                <input class="input" id="srvCloudKey" type="password" autocomplete="off">
+                <small id="srvCloudHint">Supabase &rarr; Project Settings &rarr; API Keys &rarr; the secret key.</small></label>
+            </div>
+            <div class="page-actions"><span class="small muted" id="srvCloudSaved"></span><button class="btn" id="srvSaveCloud">Save</button></div>
+            </div>
+          </details>
+        </div>
+      </div>
+
       <div class="grid2">
         <div class="card">
           <h2>Shop</h2>
@@ -293,12 +434,18 @@
             <dt>Server</dt><dd id="setServer"></dd>
             <dt>Printing</dt><dd id="setPrinting"></dd>
           </dl>
+          <div class="set-row hidden" id="becomeServerRow">
+            <div><b>Make this PC the XeoGo server</b><small>Faster for students, no cloud limits, nothing to start by hand.
+              The shop's data can be brought over from the cloud; this PC's printers and their settings are kept.
+              Do it after closing time.</small></div>
+            <button class="btn ghost sm" id="becomeServer">Set up&hellip;</button>
+          </div>
           <div class="set-row">
             <div><b>Start with Windows</b><small>Recommended: orders keep printing after a restart.</small></div>
             <span class="switch"><input type="checkbox" id="autostartToggle" aria-label="Start with Windows"><i></i></span>
           </div>
           <div class="set-row">
-            <div style="flex:1"><b>Counter password</b><small>Changed the password on the server? Type the new one here.</small>
+            <div style="flex:1"><b>Counter password</b><small id="passwordHelp">Changed the password on the server? Type the new one here.</small>
               <div style="display:flex;gap:8px;margin-top:8px"><input class="input" id="newPassword" type="password" placeholder="New counter password">
                 <button class="btn ghost" id="savePassword">Save</button></div></div>
           </div>

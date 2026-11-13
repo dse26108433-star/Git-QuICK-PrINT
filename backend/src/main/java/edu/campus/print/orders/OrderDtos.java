@@ -62,8 +62,14 @@ public final class OrderDtos {
             long fileSizeBytes
     ) {}
 
-    /** Where to send the file (PUT, with this Content-Type), and the document so far. */
-    public record UploadTicket(DocumentView document, String uploadUrl, String uploadContentType) {}
+    /**
+     * Where to send the file (PUT, with this Content-Type), and the document so far.
+     * uploadChunkBytes: null = send the whole file in one PUT. A number = send it in pieces of that many
+     * bytes, each a PUT with "Content-Range: bytes first-last/total"; GET on the same link answers
+     * {"received": n}, so an upload that stopped carries on from there (see LocalFilesController).
+     */
+    public record UploadTicket(DocumentView document, String uploadUrl, String uploadContentType,
+                               Integer uploadChunkBytes) {}
 
     /**
      * "Check and price my order." One entry per document, in the order they
@@ -187,7 +193,10 @@ public final class OrderDtos {
             boolean colorOnline,
             long ordersWaiting,
             Printing printing,
-            boolean wordFiles      // Word files (.docx) can be added right now: a Xerox PC with Word is online
+            boolean wordFiles,     // Word files (.docx) can be added right now: a Xerox PC with Word is online
+            // Not null: the print service has moved to this address (MOVED_TO on this, the old, server).
+            // Websites and apps go there and remember it.
+            String movedTo
     ) {}
 
     /**

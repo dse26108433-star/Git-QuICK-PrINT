@@ -118,6 +118,23 @@ public final class DesktopShell {
         return img;
     }
 
+    // ------------------------------------------------------------ a server must not fall asleep
+
+    /**
+     * A PC that is the XeoGo server must not go to sleep while the shop is
+     * open: students could not reach it. Tells Windows not to sleep or
+     * hibernate while the PC is plugged in (the screen may still switch off).
+     * Switching the PC off in the evening is not affected.
+     */
+    public static void keepAwake() {
+        new Thread(() -> {
+            int a = run("powercfg.exe", "/change", "standby-timeout-ac", "0");
+            int b = run("powercfg.exe", "/change", "hibernate-timeout-ac", "0");
+            if (a == 0 && b == 0) log.info("Windows was told not to sleep while this PC is plugged in");
+            else log.warn("Could not switch off Windows sleep: set Sleep to Never in the Windows power settings by hand");
+        }, "keep-awake").start();
+    }
+
     // ------------------------------------------------------------ start with Windows
 
     /** The installed program (set by the installer's launcher); null when run from a jar. */

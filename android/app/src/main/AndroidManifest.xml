@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- To notice the moment the phone has a connection again: uploads that stopped carry on at once. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- XeoGo Pay: see which UPI apps (Google Pay, PhonePe, Paytm, BHIM...) are on the phone (Android 11+). -->
     <queries>

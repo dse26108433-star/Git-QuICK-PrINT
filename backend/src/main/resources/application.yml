@@ -4,6 +4,9 @@
 # ---------------------------------------------------------------------
 server:
   port: ${PORT:8080}
+  # Which network card answers. A cloud host needs 0.0.0.0 (everything). On the Xerox center's own PC the
+  # Station sets 127.0.0.1: only programs on that PC (its tunnel to the internet, its printing part) get in.
+  address: ${BIND_ADDRESS:0.0.0.0}
   forward-headers-strategy: framework   # correct https:// behind a hosting proxy
   tomcat:
     threads:
@@ -50,12 +53,36 @@ campus:
     # The server brings the database up to date by itself when it starts (db/setup.sql, a copy is inside the
     # server). false: you run db/setup.sql by hand in Supabase before every update.
     auto-setup: ${DB_AUTO_SETUP:true}
+    # true: the database is an ordinary PostgreSQL (the one on the Xerox center's own PC), not a Supabase
+    # project. The few things Supabase brings along are then made first (db/plain-postgres.sql).
+    plain-postgres: ${DB_PLAIN_POSTGRES:false}
+
+  storage:
+    # Where the students' files are kept until they are printed:
+    #   supabase = a private Supabase Storage bucket (a server in the cloud)
+    #   local    = a folder on this computer (a server on the Xerox center's own PC): no cloud limits, and a
+    #              file travels once, phone -> PC. Phones then send files in pieces, so a dropped connection
+    #              carries on where it stopped.
+    mode: ${STORAGE_MODE:supabase}
+    dir: ${STORAGE_DIR:}
+    # Only if the links to files must use another address than the one the request came in on.
+    public-url: ${PUBLIC_URL:}
+    chunk-bytes: ${UPLOAD_CHUNK_BYTES:2097152}       # 2 MB pieces
+    upload-ttl-seconds: 7200                         # an upload link works for two hours
+    min-free-mb: ${STORAGE_MIN_FREE_MB:2048}         # uploads are refused when the disk has less free than this
+    max-uploads: ${MAX_UPLOADS:200}                  # pieces received at the same moment
+
+  # The print service has moved (say, from the cloud to the Xerox center's own PC): its new address, e.g.
+  # https://print.mycollege.in. Set this on the OLD server. Websites and apps that ask here are told, go
+  # there and remember it; new orders are refused here with "XeoGo has moved". Empty: this is the print service.
+  moved-to: ${MOVED_TO:}
 
   supabase:
-    url: ${SUPABASE_URL}
+    # Needed with STORAGE_MODE=supabase (the default); not used with STORAGE_MODE=local.
+    url: ${SUPABASE_URL:}
     # Secret key (sb_secret_...) or legacy service_role key. Server only.
     # Never put it in the web app, the Android app or the Xerox PC.
-    service-key: ${SUPABASE_SERVICE_KEY}
+    service-key: ${SUPABASE_SERVICE_KEY:}
     bucket: print-documents
     upload-url-ttl-seconds: 300
     download-url-ttl-seconds: 300
@@ -98,9 +125,10 @@ campus:
     max-file-pages: 2000            # most pages a PDF may have; students choose the pages they need
     max-copies: 50
     max-documents: 25               # most documents (files) in one order
-    max-parallel-checks: 4          # small uploaded files checked at once
-    check-memory-mb: 64             # megabytes of uploads being checked at once, all together: a big file
-                                    # takes as many as it is big, so big ones are checked one after the other
+    max-parallel-checks: ${MAX_PARALLEL_CHECKS:4}   # small uploaded files checked at once
+    check-memory-mb: ${CHECK_MEMORY_MB:64}          # megabytes of uploads being checked at once, all together: a
+                                    # big file takes as many as it is big, so big ones are checked one after
+                                    # the other. (A PC with real memory sets both higher: see the Station.)
     shop-cache-millis: ${SHOP_CACHE_MILLIS:3000}   # the shop's details (prices, printers) are read at most this often
 
   staff:

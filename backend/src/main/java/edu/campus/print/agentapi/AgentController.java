@@ -19,7 +19,7 @@ import edu.campus.print.repo.PrinterRepository;
 import edu.campus.print.repo.ShopSettingsRepository;
 import edu.campus.print.security.AgentTokenService;
 import edu.campus.print.security.CurrentAgent;
-import edu.campus.print.storage.SupabaseStorage;
+import edu.campus.print.storage.FileStorage;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +55,7 @@ public class AgentController {
     private final PrinterRepository printers;
     private final AgentRepository agents;
     private final ShopSettingsRepository settings;
-    private final SupabaseStorage storage;
+    private final FileStorage storage;
     private final AgentTokenService tokens;
     private final AgentProperties props;
     private final PasswordEncoder encoder;
@@ -63,7 +63,7 @@ public class AgentController {
     private final WordFiles word;
 
     public AgentController(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
-                           AgentRepository agents, ShopSettingsRepository settings, SupabaseStorage storage,
+                           AgentRepository agents, ShopSettingsRepository settings, FileStorage storage,
                            AgentTokenService tokens, AgentProperties props, PasswordEncoder encoder,
                            PreviewStore previews, WordFiles word) {
         this.orders = orders;

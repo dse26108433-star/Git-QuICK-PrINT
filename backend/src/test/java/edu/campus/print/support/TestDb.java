@@ -54,6 +54,20 @@ public final class TestDb {
         return url;
     }
 
+    /**
+     * A new database exactly as PostgreSQL makes it: nothing of Supabase's in
+     * it. This is what the server finds on the Xerox center's own PC.
+     */
+    public static String plainDatabase() {
+        String name = "p" + COUNTER.incrementAndGet() + "_" + System.nanoTime() % 100000;
+        try (Connection c = server().getPostgresDatabase().getConnection(); Statement s = c.createStatement()) {
+            s.execute("create database " + name);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        return server().getJdbcUrl("postgres", name);
+    }
+
     public static DataSource dataSource(String url) {
         org.postgresql.ds.PGSimpleDataSource ds = new org.postgresql.ds.PGSimpleDataSource();
         ds.setUrl(url);

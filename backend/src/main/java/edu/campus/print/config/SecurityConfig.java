@@ -81,6 +81,9 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health/**").permitAll()
                     .requestMatchers("/api/v1/counter/**").hasAuthority("ROLE_COUNTER")
                     .requestMatchers("/api/v1/shop", "/api/v1/orders", "/api/v1/orders/**").permitAll()
+                    // Files kept on this computer (STORAGE_MODE=local): the signed ticket in the link is the key
+                    // (LocalFilesController). With cloud storage nothing answers here.
+                    .requestMatchers("/api/v1/files/**").permitAll()
                     .requestMatchers("/api/v1/staff/login", "/api/v1/staff/me", "/api/v1/staff/orders").permitAll()
                     // XeoGo Pay bank messages: UpiAlertController checks UPI_ALERT_TOKEN itself.
                     .requestMatchers(HttpMethod.POST, "/api/v1/payments/upi/alerts", "/api/v1/payments/upi/heartbeat").permitAll()
@@ -118,8 +121,10 @@ public class SecurityConfig {
             c.setAllowedOrigins(list);
         }
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // Content-Range: a file sent in pieces. Range: the website reading a student's own file back.
         c.setAllowedHeaders(List.of("Content-Type", "X-Order-Key", "X-Counter-Password", "X-Counter-Session",
-                "X-Staff-Session"));
+                "X-Staff-Session", "Content-Range", "Range"));
+        c.setExposedHeaders(List.of("Content-Range", "Accept-Ranges", "Content-Length", "Retry-After"));
         c.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/api/**", c);

@@ -24,7 +24,45 @@
 "use strict";
 (function () {
   const C = window.PrintCore;
-  const API = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
+  // Where the print service is. config.js says where it was when this site was put online (HOME). A print
+  // service that has moved since (say, from the cloud to the Xerox center's own PC) says so itself ("movedTo"
+  // in its shop details): this device goes there and remembers it, with no new version of the site or app.
+  const HOME = (window.CONFIG && window.CONFIG.apiBase || "").replace(/\/+$/, "");
+  const MOVED = "campusprint.api";
+  function validBase(u) {
+    const s = typeof u === "string" ? u.trim().replace(/\/+$/, "") : "";
+    // https only (http only on this very computer: someone trying things out)
+    return /^(https:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?|http:\/\/(127\.0\.0\.1|localhost))(:\d{1,5})?$/i.test(s) ? s : null;
+  }
+  let API = HOME;
+  try { API = validBase(JSON.parse(localStorage.getItem(MOVED) || "null")) || HOME; } catch (e) { /* private mode */ }
+  function moveTo(url) {
+    const to = validBase(url);
+    if (!to || to === API) return false;
+    API = to;
+    try { localStorage.setItem(MOVED, JSON.stringify(to)); } catch (e) { /* private mode: until the page closes */ }
+    return true;
+  }
+  /**
+   * The address this device remembers does not answer. Has the print service moved again, or back? Its first
+   * address (config.js) knows. Asked at most every two minutes; the answer may take a while (a server that sleeps).
+   */
+  let askedHome = 0;
+  async function askHome() {
+    if (!HOME || API === HOME || Date.now() - askedHome < 120000) return false;
+    askedHome = Date.now();
+    try {
+      const r = await fetch(HOME + "/api/v1/shop");
+      if (!r.ok) return false;
+      const s = await r.json();
+      if (s && s.movedTo) return moveTo(s.movedTo);
+      API = HOME;                                      // it is at its first address again
+      try { localStorage.removeItem(MOVED); } catch (e) { /* private mode */ }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   // PDF.js 4.4.168 and qrcode-generator 1.4.4 are part of the site (web/vendor): no other website's
   // script runs on these pages, where the keys of the student's orders are kept.
   const PDFJS = new URL("vendor/pdfjs/pdf.min.mjs", document.baseURI).href;
@@ -35,6 +73,10 @@
   const FINAL = ["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"];
   const PARALLEL_UPLOADS = 3;
   const PARALLEL_READS = 2;
+  const API_TIMEOUT = 30000;      // no answer for this long: the call is given up (and tried again where that helps)
+  const CHECK_TIMEOUT = 180000;   // the server's check of a big file may take a while on a small server
+  const STALL = 45000;            // an upload that moved no byte for this long is stuck, whatever the browser says
+  const STOPPED = "The upload stopped. It carries on by itself when the connection is back.";
   const STAFF = document.documentElement.dataset.app === "staff";    // the staff website (staff.html)
   const NS = STAFF ? "campusprint.staff." : "campusprint.";          // the two pages keep their things apart
   const STORE = NS + "orders";
@@ -118,18 +160,31 @@
     return headers;
   }
 
-  async function api(method, path, body, key) {
+  /**
+   * One call to the print service. It never waits for ever: a phone that lost its signal in the middle of a
+   * call would otherwise wait on a connection that is gone, and everything queued behind it would wait too.
+   * err.temporary: no answer, or "not now" (busy, starting up): worth trying again by itself.
+   */
+  async function api(method, path, body, key, timeout) {
     const headers = authHeaders(key);
     if (body !== undefined && body !== null) headers["Content-Type"] = "application/json";
-    let res;
+    const stop = typeof AbortController === "function" ? new AbortController() : null;
+    let timedOut = false;
+    const timer = stop ? setTimeout(() => { timedOut = true; stop.abort(); }, timeout || API_TIMEOUT) : null;
+    let res, text;
     try {
-      res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body) });
+      res = await fetch(API + path, { method, headers, body: body == null ? undefined : JSON.stringify(body),
+        signal: stop ? stop.signal : undefined });
+      text = await res.text();
     } catch (e) {
       const err = new Error("Cannot reach the print service. Check your internet connection and try again.");
       err.network = true;
+      err.temporary = true;
+      err.timeout = timedOut;
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const text = await res.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
     if (!res.ok) {
@@ -137,6 +192,7 @@
       err.code = data && data.error;
       err.status = res.status;
       err.data = data;
+      err.temporary = res.status >= 500 || res.status === 429 || res.status === 408;
       // Staff: the sign-in ran out, the Xerox center made a new password, or switched the ID off.
       if (STAFF && (err.code === "STAFF_SIGNED_OUT" || err.code === "STAFF_OFF") && path !== "/api/v1/staff/login") {
         signedOut(err.message);
@@ -183,8 +239,36 @@
    */
   const WAKING = "The print service is waking up. This takes a minute or two after a quiet time. " +
     "Files you choose now are added as soon as it is up.";
-  const wake = { timer: null, tries: 0, said: false };
-  function wakingUp(e) { return !!e && (e.status === 502 || e.status === 503 || e.status === 504); }
+  const wake = { timer: null, tries: 0, said: false, closed: false, closedTries: 0 };
+  function wakingUp(e) { return !!e && (e.status === 502 || e.status === 503 || e.status === 504 || e.timeout === true); }
+  /**
+   * A Xerox center that runs the print service on its own computer is only there while that computer is on.
+   * Then nothing answers at its address, although this device's internet is fine. That is "closed": said
+   * calmly, and the page keeps looking by itself. openHours in config.js (e.g. "9:30 AM to 6 PM") is shown.
+   */
+  const HOURS = window.CONFIG && window.CONFIG.openHours ? " (" + window.CONFIG.openHours + ")" : "";
+  const CLOSED = "The Xerox center's computer is not on right now. It is on while the center is open" + HOURS +
+    ". This page finds it by itself as soon as it is back: you can leave it open.";
+  async function centerClosed(e) {
+    if (e && e.status >= 520 && e.status <= 530) return true;      // the address is there, the computer behind it is not
+    if (!e || !e.network || e.timeout || navigator.onLine === false) return false;
+    try {
+      // this website's own server answers: the internet works, so it is the center's computer that is off
+      const r = await fetch("config.js?online=" + Date.now(), { cache: "no-store" });
+      return r.ok;
+    } catch (x) {
+      return false;
+    }
+  }
+  function sayClosed() {
+    const box = $("globalError");
+    $("printerChip").innerHTML = '<span class="lamp stop"></span><span class="pill-text">Closed right now</span>';
+    box.textContent = CLOSED;
+    box.classList.add("calm");
+    box.classList.remove("hidden");
+    wake.said = true;
+    wake.closed = true;
+  }
   function sayWaking(on) {
     const box = $("globalError");
     if (on) {
@@ -205,7 +289,13 @@
     const slow = state.shop ? null : setTimeout(() => sayWaking(true), 6000);
     try {
       const s = await api("GET", "/api/v1/shop");
+      if (s.movedTo && moveTo(s.movedTo)) {            // the print service lives somewhere else now: go there
+        clearTimeout(slow);
+        return loadShop();
+      }
       wake.tries = 0;
+      wake.closedTries = 0;
+      wake.closed = false;
       sayWaking(false);
       // What printers can do (not whether they are online right now): a change means new options.
       const features = (sh) => JSON.stringify(Object.assign({}, sh.printing,
@@ -232,12 +322,24 @@
           (s.ordersWaiting ? " · " + s.ordersWaiting + " in queue" : "")));
     } catch (e) {
       if (!state.shop && wakingUp(e) && wake.tries++ < 60) {
+        wake.closed = false;
         sayWaking(true);
         wake.timer = setTimeout(loadShop, 5000);
+      } else if (!state.shop && await centerClosed(e)) {
+        if (await askHome()) { clearTimeout(slow); return loadShop(); }     // it had moved: try the new address at once
+        sayClosed();
+        // looked for again by itself: every 15 seconds at first, once a minute in the end
+        wake.timer = setTimeout(loadShop, Math.min(60000, 15000 + 5000 * wake.closedTries++));
+      } else if (state.shop) {
+        // The page already works with what it knows: a hiccup while refreshing is not worth a red box.
+        $("printerChip").innerHTML = '<span class="lamp work"></span><span class="pill-text">Reconnecting&hellip;</span>';
+        wake.timer = setTimeout(loadShop, 10000);
       } else {
         sayWaking(false);
+        wake.closed = false;
         $("printerChip").innerHTML = '<span class="lamp stop"></span><span class="pill-text">Service unreachable</span>';
         showError(e.message);
+        wake.timer = setTimeout(loadShop, 15000);      // and tried again by itself: no reload needed
       }
     } finally {
       clearTimeout(slow);
@@ -509,6 +611,10 @@
     for (let i = 0; !state.shop && i < 40; i++) {
       await loadShop();
       if (state.shop || !wake.said) break;
+      if (wake.closed) {
+        toast("The Xerox center's computer is not on right now. Add your files when the center is open" + HOURS + ".", "warn");
+        return;
+      }
       await new Promise(r => setTimeout(r, 5000));
     }
     if (!state.shop) return;
@@ -522,10 +628,13 @@
       return;
     }
     let skipped = 0, over = 0;
-    const added = [];
+    const added = [], again = [];
     for (const f of files) {
-      if (state.docs.some(d => d.picked && d.picked.name === f.name && d.picked.size === f.size && d.picked.lastModified === f.lastModified)) {
-        skipped++;
+      const same = state.docs.find(d => d.picked && d.picked.name === f.name && d.picked.size === f.size && d.picked.lastModified === f.lastModified);
+      if (same) {
+        // Chosen again while its first try is stuck: that means "try again", not "already in your list".
+        if (same.status === "cancelled" || (same.status === "error" && same.retry)) { same.file = f; again.push(same); }
+        else skipped++;
         continue;
       }
       if (added.length >= room) { over++; continue; }
@@ -535,7 +644,11 @@
     }
     if (skipped) toast(plural(skipped, "file was", "files were") + " already in your list.", "warn");
     if (over) toast(plural(over, "file was", "files were") + " not added: one order can have up to " + state.shop.maxDocuments + " files.", "warn");
-    if (!added.length) return;
+    again.forEach(retry);
+    if (!added.length) {
+      if (again.length && state.step !== "setup") show("setup");
+      return;
+    }
     if (state.step !== "setup") show("setup");
     if (!state.selected || !state.docs.includes(state.selected)) select(added[0], false);
     renderQueue();
@@ -598,10 +711,13 @@
     }
   }
 
-  function fail(d, message, canRetry) {
+  /** temporary: it stopped because the connection (or the service) was away: sent again by itself when that is back. */
+  function fail(d, message, canRetry, temporary) {
     d.status = "error";
     d.error = message;
     d.retry = canRetry;
+    d.temporary = !!(canRetry && temporary);
+    if (d.temporary) retryLater();
     renderQueue();
     renderCheckout();
     if (state.selected === d) renderEditor();
@@ -695,61 +811,193 @@
   }
 
   /**
-   * Upload, then the server's check. Any step can fail on a bad connection:
-   * "Try again" picks up from where it stopped.
+   * Upload, then the server's check. Any step can fail on a bad connection, and none of them leaves a file
+   * stuck: what stopped for lack of a connection is sent again by itself (from where it stopped, when the
+   * server takes pieces); a file that did arrive is recognised as arrived; and an order that ran out while
+   * the phone was away is replaced by a new one with the same files.
    */
   async function sendFile(d) {
+    d.cancelRequested = false;
+    d.sending = true;
+    let o = null, requeue = false;
     try {
-      const o = await ensureOrder();
+      o = await ensureOrder();
       if (d.removed) return;
+      if (d.id && d.orderId && d.orderId !== o.orderId) d.id = null;      // it belonged to an order that ran out
+      if (d.cancelRequested) throw cancelled();
       let ticket;
       if (!d.id) {
         ticket = await api("POST", "/api/v1/orders/" + o.orderId + "/documents",
           { fileName: d.name, fileType: d.type, fileSizeBytes: d.size }, o.key);
         d.id = ticket.document.id;
+        d.orderId = o.orderId;
         saveDraft();
       } else {
-        ticket = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/upload-url", null, o.key);
+        try {
+          ticket = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/upload-url", null, o.key);
+        } catch (e) {
+          if (e.code !== "ALREADY_UPLOADED") throw e;
+          // It did arrive (the connection dropped after the last byte, or the answer got lost): carry on from
+          // where the server has it, instead of saying "already uploaded" for ever.
+          const sd = (e.data && e.data.document) || await serverDoc(o, d.id);
+          if (!sd) throw e;
+          settle(d, sd);
+          return;
+        }
       }
       if (d.removed) { dropOnServer(d); return; }
+      if (d.cancelRequested) throw cancelled();
       d.status = "uploading";
       d.progress = 0;
       renderQueue();
-      await put(d, ticket.uploadUrl, ticket.uploadContentType);
+      await put(d, ticket);
       d.status = "checking";
       renderQueue();
       let v = null;
       for (let tries = 0; !v; tries++) {
         try {
-          v = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/uploaded", null, o.key);
+          v = await api("POST", "/api/v1/orders/" + o.orderId + "/documents/" + d.id + "/uploaded", null, o.key, CHECK_TIMEOUT);
         } catch (e) {
-          // "many files are being checked right now": it is in line; ask again in a moment (five minutes at most)
-          if (e.code !== "BUSY" || tries >= 40 || d.removed) throw e;
-          await new Promise(r => setTimeout(r, 4000 + Math.random() * 4000));
+          if (d.removed) throw e;
+          if (e.code === "BUSY" && tries < 40) {
+            // "many files are being checked right now": it is in line; ask again in a moment (five minutes at most)
+            await pause(4000 + Math.random() * 4000);
+          } else if (e.temporary && e.code !== "BUSY" && tries < 5) {
+            // No answer. The server may well have checked it all the same: ask how the file stands.
+            await pause(3000);
+            const sd = await serverDoc(o, d.id).catch(() => null);
+            if (sd && sd.status !== "UPLOADING") v = sd;
+          } else {
+            throw e;
+          }
         }
       }
-      if (v.status === "CONVERTING") {
-        d.status = "converting";
-        d.ahead = v.ahead || 0;
-        watchWord();
-        return;
-      }
-      takeServerView(d, v);
+      settle(d, v);
     } catch (e) {
       if (d.removed) return;
       if (e.aborted) {
         d.status = "cancelled";
         d.error = null;
-      } else if (e.code === "PRICED" || e.code === "BAD_STATE") {
+      } else if (e.code === "PRICED") {
         fail(d, e.message, false);
+      } else if (o && orderGone(e)) {
+        let what = null;
+        try { what = await renewOrder(o.orderId); } catch (x) { /* could not ask right now: tried again later */ }
+        if ((what === "renewed" || what === "open") && d.file && (d.renewed = (d.renewed || 0) + 1) <= 2) {
+          d.id = null;
+          d.status = "queued";
+          d.error = null;
+          requeue = true;
+        } else if (what === "renewed" || what === "open") {
+          fail(d, "This file has to be added again.", false);
+        } else if (what === "closed") {
+          fail(d, e.message, false);
+        } else {
+          fail(d, STOPPED, true, true);
+        }
+      } else if (e.temporary) {
+        fail(d, STOPPED, true, true);
       } else {
         fail(d, e.message || "The upload failed.", true);
       }
     } finally {
       d.xhr = null;
+      d.sending = false;
+      if (requeue && !d.removed) upload(d);
       if (state.selected === d) renderEditor();
     }
   }
+
+  const pause = (ms) => new Promise(r => setTimeout(r, ms));
+  function cancelled() { const e = new Error("Cancelled"); e.aborted = true; return e; }
+
+  /** The server's word on a file that has arrived: ready, being turned into pages (a Word file), or refused. */
+  function settle(d, v) {
+    if (v.status === "CONVERTING") {
+      d.status = "converting";
+      d.ahead = v.ahead || 0;
+      watchWord();
+      return;
+    }
+    if (v.status === "UPLOADING") { fail(d, STOPPED, true, true); return; }
+    takeServerView(d, v);
+  }
+
+  /** How one file stands on the server right now (null: it is not in the order). */
+  async function serverDoc(o, id) {
+    const v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
+    return (v.documents || []).find(x => x.id === id) || null;
+  }
+
+  /** The server says this order (or this file in it) is no longer there to add to. */
+  function orderGone(e) {
+    return (e.code === "BAD_STATE" && !/paid/i.test(e.message || "")) || e.status === 404;
+  }
+
+  /**
+   * The order these files were going into is no longer open on the server: it waited too long (the phone was
+   * away for hours, the center closed for the night) and ran out. Nothing is lost on this device: a new order
+   * is started, and every file that is still here is sent into it.
+   * Answers "renewed", "open" (the order is fine after all; only one file was gone) or "closed" (priced or
+   * paid: not ours to replace).
+   */
+  let renewing = null;
+  function renewOrder(deadId) {
+    if (!state.draft || state.draft.orderId !== deadId) return Promise.resolve("renewed");     // done already
+    if (!renewing) {
+      renewing = (async () => {
+        const o = state.draft;
+        let v = null;
+        try {
+          v = await api("GET", "/api/v1/orders/" + o.orderId, null, o.key);
+        } catch (e) {
+          if (e.status !== 404) throw e;
+        }
+        if (v && v.status === "AWAITING_UPLOAD") return "open";
+        if (v && (v.paidAt || v.status === "AWAITING_PAYMENT")) return "closed";
+        state.draft = null;
+        storageSet(DRAFT, null);
+        for (const x of state.docs) {
+          if (x.removed || x.sending) continue;        // one that is being sent right now finds out by itself
+          if (x.file) { x.status = "queued"; x.error = null; x.temporary = false; upload(x); }
+          else fail(x, "This file has to be added again: the order it was in ran out.", false);
+        }
+        toast("Your unfinished order had run out. A new one was started with the same files.", "warn");
+        renderQueue();
+        renderCheckout();
+        return "renewed";
+      })().finally(() => { renewing = null; });
+    }
+    return renewing;
+  }
+
+  /**
+   * Files that stopped because the connection went away are sent again by themselves: at once when the browser
+   * says the connection is back, and otherwise after a little while, a little longer each time (about ten
+   * minutes in all; after that "Try again" is still there).
+   */
+  const later = { timer: null, tries: 0 };
+  function stoppedFiles() {
+    return state.docs.filter(d => d.status === "error" && d.temporary && d.retry && !d.removed);
+  }
+  function retryLater() {
+    if (later.timer) return;
+    if (!stoppedFiles().length) { later.tries = 0; return; }
+    if (later.tries >= 14) return;
+    const wait = Math.min(60000, 4000 * Math.pow(1.5, later.tries++));
+    later.timer = setTimeout(() => {
+      later.timer = null;
+      if (navigator.onLine === false) { retryLater(); return; }
+      stoppedFiles().forEach(retry);
+    }, wait);
+  }
+  window.addEventListener("online", () => {
+    clearTimeout(later.timer);
+    later.timer = null;
+    later.tries = 0;
+    setTimeout(() => stoppedFiles().forEach(retry), 1500);          // give the connection a moment to settle
+    if (!state.shop) loadShop();
+  });
 
   function takeServerView(d, v) {
     if (v.status === "REJECTED") {
@@ -820,22 +1068,135 @@
     }).catch(() => {});
   }
 
-  function put(d, url, contentType) {
+  /**
+   * Sends the file. In pieces when the server takes pieces (uploadChunkBytes): a connection that drops loses
+   * one piece, and the upload carries on from what the server already has. All at once otherwise (cloud storage).
+   */
+  async function put(d, ticket) {
+    const piece = ticket.uploadChunkBytes;
+    if (!piece) return putAll(d, ticket.uploadUrl, ticket.uploadContentType);
+    const total = d.file.size;
+    let at = await arrived(ticket.uploadUrl, total, 0);
+    let hiccups = 0;
+    d.progress = at / total;
+    renderQueueProgress();
+    while (at < total) {
+      if (d.cancelRequested || d.removed) throw cancelled();
+      const end = Math.min(at + piece, total);
+      try {
+        const r = await putPiece(d, ticket, at, end, total);
+        at = r && r.complete ? total : r && typeof r.received === "number" ? Math.min(r.received, total) : end;
+        hiccups = 0;
+      } catch (e) {
+        if (e.aborted) throw e;
+        if (e.status === 409 && typeof e.received === "number") {
+          at = Math.min(e.received, total);                 // the server tells where to carry on
+        } else if (e.status && e.status < 500 && e.status !== 400 && e.status !== 408 && e.status !== 429) {
+          throw e;                                          // refused (too big, link ran out): trying again will not help
+        } else {
+          if (++hiccups > 5) { e.temporary = true; throw e; }
+          await pause(e.status === 503 ? 2000 + Math.random() * 2000 : Math.min(8000, 1000 * hiccups));
+          at = await arrived(ticket.uploadUrl, total, at);
+        }
+      }
+      d.progress = at / total;
+      renderQueueProgress();
+    }
+  }
+
+  /** How much of the file the server has (so an upload carries on instead of starting again). */
+  async function arrived(url, total, otherwise) {
+    const stop = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = stop ? setTimeout(() => stop.abort(), 15000) : null;
+    try {
+      const res = await fetch(url, { method: "GET", signal: stop ? stop.signal : undefined });
+      if (!res.ok) return otherwise;
+      const s = await res.json();
+      return s.complete ? total : Math.max(0, Math.min(Number(s.received) || 0, total));
+    } catch (e) {
+      return otherwise;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function putPiece(d, ticket, start, end, total) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       d.xhr = xhr;
+      let stalled = false;
+      let watch = null;
+      const alive = () => {
+        clearTimeout(watch);
+        watch = setTimeout(() => { stalled = true; xhr.abort(); }, STALL);
+      };
+      xhr.open("PUT", ticket.uploadUrl);
+      xhr.setRequestHeader("Content-Type", ticket.uploadContentType);
+      xhr.setRequestHeader("Content-Range", "bytes " + start + "-" + (end - 1) + "/" + total);
+      xhr.upload.onprogress = (e) => {
+        alive();
+        if (e.lengthComputable) {
+          d.progress = (start + e.loaded) / total;
+          renderQueueProgress();
+        }
+      };
+      xhr.onload = () => {
+        clearTimeout(watch);
+        let body = null;
+        try { body = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(body || {});
+        const err = new Error((body && body.message) || ("The file could not be sent (" + xhr.status + "). Try again."));
+        err.status = xhr.status;
+        err.code = body && body.error;
+        if (body && typeof body.received === "number") err.received = body.received;
+        reject(err);
+      };
+      xhr.onerror = () => { clearTimeout(watch); const e = new Error(STOPPED); e.temporary = true; reject(e); };
+      xhr.onabort = () => {
+        clearTimeout(watch);
+        if (stalled) { const e = new Error(STOPPED); e.temporary = true; reject(e); }
+        else reject(cancelled());
+      };
+      alive();
+      xhr.send(d.file.slice(start, end));
+    });
+  }
+
+  /** The whole file in one request (cloud storage takes it no other way). Given up when no byte moves any more. */
+  function putAll(d, url, contentType) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      d.xhr = xhr;
+      let stalled = false;
+      let watch = null;
+      const alive = () => {
+        clearTimeout(watch);
+        watch = setTimeout(() => { stalled = true; xhr.abort(); }, STALL * 2);
+      };
       xhr.open("PUT", url);
       xhr.setRequestHeader("Content-Type", contentType);
       xhr.upload.onprogress = (e) => {
+        alive();
         if (e.lengthComputable) {
           d.progress = e.loaded / e.total;
           renderQueueProgress();
         }
       };
-      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-        ? resolve() : reject(new Error("The file could not be sent (" + xhr.status + "). Try again."));
-      xhr.onerror = () => reject(new Error("The upload stopped. Check your internet and try again."));
-      xhr.onabort = () => { const e = new Error("Cancelled"); e.aborted = true; reject(e); };
+      xhr.onload = () => {
+        clearTimeout(watch);
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        const err = new Error("The file could not be sent (" + xhr.status + "). Try again.");
+        err.status = xhr.status;
+        err.temporary = xhr.status >= 500;
+        reject(err);
+      };
+      xhr.onerror = () => { clearTimeout(watch); const e = new Error(STOPPED); e.temporary = true; reject(e); };
+      xhr.onabort = () => {
+        clearTimeout(watch);
+        if (stalled) { const e = new Error(STOPPED); e.temporary = true; reject(e); }
+        else reject(cancelled());
+      };
+      alive();
       xhr.send(d.file);
     });
   }
@@ -843,15 +1204,19 @@
   function cancelUpload(d) {
     const i = uploads.waiting.indexOf(d);
     if (i >= 0) uploads.waiting.splice(i, 1);
+    d.cancelRequested = true;                       // seen between the steps (asking for a link, the pieces)
+    d.temporary = false;
     if (d.xhr) d.xhr.abort();
-    else if (d.status === "queued") d.status = "cancelled";
+    else if (d.status === "queued" || (d.status === "uploading" && !d.sending)) d.status = "cancelled";
     renderQueue();
     renderCheckout();
   }
 
   function retry(d) {
+    if (d.sending || d.removed) return;             // already on its way
     d.error = null;
     d.serverError = null;
+    d.temporary = false;
     if (!d.type || d.pageCount == null) {
       d.status = "reading";
       renderQueue();
@@ -3421,6 +3786,7 @@
       const d = newDoc(new File([], sd.fileName));
       d.file = null;
       d.id = sd.id;
+      d.orderId = saved.orderId;
       d.name = sd.fileName;
       d.size = sd.sizeBytes || 0;
       d.type = sd.fileType;

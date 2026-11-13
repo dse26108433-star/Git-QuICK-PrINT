@@ -20,7 +20,6 @@ import edu.campus.printapp.core.specFromPages
 import edu.campus.printapp.net.AddDocumentRequest
 import edu.campus.printapp.net.ApiException
 import edu.campus.printapp.net.ClaimPayment
-import edu.campus.printapp.net.ConfirmPayment
 import edu.campus.printapp.net.DocumentChoice
 import edu.campus.printapp.net.DocumentView
 import edu.campus.printapp.net.OrderView
@@ -78,7 +77,10 @@ data class Doc(
     val localImage: edu.campus.printapp.core.ImageInfo? = null,  // the phone's, until the server answers
     val settings: PrintSettings? = null,  // the student's choices
     val serverError: String? = null,      // why the server refused these settings
-    val ahead: Int = 0                    // a Word file being turned into pages: how many are in line before it
+    val ahead: Int = 0,                   // a Word file being turned into pages: how many are in line before it
+    val temporary: Boolean = false,       // it stopped because the connection was away: sent again by itself
+    val orderId: String? = null,          // the order its server id belongs to (an order can run out and be replaced)
+    val renewed: Int = 0                  // how often it was moved to a new order
 ) {
     val busy: Boolean get() = status == DocStatus.READING || status == DocStatus.QUEUED ||
         status == DocStatus.UPLOADING || status == DocStatus.CHECKING || status == DocStatus.CONVERTING
@@ -190,7 +192,13 @@ class OrderSession(
     /** While a Word file is being turned into pages: how often the server is asked. */
     private val wordPollMs: Long = 1_500,
     /** The server is busy checking files: how long before this one asks again (and up to as long again). */
-    private val busyRetryMs: Long = 4_000
+    private val busyRetryMs: Long = 4_000,
+    /** A file stopped for lack of a connection: the first wait before it is sent again by itself (then longer). */
+    private val retryBaseMs: Long = 4_000,
+    /** The server's check gave no answer: how long before it is asked how the file stands. */
+    private val checkRetryMs: Long = 3_000,
+    /** The print service moved to another address (null: back to the one the app was built with): remember it. */
+    private val onMoved: (String?) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SessionState(staffApp = staffStore != null,
         step = if (staffStore != null && staffStore.token() == null) Step.LOGIN else Step.HOME))
@@ -198,10 +206,6 @@ class OrderSession(
 
     private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val notices: SharedFlow<Notice> = _notices.asSharedFlow()
-
-    /** Razorpay's screen should open (the Activity does that). */
-    private val _checkout = MutableSharedFlow<PaymentStart>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val checkout: SharedFlow<PaymentStart> = _checkout.asSharedFlow()
 
     /** A file needs the student's attention: open it (and show the problem). */
     private val _problems = MutableSharedFlow<Long>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -332,7 +336,13 @@ class OrderSession(
     // ================================================================== the shop and its printers
 
     suspend fun loadShop(): ShopView? = try {
-        val shop = api.shop()
+        var shop = api.shop()
+        if (shop.movedTo != null && api.moveTo(shop.movedTo)) {
+            // The print service lives somewhere else now (say, on the Xerox center's own PC): go there, and
+            // remember it. An unfinished order from the old place moves along by itself (see renewOrder).
+            onMoved(api.base)
+            shop = api.shop()
+        }
         if (shop.printing == null) {
             _state.update { it.copy(shopError = "The print service is being updated. Please try again in a few minutes.") }
             null
@@ -349,9 +359,21 @@ class OrderSession(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        _state.update { it.copy(shopError = if (wakingUp(e)) WAKING else friendly(e)) }
+        _state.update { it.copy(shopError = if (closed(e)) CLOSED else if (wakingUp(e)) WAKING else friendly(e)) }
+        // The address the phone remembers does not answer: has the print service moved again, or back?
+        if (api.base != api.home && (closed(e) || e is IOException) && clock() - askedHomeAt > 120_000) {
+            askedHomeAt = clock()
+            scope.launch {
+                if (runCatching { api.askHome() }.getOrDefault(false)) {
+                    onMoved(api.base.takeIf { it != api.home })
+                    loadShop()
+                }
+            }
+        }
         null
     }
+
+    @Volatile private var askedHomeAt = 0L
 
     /** What the printers can do (not whether they are online right now): a change means new options. */
     private fun featuresOf(s: ShopView) = s.printing?.copy(printers = s.printing.printers.map { it.copy(online = false) })
@@ -451,9 +473,18 @@ class OrderSession(
             var skipped = 0
             var over = 0
             val added = mutableListOf<Doc>()
+            val again = mutableListOf<Long>()
             for (f in files) {
-                if (_state.value.docs.any { it.name == f.name && it.size == f.size && f.size > 0 } ||
-                    added.any { it.name == f.name && it.size == f.size && f.size > 0 }) { skipped++; continue }
+                val same = _state.value.docs.firstOrNull { it.name == f.name && it.size == f.size && f.size > 0 }
+                if (same != null) {
+                    // Chosen again while its first try is stuck: that means "try again", not "already in your list".
+                    if (same.status == DocStatus.CANCELLED || (same.status == DocStatus.ERROR && same.canRetry)) {
+                        if (same.file == null) incoming[same.local] = f
+                        again += same.local
+                    } else skipped++
+                    continue
+                }
+                if (added.any { it.name == f.name && it.size == f.size && f.size > 0 }) { skipped++; continue }
                 if (added.size >= room) { over++; continue }
                 val d = Doc(nextLocal.getAndIncrement(), f.name, f.size)
                 incoming[d.local] = f
@@ -461,7 +492,11 @@ class OrderSession(
             }
             if (skipped > 0) notice(plural(skipped, "file was", "files were") + " already in your list.", NoticeKind.WARN)
             if (over > 0) notice(plural(over, "file was", "files were") + " not added: one order can have up to ${shop.maxDocuments} files.", NoticeKind.WARN)
-            if (added.isEmpty()) return@launch
+            again.forEach { retry(it) }
+            if (added.isEmpty()) {
+                if (again.isNotEmpty()) _state.update { it.copy(step = Step.SETUP) }
+                return@launch
+            }
             _state.update { s ->
                 s.copy(docs = s.docs + added, step = Step.SETUP,
                     selected = s.selected?.takeIf { sel -> s.docs.any { it.local == sel } } ?: added.first().local)
@@ -542,25 +577,48 @@ class OrderSession(
         }
     }
 
-    /** Upload, then the server's check. Any step can fail on a bad connection: "Try again" picks up from where it stopped. */
+    /**
+     * Upload, then the server's check. Any step can fail on a bad connection, and none of them leaves a file
+     * stuck: what stopped for lack of a connection is sent again by itself (from where it stopped, when the
+     * server takes pieces); a file that did arrive is recognised as arrived; and an order that ran out while
+     * the phone was away is replaced by a new one with the same files.
+     */
     private suspend fun send(local: Long) {
+        val me = kotlin.coroutines.coroutineContext[Job]
+        var order: OrderRef? = null
+        var again = false
         try {
             uploads.withPermit {
                 val o = ensureOrder()
+                order = o
                 var d = doc(local) ?: return
                 if (local in removed) return
+                if (d.id != null && d.orderId != null && d.orderId != o.orderId) {
+                    set(local) { it.copy(id = null, orderId = null) }          // it belonged to an order that ran out
+                    d = doc(local) ?: return
+                }
                 val file = d.file ?: throw UserError("This file is no longer on the phone. Remove it and add it again.")
                 val ticket = if (d.id == null) {
                     api.addDocument(o.orderId, o.key, AddDocumentRequest(d.name, d.type!!, file.length())).also { t ->
-                        set(local) { it.copy(id = t.document.id) }
+                        set(local) { it.copy(id = t.document.id, orderId = o.orderId) }
                         saveDraft()
                     }
                 } else {
-                    api.uploadUrl(o.orderId, o.key, d.id!!)
+                    try {
+                        api.uploadUrl(o.orderId, o.key, d.id!!)
+                    } catch (e: ApiException) {
+                        if (e.code != "ALREADY_UPLOADED") throw e
+                        // It did arrive (the connection dropped after the last byte, or the answer got lost): carry
+                        // on from where the server has it, instead of saying "already uploaded" for ever.
+                        settle(local, e.document ?: serverDoc(o, d.id!!) ?: throw e)
+                        return
+                    }
                 }
                 if (local in removed) { dropOnServer(ticket.document.id); return }
-                set(local) { it.copy(status = DocStatus.UPLOADING, progress = 0f) }
-                api.upload(ticket.uploadUrl, ticket.uploadContentType, file) { p -> set(local) { it.copy(progress = p) } }
+                set(local) { it.copy(status = DocStatus.UPLOADING, progress = 0f, temporary = false) }
+                api.upload(ticket.uploadUrl, ticket.uploadContentType, file, ticket.uploadChunkBytes ?: 0) { p ->
+                    set(local) { it.copy(progress = p) }
+                }
                 set(local) { it.copy(status = DocStatus.CHECKING, progress = 1f) }
                 d = doc(local) ?: return
                 var view: DocumentView? = null
@@ -569,28 +627,155 @@ class OrderSession(
                     try {
                         view = api.documentUploaded(o.orderId, o.key, d.id!!)
                     } catch (e: ApiException) {
-                        // "many files are being checked right now": it is in line; asked again in a moment (five minutes at most)
-                        if (e.code != "BUSY" || ++tries > 40 || local in removed) throw e
-                        delay(busyRetryMs + (Math.random() * busyRetryMs).toLong())
+                        if (local in removed) throw e
+                        if (e.code == "BUSY" && ++tries <= 40) {
+                            // "many files are being checked right now": it is in line; asked again in a moment
+                            delay(busyRetryMs + (Math.random() * busyRetryMs).toLong())
+                        } else if (e.temporary && e.code != "BUSY" && ++tries <= 5) {
+                            delay(checkRetryMs)
+                            view = runCatching { serverDoc(o, d.id!!) }.getOrNull()?.takeIf { it.status != "UPLOADING" }
+                        } else throw e
+                    } catch (e: IOException) {
+                        // No answer. The server may well have checked it all the same: ask how the file stands.
+                        if (local in removed || ++tries > 5) throw e
+                        delay(checkRetryMs)
+                        view = runCatching { serverDoc(o, d.id!!) }.getOrNull()?.takeIf { it.status != "UPLOADING" }
                     }
                 }
-                takeServerView(local, view)
+                settle(local, view)
             }
         } catch (e: CancellationException) {
-            if (local !in removed) set(local) { if (it.busy) it.copy(status = DocStatus.CANCELLED, error = null) else it }
+            if (local !in removed) set(local) { if (it.busy) it.copy(status = DocStatus.CANCELLED, error = null, temporary = false) else it }
             throw e
         } catch (e: ApiException) {
             if (local in removed) return
-            fail(local, e.message, e.code != "PRICED" && e.code != "BAD_STATE" && e.status != 404)
+            val o = order
+            when {
+                e.code == "PRICED" -> fail(local, e.message, false)
+                o != null && orderGone(e) -> {
+                    val what = try {
+                        renewOrder(o.orderId)
+                    } catch (x: CancellationException) {
+                        throw x
+                    } catch (x: Exception) {
+                        null                                   // could not ask right now: tried again later
+                    }
+                    val d = doc(local)
+                    when {
+                        (what == Renewal.RENEWED || what == Renewal.OPEN) && d?.file != null && d.renewed < 2 -> {
+                            set(local) {
+                                it.copy(id = null, orderId = null, status = DocStatus.QUEUED, error = null, temporary = false,
+                                    progress = 0f, renewed = it.renewed + 1)
+                            }
+                            again = true
+                        }
+                        what == Renewal.RENEWED || what == Renewal.OPEN -> fail(local, "This file has to be added again.", false)
+                        what == Renewal.CLOSED -> fail(local, e.message, false)
+                        else -> fail(local, STOPPED, true, temporary = true)
+                    }
+                }
+                e.temporary -> fail(local, STOPPED, true, temporary = true)
+                else -> fail(local, e.message, true)
+            }
         } catch (e: UserError) {
             fail(local, e.message ?: "The upload failed.", false)
         } catch (e: Exception) {
             if (local in removed) return
-            log("Sending a file failed", e)
-            fail(local, if (e is IOException) "The upload stopped. Check your internet and try again." else "The upload failed.", true)
+            if (e is IOException) {
+                fail(local, STOPPED, true, temporary = true)
+            } else {
+                log("Sending a file failed", e)
+                fail(local, "The upload failed.", true)
+            }
         } finally {
-            jobs.remove(local)
+            if (me != null) jobs.remove(local, me) else jobs.remove(local)
+            if (again && local !in removed) jobs[local] = scope.launch { send(local) }
         }
+    }
+
+    /** How one file stands on the server right now (null: it is not in the order). */
+    private suspend fun serverDoc(o: OrderRef, docId: String): DocumentView? =
+        api.order(o.orderId, o.key).documents.find { it.id == docId }
+
+    /** The server's word on a file that has arrived: ready, being turned into pages (a Word file), or refused. */
+    private fun settle(local: Long, v: DocumentView) {
+        if (v.status == "UPLOADING") fail(local, STOPPED, true, temporary = true) else takeServerView(local, v)
+    }
+
+    /** The server says this order (or this file in it) is no longer there to add to. */
+    private fun orderGone(e: ApiException): Boolean =
+        (e.code == "BAD_STATE" && !e.message.contains("paid", ignoreCase = true)) || e.status == 404
+
+    private enum class Renewal { RENEWED, OPEN, CLOSED }
+    private val renewLock = Mutex()
+
+    /**
+     * The order these files were going into is no longer open on the server: it waited too long (the phone was
+     * away for hours, the center closed for the night) and ran out. Nothing is lost on the phone: a new order
+     * is started, and every file that is still here is sent into it.
+     * RENEWED: a new order was started. OPEN: the order is fine after all (only one file was gone).
+     * CLOSED: it is priced or paid: not ours to replace.
+     */
+    private suspend fun renewOrder(deadId: String): Renewal = renewLock.withLock {
+        val o = _state.value.draft
+        if (o == null || o.orderId != deadId) return@withLock Renewal.RENEWED          // done already
+        val v = try {
+            api.order(o.orderId, o.key)
+        } catch (e: ApiException) {
+            if (e.status != 404) throw e
+            null
+        }
+        if (v != null && v.status == "AWAITING_UPLOAD") return@withLock Renewal.OPEN
+        if (v != null && (v.paidAt != null || v.status == "AWAITING_PAYMENT")) return@withLock Renewal.CLOSED
+        _state.update { it.copy(draft = null) }
+        notice("Your unfinished order had run out. A new one was started with the same files.", NoticeKind.WARN)
+        for (d in _state.value.docs) {
+            // one that is being read or sent right now finds out by itself, and moves itself
+            val onItsWay = d.status == DocStatus.READING || d.status == DocStatus.QUEUED ||
+                d.status == DocStatus.UPLOADING || d.status == DocStatus.CHECKING
+            if (d.local in removed || onItsWay) continue
+            when {
+                d.status == DocStatus.CANCELLED -> set(d.local) { it.copy(id = null, orderId = null) }
+                d.file != null && d.type != null -> {
+                    set(d.local) { it.copy(id = null, orderId = null, status = DocStatus.QUEUED, error = null, temporary = false, progress = 0f) }
+                    jobs[d.local] = scope.launch { send(d.local) }
+                }
+                else -> fail(d.local, "This file has to be added again: the order it was in ran out.", false)
+            }
+        }
+        saveDraft()
+        Renewal.RENEWED
+    }
+
+    // ================================================================== files that stopped carry on by themselves
+
+    private var laterJob: Job? = null
+    @Volatile private var laterTries = 0
+
+    private fun stopped(): List<Doc> =
+        _state.value.docs.filter { it.status == DocStatus.ERROR && it.temporary && it.canRetry && it.local !in removed }
+
+    /**
+     * Files that stopped because the connection went away are sent again by themselves: after a little while,
+     * a little longer each time (about ten minutes in all; after that "Try again" is still there), and at once
+     * when Android says the phone has a connection again (networkBack).
+     */
+    private fun retryLater() {
+        if (laterJob?.isActive == true || laterTries >= 14) return
+        laterJob = scope.launch {
+            delay(minOf(60_000L, (retryBaseMs * Math.pow(1.5, laterTries.toDouble())).toLong()))
+            laterTries++
+            stopped().forEach { retry(it.local) }
+        }
+    }
+
+    /** The phone has a connection again: what stopped for lack of one is sent now. */
+    fun networkBack() {
+        laterTries = 0
+        laterJob?.cancel()
+        laterJob = null
+        stopped().forEach { retry(it.local) }
+        if (_state.value.shop == null) scope.launch { loadShop() }
     }
 
     private fun takeServerView(local: Long, v: DocumentView) {
@@ -605,14 +790,17 @@ class OrderSession(
             return
         }
         set(local) {
-            it.copy(status = DocStatus.READY, error = null, pageCount = v.pageCount ?: it.pageCount,
+            it.copy(status = DocStatus.READY, error = null, temporary = false, pageCount = v.pageCount ?: it.pageCount,
                 image = v.image ?: it.image, type = v.fileType.ifEmpty { it.type })
         }
+        laterTries = 0                               // the connection works: the next hiccup starts with short waits again
         saveDraft()
     }
 
-    private fun fail(local: Long, message: String, canRetry: Boolean) {
-        set(local) { it.copy(status = DocStatus.ERROR, error = message, canRetry = canRetry) }
+    /** temporary: it stopped because the connection (or the service) was away: sent again by itself when that is back. */
+    private fun fail(local: Long, message: String, canRetry: Boolean, temporary: Boolean = false) {
+        set(local) { it.copy(status = DocStatus.ERROR, error = message, canRetry = canRetry, temporary = canRetry && temporary) }
+        if (canRetry && temporary) retryLater()
     }
 
     // ================================================================== Word files
@@ -683,14 +871,18 @@ class OrderSession(
 
     fun cancelUpload(local: Long) {
         jobs.remove(local)?.cancel()
-        set(local) { if (it.busy) it.copy(status = DocStatus.CANCELLED, error = null) else it }
+        set(local) { if (it.busy) it.copy(status = DocStatus.CANCELLED, error = null, temporary = false) else it }
     }
 
     fun cancelAll() = _state.value.docs.filter { it.busy }.forEach { cancelUpload(it.local) }
 
     fun retry(local: Long) {
         val d = doc(local) ?: return
-        set(local) { it.copy(error = null, serverError = null, canRetry = false) }
+        // Only a file that stopped or was cancelled; one that is on its way is left alone. (Going by the file's
+        // state, not by whether its last try has finished winding down: a "try again" that comes in the very
+        // moment a try fails must not be lost.)
+        if (d.status != DocStatus.ERROR && d.status != DocStatus.CANCELLED) return
+        set(local) { it.copy(error = null, serverError = null, canRetry = false, temporary = false) }
         if (d.type == null || d.pageCount == null || d.settings == null) {
             set(local) { it.copy(status = DocStatus.READING) }
             jobs[local] = scope.launch { prepare(local) }
@@ -921,6 +1113,12 @@ class OrderSession(
                     refreshStaff()
                     return@launch
                 }
+                // The apps pay by UPI only (no card payment library inside: nothing for Android to warn about).
+                // A shop that takes cards (Razorpay) is paid on the website.
+                if (_state.value.shop?.paymentMode == "razorpay") {
+                    _state.update { it.copy(payError = CARD_ON_WEBSITE) }
+                    return@launch
+                }
                 val c = api.startPayment(ref.orderId, ref.key)
                 _state.update { it.copy(paymentStarted = true) }       // the order is fixed now
                 if (c.provider == "demo") {
@@ -930,8 +1128,8 @@ class OrderSession(
                 } else if (c.provider == "upi" && c.upi != null) {
                     openUpi(ref, c.upi)
                 } else {
-                    memory.setPending(ref.orderId)
-                    _checkout.tryEmit(c)
+                    // the shop switched to card payment just now: the order is kept, and can be paid on the website
+                    _state.update { it.copy(payError = CARD_ON_WEBSITE) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -940,27 +1138,6 @@ class OrderSession(
                 if (staffStore != null) refreshStaff()                 // the pages left may be what changed
             } finally {
                 _state.update { it.copy(paying = false) }
-            }
-        }
-    }
-
-    /** Razorpay said "paid". The server checks it before anything prints. */
-    fun onPaymentSuccess(paymentId: String?, signature: String?) {
-        val ref = _state.value.current ?: memory.pending() ?: return
-        memory.setPending(null)
-        clearDraft(deleteFiles = true)
-        scope.launch {
-            try {
-                if (paymentId.isNullOrBlank() || signature.isNullOrBlank()) {
-                    throw UserError("Payment details were incomplete. It is checked again automatically.")
-                }
-                openStatus(ref, api.confirmPayment(ref.orderId, ref.key, ConfirmPayment(paymentId, signature)), afterPayment = true)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Money may have been taken: never show "Pay" again. The server re-checks by itself.
-                openStatus(ref, null, afterPayment = true)
-                notice(friendly(e), NoticeKind.BAD)
             }
         }
     }
@@ -1432,27 +1609,32 @@ class OrderSession(
         _state.update { it.copy(restoring = true) }
         try {
             if (_state.value.shop == null) loadShop()
-            val ref = if (draft.orderId != null && draft.key != null && draft.code != null)
+            var ref = if (draft.orderId != null && draft.key != null && draft.code != null)
                 OrderRef(draft.orderId, draft.key, draft.code) else null
-            val v = if (ref != null) {
+            var v = if (ref != null) {
                 try {
                     api.order(ref.orderId, ref.key)
                 } catch (e: ApiException) {
-                    if (e.status == 404) { drafts.save(null); return false }
-                    throw e
+                    if (e.status != 404) throw e
+                    null
                 }
             } else null
-            if (v != null && v.status != "AWAITING_UPLOAD" && v.status != "AWAITING_PAYMENT") {
+            if (v != null && v.paidAt != null) {
                 drafts.save(null)
-                if (v.paidAt != null) {
-                    val saved = memory.all().find { it.orderId == v.orderId } ?: SavedOrder(v.orderId, ref!!.key, v.pickupCode, orderName(v), clock())
-                    memory.add(saved)
-                    openStatus(saved, v, afterPayment = true)
-                    return true
-                }
-                return false
+                val saved = memory.all().find { it.orderId == v.orderId } ?: SavedOrder(v.orderId, ref!!.key, v.pickupCode, orderName(v), clock())
+                memory.add(saved)
+                openStatus(saved, v, afterPayment = true)
+                return true
             }
-            val docs = draft.docs.mapNotNull { sd ->
+            // The order ran out on the server (the app was closed for hours, the center closed for the night), or
+            // is gone altogether. The files are still on this phone: they go into a new order, as they were.
+            val ranOut = ref != null && (v == null || (v.status != "AWAITING_UPLOAD" && v.status != "AWAITING_PAYMENT"))
+            if (ranOut) {
+                ref = null
+                v = null
+            }
+            val docs = draft.docs.mapNotNull { saved ->
+                val sd = if (ranOut) saved.copy(id = null) else saved
                 val server = v?.documents?.find { it.id == sd.id }
                 if (sd.id != null && server == null && v != null) return@mapNotNull null   // removed or expired on the server
                 val onPhone = sd.path?.let { File(it) }?.takeIf { it.exists() }
@@ -1468,7 +1650,8 @@ class OrderSession(
                     else -> DocStatus.ERROR
                 }
                 Doc(sd.local, sd.name, sd.size, file, server?.fileType?.ifEmpty { null } ?: sd.type, status,
-                    id = sd.id, pageCount = server?.pageCount ?: sd.pageCount, image = server?.image ?: sd.image,
+                    id = sd.id, orderId = if (sd.id != null) ref?.orderId else null,
+                    pageCount = server?.pageCount ?: sd.pageCount, image = server?.image ?: sd.image,
                     localImage = sd.localImage,
                     settings = sd.settings ?: PrintSettings().takeIf { status != DocStatus.CONVERTING },
                     ahead = server?.ahead ?: 0,
@@ -1485,6 +1668,10 @@ class OrderSession(
                 it.copy(docs = docs, draft = ref, selected = docs.firstOrNull()?.local,
                     step = if (reviewed) Step.REVIEW else Step.SETUP, order = if (reviewed) v else null,
                     current = saved ?: it.current, paymentStarted = reviewed && v?.editable == false)
+            }
+            if (ranOut && docs.isNotEmpty()) {
+                saveDraft()
+                notice("Your unfinished order had run out. A new one was started with the same files.", NoticeKind.WARN)
             }
             for (d in docs) {
                 if (d.status == DocStatus.QUEUED) jobs[d.local] = scope.launch { send(d.local) }
@@ -1525,6 +1712,9 @@ class OrderSession(
     }
 
     companion object {
+        /** The shop takes cards (Razorpay): the apps do not, the website does. */
+        const val CARD_ON_WEBSITE = "This Xerox center takes card payments on the XeoGo website only. Open the website in " +
+            "Chrome to pay for this order, or ask at the counter. (The app pays with UPI.)"
         const val KINDS = "Only PDF, Word (.docx), JPG and PNG files can be printed."
         const val OLD_WORD = "This is an older kind of Word file (.doc). Open it in Word, choose File \u2192 Save As \u2192 " +
             "Word Document (.docx) or PDF, and add that."
@@ -1533,6 +1723,19 @@ class OrderSession(
 
         /** What the app says while the print service is waking up (its host lets it sleep after a quiet time). */
         const val WAKING = "The print service is waking up. This takes a minute or two after a quiet time."
+
+        /**
+         * A Xerox center that runs the print service on its own computer is only there while that computer is
+         * on. Its address then answers "nothing behind me" (Cloudflare's 52x / 530). That is "closed", said
+         * calmly; the app keeps looking and carries on by itself when the computer is back.
+         */
+        const val CLOSED = "The Xerox center's computer is not on right now. It is on while the center is open. " +
+            "The app finds it by itself as soon as it is back."
+
+        /** A file whose upload stopped for lack of a connection. */
+        const val STOPPED = "The upload stopped. It carries on by itself when the connection is back."
+
+        fun closed(e: Exception): Boolean = e is ApiException && e.status in 520..530
 
         /**
          * The service's host answered that it is not up yet (502, 503, 504), or the service was reached but did

@@ -36,3 +36,10 @@
 
 /staff.webmanifest
   Content-Type: application/manifest+json
+
+# The Android apps (download/XeoGo.apk, download/XeoGo-Staff.apk; the download page is app.html). Sent as a
+# download with the type Android expects, and checked again soon after a new version is put here.
+/download/*
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment
+  Cache-Control: public, max-age=300

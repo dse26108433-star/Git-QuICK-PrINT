@@ -31,7 +31,7 @@ import edu.campus.print.repo.PrinterRepository;
 import edu.campus.print.repo.ShopSettingsRepository;
 import edu.campus.print.staff.StaffService;
 import edu.campus.print.storage.FileInspector;
-import edu.campus.print.storage.SupabaseStorage;
+import edu.campus.print.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -88,7 +88,7 @@ public class OrderService {
     private final OrderDocumentRepository documents;
     private final PrinterRepository printers;
     private final ShopSettingsRepository settings;
-    private final SupabaseStorage storage;
+    private final FileStorage storage;
     private final FileInspector inspector;
     private final PaymentGateway gateway;
     private final UpiLedger upi;
@@ -99,6 +99,8 @@ public class OrderService {
     private final StaffService staff;
     private final WordFiles word;
     private final TransactionTemplate tx;
+    /** Where the print service has moved to (MOVED_TO), or null: this is the print service. */
+    private final String movedTo;
     /**
      * Uploaded files are read into memory to be checked. This is the memory for that, in megabytes: a file
      * takes as many as it is big (and never less than a fair share), so one huge file and many small ones
@@ -117,10 +119,11 @@ public class OrderService {
     private volatile double answerMillis = 20;
 
     public OrderService(OrderRepository orders, OrderDocumentRepository documents, PrinterRepository printers,
-                        ShopSettingsRepository settings, SupabaseStorage storage, FileInspector inspector,
+                        ShopSettingsRepository settings, FileStorage storage, FileInspector inspector,
                         PaymentGateway gateway, UpiLedger upi, ShopProperties limits, AgentProperties agentProps,
                         PreviewStore previews, ReadyEstimate estimate, StaffService staff, WordFiles word,
-                        PlatformTransactionManager txManager) {
+                        PlatformTransactionManager txManager,
+                        @org.springframework.beans.factory.annotation.Value("${campus.moved-to:}") String movedTo) {
         this.orders = orders;
         this.documents = documents;
         this.printers = printers;
@@ -136,6 +139,12 @@ public class OrderService {
         this.staff = staff;
         this.word = word;
         this.tx = new TransactionTemplate(txManager);
+        String to = movedTo == null ? "" : movedTo.trim().replaceAll("/+$", "");
+        this.movedTo = to.isEmpty() ? null : to;
+        if (this.movedTo != null) {
+            log.warn("MOVED_TO is set: this server tells websites and apps that XeoGo is now at {} and takes no new orders",
+                    this.movedTo);
+        }
         this.checkBudgetMb = limits.checkMemoryMb();
         this.checkShareMb = Math.max(1, checkBudgetMb / limits.maxParallelChecks());
         this.checking = new Semaphore(checkBudgetMb, true);
@@ -190,13 +199,19 @@ public class OrderService {
                 all.stream().anyMatch(p -> p.canPrint(true) && p.isOnline(fresh)),
                 orders.countByStatusIn(OrderStatus.IN_PROGRESS),
                 new Printing(options, paper, finishing, media, s.getPricing(), PrintSettings.defaults()),
-                word.available());
+                word.available(), movedTo);
     }
 
     // ------------------------------------------------------------------ create
 
     /** who: a signed-in staff member makes a staff order (free, counted against their month); else an ordinary one. */
     public CreateOrderResponse create(CreateOrderRequest req, Caller who) {
+        if (movedTo != null) {
+            // An app from before the move (a current one went to the new address by itself): nothing ordered
+            // here would ever print, so say so instead of taking the files.
+            throw new ApiException(HttpStatus.GONE, "MOVED", "XeoGo has moved to a new address. Update the app "
+                    + "(ask at the Xerox center), or open the XeoGo website again.", Map.of("movedTo", movedTo));
+        }
         PrintOrder o = PrintOrder.create();
         o.setPickupCode(uniquePickupCode());
         String accessKey = Secrets.newKey();
@@ -237,7 +252,7 @@ public class OrderService {
                 def.collate(), null, null, null, null, def.quality()));
         documents.save(d);
 
-        SupabaseStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
+        FileStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
         log.info("Order {} created ({} {} x{}{})", o.getPickupCode(), type, color ? "colour" : "B/W",
                 copies, pages == null ? "" : ", pages " + pages);
         return new CreateOrderResponse(o.getId(), accessKey, o.getPickupCode(), upload.url(), type.mimeType(),
@@ -271,20 +286,33 @@ public class OrderService {
             orders.touch(orderId);
             return doc;
         });
-        SupabaseStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
-        return new UploadTicket(documentView(d, null), upload.url(), type.mimeType());
+        FileStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
+        return new UploadTicket(documentView(d, null), upload.url(), type.mimeType(), chunkBytes());
     }
 
-    /** A fresh upload link for the same document: to try again after a failed or cancelled upload. */
+    /** How the device should send the file: in pieces of this size, or (null) all at once. */
+    private Integer chunkBytes() {
+        int n = storage.uploadChunkBytes();
+        return n > 0 ? n : null;
+    }
+
+    /**
+     * A fresh upload link for the same document: to try again after a failed or cancelled upload.
+     *
+     * A device that lost its connection right after the last byte went out does not know the file arrived
+     * and was checked. So the refusal "already uploaded" carries the document as it is now ("document":
+     * READY, CONVERTING or REJECTED): the device takes it from there instead of showing an error for ever.
+     */
     public UploadTicket uploadUrl(UUID orderId, Caller who, UUID documentId) {
         PrintOrder o = owned(orderId, who);
-        requireDraft(o);
         OrderDocument d = ownedDocument(o, documentId);
         if (d.getStatus() != DocumentStatus.UPLOADING) {
-            throw ApiException.conflict("ALREADY_UPLOADED", "This file is already uploaded.");
+            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_UPLOADED", "This file is already uploaded.",
+                    Map.of("document", documentView(d, null)));
         }
-        SupabaseStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
-        return new UploadTicket(documentView(d, null), upload.url(), d.getFileType().mimeType());
+        requireDraft(o);
+        FileStorage.SignedUpload upload = storage.createSignedUpload(d.getStoragePath());
+        return new UploadTicket(documentView(d, null), upload.url(), d.getFileType().mimeType(), chunkBytes());
     }
 
     /**
@@ -1036,7 +1064,7 @@ public class OrderService {
      * read. Then the whole file, with its share of the checking memory.
      */
     private Inspection inspect(OrderDocument d) {
-        SupabaseStorage.Probe look = storage.probe(d.getStoragePath(), 2048)
+        FileStorage.Probe look = storage.probe(d.getStoragePath(), 2048)
                 .orElseThrow(() -> ApiException.badRequest("UPLOAD_MISSING",
                         "The file did not arrive. Check your internet and try again."));
         if (look.totalSize() > limits.maxFileSizeBytes()) {
@@ -1065,7 +1093,7 @@ public class OrderService {
         }
         try {
             int readLimit = (int) Math.min(Integer.MAX_VALUE - 16L, limits.maxFileSizeBytes() + 1);
-            SupabaseStorage.Probe probe = storage.probe(d.getStoragePath(), readLimit)
+            FileStorage.Probe probe = storage.probe(d.getStoragePath(), readLimit)
                     .orElseThrow(() -> ApiException.badRequest("UPLOAD_MISSING",
                             "The file did not arrive. Check your internet and try again."));
             if (probe.totalSize() > limits.maxFileSizeBytes()) {

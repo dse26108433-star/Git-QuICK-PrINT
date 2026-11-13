@@ -5,3 +5,6 @@
 
 # A short address for staff to type.
 /staff          /staff.html   301
+
+# The page the QR code on the poster opens: download the Android app (or use the website).
+/app            /app.html     200

@@ -1,33 +1,45 @@
-XEOGO STATION 4.3.1 - INSTALLING AT A XEROX CENTER
+XEOGO STATION 5.0.0 - INSTALLING AT A XEROX CENTER
 ===================================================
 (QuICK PrINT. Before version 4.3 this program was called "Campus Print Station".)
 
-You need: this installer on a pen drive, the XeoGo server address,
-and the counter password. Nothing else (no Java, no other programs).
+NEW IN 5.0.0: THIS PC CAN BE THE XEOGO SERVER ITSELF
+-----------------------------------------------------
+Until now the XeoGo server was a small free computer on the internet (Render)
+with a free cloud database (Supabase). It was slow when many students came at
+once, slept after quiet times, and every file travelled three times.
 
-Which installer?
-- XeoGoStation-Setup-4.3.1-GitQuickPrint.exe : for Git QuICK PrINT.
-  The server address (https://campus-print-backend.onrender.com) is already
-  filled in.
-- XeoGoStation-Setup-4.3.1.exe : any other college; you type the
-  server address in step 3a.
+From 5.0.0 the Xerox center's own PC can be the server. The installer brings
+everything along: the print service, its database, and the program that gives
+the PC an address on the internet. Nothing else is installed, nobody has to
+start anything: when the Station starts (with Windows), the database and the
+print service start with it, and are started again if one of them ever stops.
 
-Important: Station 4.3.1 belongs to the version 5 server (collecting by
-showing the files, staff IDs). Put the new server online first (push the
-code: it updates its database by itself), then install this.
+  - Students' files come straight to this PC (once, in small pieces: a phone
+    that loses its connection carries on where it stopped).
+  - Switching the PC off in the evening is fine. In the morning everything
+    is back about half a minute after Windows has started.
+  - While the PC is off, the website and the apps say "the Xerox center is
+    closed right now" and carry on by themselves when it is on again.
+  - A backup of the database is made every half hour, on this PC, and (if
+    you fill it in) also sent to your Supabase project.
+
+The full guide, with the one-time steps for the internet address (a domain
+and a free Cloudflare account), is docs/own-server.md. Read it before the day
+you switch over.
+
+You need: this installer on a pen drive. Nothing else (no Java, no database,
+no other programs). For a server somewhere else you also need its address and
+the counter password.
 
 UPDATING an older Station (also "Campus Print Station"): just run this
-installer. It stops the old program, removes it, and keeps everything:
-the connection to the server, the printers and their settings. The setup
-wizard does not appear again.
-
-NEW IN 4.3.1 (if you installed 4.3.0 already: run this installer once more,
-it takes a minute and keeps everything):
-- A printer that is off, offline or out of paper when the PC starts gets
-  no document, not even in the first seconds. Paid documents wait on the
-  server until the printer can print.
-- A harmless error line ("Unmapping is not supported") is gone from the
-  Station's log.
+installer. It stops the old program, removes it, and keeps everything: the
+connection to the server, the printers and their settings, and (when this PC
+is the server) the database, the students' files and the backups. The setup
+does not appear again. An updated Station keeps using the server it used
+before. To make this PC the server (after closing time): Settings > This PC >
+"Make this PC the XeoGo server" > Set up... and choose to bring the shop's
+data over from the cloud database. Do NOT press "Disconnect this PC" first.
+The steps are in docs/own-server.md, step 2.
 
 1. Make sure the printers are installed in Windows with the FULL driver
    (for Canon: UFR II or PS) and print a Windows test page (Settings >
@@ -35,15 +47,41 @@ it takes a minute and keeps everything):
    set what is really fitted: duplex unit, finisher (stapler, puncher).
    Put paper in.
 
-2. Double-click the installer.
+2. Windows, once, on a PC that will be the server (2 minutes):
+   - Settings > Update & Security > Windows Update > Change active hours:
+     from 9 in the morning to 7 in the evening. Windows then never restarts
+     for an update while the shop is open (it updates when the PC is
+     switched off or on).
+   - The PC must not go to sleep while the shop is open. The Station sets
+     that itself ("Sleep: Never" while plugged in); on a laptop, also keep
+     the lid open or set "When I close the lid: Do nothing".
+   - If the PC asks for a password when it is switched on: the server starts
+     when somebody has signed in. That is fine if staff sign in every
+     morning anyway.
+
+3. Double-click the installer (about 120 MB).
    - If Windows shows "Windows protected your PC": click "More info",
      then "Run anyway". (This happens because the installer is not
      code-signed yet; see the note below.)
    - Click Next / Install. No administrator password is needed.
    - On the last page keep "Open XeoGo Station now" ticked > Finish.
 
-3. The app opens with a short setup (skipped when updating):
-   a) Connect this PC: server address, counter password, a name for the PC.
+4. The app opens with a short setup (skipped when updating):
+   a) Connect this PC. Choose one:
+
+      "This PC is the XeoGo server" (recommended)
+        - Counter password: choose the staff password of this shop, 8 or more
+          characters. A name for the PC.
+        - The shop's data: "Start with an empty shop", or bring everything
+          over from the cloud database this shop used until now (the three
+          values DB_URL, DB_USER, DB_PASSWORD of the cloud server), or put
+          the latest backup of another XeoGo server PC back.
+        - Press "Start the server". The first time this takes about a minute
+          (the screen says what it is doing); later starts take half a minute.
+
+      "The server is somewhere else"
+        - Server address, counter password, a name for the PC (as before).
+
    b) Choose the printers: tick the ones to use, name them ("Printer 1"),
       choose "Black & white only" / "Colour and black & white" / "Colour only".
       Under each printer, labels show what Windows says it can do (paper
@@ -57,11 +95,22 @@ it takes a minute and keeps everything):
       sheet, printed on both sides.
    c) "This PC is ready" > Open the counter.
 
-4. Settings > prices: black & white and colour per printed side; under
+5. Only when this PC is the server: Settings > "The server on this PC".
+   - Internet address: paste the Cloudflare tunnel token and type the address
+     students use (https://print.yourcollege.in). The lamp turns green and
+     says "Students can reach this PC". Steps: docs/own-server.md.
+   - How students pay: XeoGo Pay (the shop's UPI ID; recommended) or
+     Razorpay (cards, on the website only: the apps pay by UPI). Until this
+     is set nobody can pay. "Test only" prints WITHOUT payment: for trying
+     things out, never for the real shop.
+   - A copy of the database in the cloud: your Supabase project's address and
+     secret key. Every backup is then also kept there.
+
+6. Settings > prices: black & white and colour per printed side; under
    "Paper sizes, paper types and finishing" the extra for A3 (200 % preset)
    or special paper, and a price per copy for stapling, punching, binding.
 
-5. Staff (college staff print for free): open "Staff" on the left.
+7. Staff (college staff print for free): open "Staff" on the left.
    - "Free pages": how many pages each staff ID may print per month
      (1000 to start with), and whether colour is free too. Save.
    - "New staff ID": type the person's name > Make staff ID. The username
@@ -70,14 +119,16 @@ it takes a minute and keeps everything):
    - Staff sign in on the staff website (its address is shown on that
      screen) or in the XeoGo Staff app.
 
-6. Send one test order from a phone for each option you offer (two-sided,
+8. Send one test order from a phone for each option you offer (two-sided,
    A3, 2 per sheet, each staple / punch position). Untick any option that
    does not come out right.
 
 Done. From now on:
 - Paid files print by themselves, each on a printer that can do everything
   it needs. Closing the window does not stop printing; the XeoGo icon next
-  to the clock opens it again. It starts together with Windows.
+  to the clock opens it again. It starts together with Windows, and with it
+  (when this PC is the server) the database and the print service.
+- In the evening: shut Windows down as usual. Nothing has to be closed first.
 - HANDING OVER, WITHOUT ANY CODE: the student opens their order on their
   phone and taps "I'm at the counter". The order appears in the green box
   "At the counter now", with a picture of each file. The same pictures are
@@ -88,16 +139,32 @@ Done. From now on:
   an order", check that the phone shows the same order, press "Handed over".
 - A staff order shows "Staff · free" and the person's name.
 - A new printer, or a changed driver setting: Printers > "Scan again".
-- To update: run a newer installer; it closes the old version by itself.
-- To remove: Windows Settings > Apps > XeoGo Station > Uninstall.
+- To update: run a newer installer; it closes the old version by itself
+  (the database too, properly) and keeps everything.
+- To remove: Windows Settings > Apps > XeoGo Station > Uninstall. The
+  shop's data stays in %LOCALAPPDATA%\CampusPrint (delete that folder by
+  hand only if you really want everything gone).
+
+WHAT THE SIDEBAR SAYS (bottom left)
+-----------------------------------
+"Ready to print"            everything runs.
+"Starting the server..."    just after switching on: wait, it says what it
+                            is doing (database, then print service).
+"Server problem"            the words under it say what is wrong and what to
+                            do. It keeps trying by itself.
+A yellow line at the top    "Students cannot reach this PC right now": the
+                            internet is down or the tunnel is not set up.
+                            Printing of what is already here carries on.
 
 Code signing (optional, for a warning-free install): buy a code-signing
 certificate (or use Microsoft "Trusted Signing") and sign the .exe with
 signtool. Until then the "More info > Run anyway" step is normal.
 
-Making an installer for a new college (server address already filled in):
+Making the installer yourself (needs JDK 21, Maven, Inno Setup 6):
     cd agent\packaging
-    powershell -ExecutionPolicy Bypass -File build-installer.ps1 -BackendUrl "https://print.college.in"
+    powershell -ExecutionPolicy Bypass -File build-installer.ps1
+  -BackendUrl "https://print.college.in"   a cloud server's address filled in
+  -NoServer                                the small installer, printing only
 
 WORD FILES
 ----------

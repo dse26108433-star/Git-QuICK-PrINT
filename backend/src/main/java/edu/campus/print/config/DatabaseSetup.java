@@ -45,6 +45,7 @@ public class DatabaseSetup {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseSetup.class);
     private static final String SCRIPT = "/db/setup.sql";
+    private static final String PLAIN = "/db/plain-postgres.sql";
     /** deadlock, lock not available, serialization failure, cancelled, connection lost: worth trying again */
     private static final Set<String> TRY_AGAIN = Set.of("40P01", "55P03", "40001", "57014");
     private static final Pattern VERSION = Pattern.compile("insert into schema_version \\(id, version\\) values \\(1, '([^']+)'\\)");
@@ -54,8 +55,9 @@ public class DatabaseSetup {
 
     private final Outcome outcome;
 
-    public DatabaseSetup(DataSource dataSource, @Value("${campus.database.auto-setup:true}") boolean enabled) {
-        this.outcome = enabled ? bringUpToDate(dataSource) : Outcome.SWITCHED_OFF;
+    public DatabaseSetup(DataSource dataSource, @Value("${campus.database.auto-setup:true}") boolean enabled,
+                         @Value("${campus.database.plain-postgres:false}") boolean plainPostgres) {
+        this.outcome = enabled ? bringUpToDate(dataSource, plainPostgres) : Outcome.SWITCHED_OFF;
         if (!enabled) log.warn("DB_AUTO_SETUP=false: the database is not checked. Run db/setup.sql by hand before every update.");
     }
 
@@ -72,7 +74,16 @@ public class DatabaseSetup {
     }
 
     static Outcome bringUpToDate(DataSource dataSource) {
-        String script = script();
+        return bringUpToDate(dataSource, false);
+    }
+
+    /**
+     * plainPostgres: the database is an ordinary PostgreSQL (the one on the
+     * Xerox center's own PC), not a Supabase project. The few things Supabase
+     * brings along and db/setup.sql relies on are made first (db/plain-postgres.sql).
+     */
+    static Outcome bringUpToDate(DataSource dataSource, boolean plainPostgres) {
+        String script = (plainPostgres ? resource(PLAIN) + "\n" : "") + script();
         String checksum = Secrets.sha256Hex(script);
         SQLException last = null;
         for (int attempt = 1; attempt <= 4; attempt++) {
@@ -165,12 +176,16 @@ public class DatabaseSetup {
     }
 
     static String script() {
-        try (InputStream in = DatabaseSetup.class.getResourceAsStream(SCRIPT)) {
-            if (in == null) throw new IllegalStateException("The server was built without " + SCRIPT);
+        return resource(SCRIPT);
+    }
+
+    private static String resource(String name) {
+        try (InputStream in = DatabaseSetup.class.getResourceAsStream(name)) {
+            if (in == null) throw new IllegalStateException("The server was built without " + name);
             // Line ends as in the file a person would run by hand, whatever the build computer made of them.
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot read " + SCRIPT, e);
+            throw new IllegalStateException("Cannot read " + name, e);
         }
     }
 

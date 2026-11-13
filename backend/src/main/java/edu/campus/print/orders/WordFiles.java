@@ -11,7 +11,7 @@ import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
 import edu.campus.print.storage.DocxInspector;
 import edu.campus.print.storage.FileInspector;
-import edu.campus.print.storage.SupabaseStorage;
+import edu.campus.print.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -66,14 +66,14 @@ public class WordFiles {
     private final OrderDocumentRepository documents;
     private final OrderRepository orders;
     private final AgentRepository agents;
-    private final SupabaseStorage storage;
+    private final FileStorage storage;
     private final FileInspector inspector;
     private final ShopProperties limits;
     private final AgentProperties agentProps;
     private final TransactionTemplate tx;
 
     public WordFiles(OrderDocumentRepository documents, OrderRepository orders, AgentRepository agents,
-                     SupabaseStorage storage, FileInspector inspector, ShopProperties limits, AgentProperties agentProps,
+                     FileStorage storage, FileInspector inspector, ShopProperties limits, AgentProperties agentProps,
                      PlatformTransactionManager txManager) {
         this.documents = documents;
         this.orders = orders;
@@ -103,7 +103,7 @@ public class WordFiles {
         OrderDocument d = documents.claimNextConversion(agentId, RETRY_SECONDS).orElse(null);
         if (d == null) return Optional.empty();
         String download = storage.createSignedDownload(d.getStoragePath());
-        SupabaseStorage.SignedUpload upload = storage.createSignedUpload(d.convertedPath());
+        FileStorage.SignedUpload upload = storage.createSignedUpload(d.convertedPath());
         log.info("Word file \"{}\" ({}) handed to a Xerox PC", d.getFileName(), d.getId());
         return Optional.of(new Job(d.getId(), d.getFileName(), d.getFileSizeBytes() == null ? 0 : d.getFileSizeBytes(),
                 d.getSha256() == null ? "" : d.getSha256(), download, upload.url(), FileType.PDF.mimeType(), SECONDS_ALLOWED));
@@ -124,7 +124,7 @@ public class WordFiles {
         FileInspector.Result r = null;
         long size = 0;
         int readLimit = (int) Math.min(Integer.MAX_VALUE - 16L, limits.maxFileSizeBytes() + 1);
-        SupabaseStorage.Probe probe = storage.probe(pdfPath, readLimit).orElse(null);
+        FileStorage.Probe probe = storage.probe(pdfPath, readLimit).orElse(null);
         if (probe == null || probe.totalSize() == 0) {
             problemCode = "WORD_FAILED";
             problem = TIMEOUT_TEXT;

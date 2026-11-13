@@ -6,7 +6,7 @@ import edu.campus.print.orders.OrderService;
 import edu.campus.print.repo.OrderDocumentRepository;
 import edu.campus.print.repo.OrderRepository;
 import edu.campus.print.repo.PreviewStore;
-import edu.campus.print.storage.SupabaseStorage;
+import edu.campus.print.storage.FileStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,12 +32,12 @@ public class Housekeeping {
     private final OrderRepository orders;
     private final OrderDocumentRepository documents;
     private final OrderService orderService;
-    private final SupabaseStorage storage;
+    private final FileStorage storage;
     private final PreviewStore previews;
     private final edu.campus.print.orders.WordFiles wordFiles;
 
     public Housekeeping(OrderRepository orders, OrderDocumentRepository documents, OrderService orderService,
-                        SupabaseStorage storage, PreviewStore previews, edu.campus.print.orders.WordFiles wordFiles) {
+                        FileStorage storage, PreviewStore previews, edu.campus.print.orders.WordFiles wordFiles) {
         this.orders = orders;
         this.documents = documents;
         this.orderService = orderService;
@@ -113,6 +113,30 @@ public class Housekeeping {
             }
         } catch (Exception e) {
             log.error("Clean-up failed; will retry", e);
+        }
+    }
+
+    /**
+     * Files kept on this computer (STORAGE_MODE=local) that the usual delete
+     * missed, for example because the PC was switched off at that very moment:
+     * files of orders that are gone or need no file any more, and half-sent
+     * files nobody touched for a day. (Cloud storage: nothing to do here.)
+     */
+    @Scheduled(fixedDelay = 6 * 60 * 60 * 1000L, initialDelay = 5 * 60 * 1000L)
+    public void sweepFiles() {
+        try {
+            int gone = storage.removeAbandoned(folder -> {
+                UUID orderId;
+                try {
+                    orderId = UUID.fromString(folder);
+                } catch (IllegalArgumentException e) {
+                    return false;                      // not an order's folder: nothing of ours needs it
+                }
+                return documents.countFilesKept(orderId) > 0;
+            });
+            if (gone > 0) log.info("Removed {} left-over file(s) from the files folder", gone);
+        } catch (Exception e) {
+            log.error("Sweeping the files folder failed; will retry", e);
         }
     }
 }

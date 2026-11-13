@@ -13,6 +13,8 @@ import edu.campus.agent.print.PrintEngine;
 import edu.campus.agent.print.PrintJob;
 import edu.campus.agent.print.PrinterDiscovery;
 import edu.campus.agent.print.TestPage;
+import edu.campus.agent.server.LocalStack;
+import edu.campus.agent.server.ServerSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,6 +72,8 @@ public class LocalServer {
     private final StationConfig cfg;
     private final AgentRunner runner;
     private final Runnable openWindow;
+    /** "This PC is the XeoGo server": setting it up and looking after it (see ServerActions). */
+    private final ServerActions serverActions;
     private final String token;
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -97,10 +101,17 @@ public class LocalServer {
     }
 
     public LocalServer(HttpServer http, StationConfig cfg, AgentRunner runner, Runnable openWindow) {
+        this(http, cfg, runner, openWindow, null, new ServerSettings());
+    }
+
+    /** stack: the server programs that came with this Station (null: none; the server is somewhere else). */
+    public LocalServer(HttpServer http, StationConfig cfg, AgentRunner runner, Runnable openWindow,
+                       LocalStack stack, ServerSettings serverSettings) {
         this.http = http;
         this.cfg = cfg;
         this.runner = runner;
         this.openWindow = openWindow;
+        this.serverActions = new ServerActions(stack, serverSettings);
         byte[] b = new byte[24];
         new SecureRandom().nextBytes(b);
         // Automated tests may choose the token (same Windows user only); normally it is random.
@@ -206,6 +217,34 @@ public class LocalServer {
                 DesktopShell.openFolder(StationConfig.dir().resolve("logs"));
                 json(ex, 200, Map.of("ok", true));
             }
+            // ---- "this PC is the XeoGo server"
+            case "POST /local/server/setup" -> {
+                serverActions.setup(body(ex));
+                json(ex, 200, state());
+            }
+            case "POST /local/server/settings" -> {
+                serverActions.save(body(ex));
+                json(ex, 200, state());
+            }
+            case "POST /local/server/counter-password" -> json(ex, 200, serverCounterPassword(body(ex)));
+            case "POST /local/server/backup" -> {
+                String said = serverActions.backupNow();
+                Map<String, Object> m = state();
+                m.put("message", said);
+                json(ex, 200, m);
+            }
+            case "POST /local/server/restart" -> {
+                serverActions.restart();
+                json(ex, 200, state());
+            }
+            case "POST /local/server/open-folder" -> {
+                serverActions.openFolder(body(ex).path("which").asText("data"));
+                json(ex, 200, Map.of("ok", true));
+            }
+            case "POST /local/server/seen-repair" -> {
+                serverActions.forgetRepairNote();
+                json(ex, 200, Map.of("ok", true));
+            }
             default -> json(ex, 404, Map.of("message", "Unknown action"));
         }
     }
@@ -223,13 +262,17 @@ public class LocalServer {
         m.put("autostart", DesktopShell.autostartSupported() && DesktopShell.autostartOn());
         m.put("dataFolder", StationConfig.dir().toString());
         m.put("printing", runner.status());
+        m.put("server", serverActions.view());
         return m;
     }
 
     /** Setup step 1: check the server and password, register this PC, start printing. */
     private synchronized Map<String, Object> connect(JsonNode b) throws Exception {
-        String url = normaliseUrl(b.path("backendUrl").asText(""));
-        String password = b.path("password").asText("");
+        // "local": the server on this PC (set up a moment ago with /local/server/setup)
+        boolean here = b.path("local").asBoolean(false);
+        if (here && !serverActions.enabled()) throw new UserProblem("Set up the server on this PC first.");
+        String url = here ? serverActions.localUrl() : normaliseUrl(b.path("backendUrl").asText(""));
+        String password = here ? serverActions.counterPassword() : b.path("password").asText("");
         String pcName = b.path("pcName").asText("").trim();
         if (pcName.isEmpty()) pcName = computerName();
         if (password.isBlank()) throw new UserProblem("Type the counter password.");
@@ -246,6 +289,10 @@ public class LocalServer {
         if (summary.statusCode() != 200) throw new UserProblem(messageOf(summary));
 
         boolean sameServer = cfg.isConfigured() && cfg.backendUrl.equalsIgnoreCase(url);
+        // The same shop at a new address (its data was brought over from the cloud to this PC): the server still
+        // knows this PC. Keep that registration, and with it the printers and everything staff set up for them.
+        boolean moved = cfg.isConfigured() && !sameServer;
+        if (moved && stillRegistered(url)) sameServer = true;
         if (!sameServer) {
             HttpResponse<String> enrolled = call("POST", url + "/api/v1/counter/pcs", password,
                     JSON.writeValueAsString(Map.of("name", pcName)));
@@ -261,15 +308,41 @@ public class LocalServer {
         cfg.counterPassword = password;
         cfg.counterSession = "";            // sign in afresh with this password
         cfg.save();
+        if (!here) serverActions.disable();         // the server is somewhere else: the one on this PC is not needed
         runner.start(cfg);
-        if (!sameServer && DesktopShell.autostartSupported() && !DesktopShell.autostartOn()) {
+        if ((!sameServer || moved || here) && DesktopShell.autostartSupported() && !DesktopShell.autostartOn()) {
             DesktopShell.setAutostart(true);          // a Xerox PC should always be printing
         }
         log.info("Connected to {} as PC \"{}\"", url, pcName);
         return state();
     }
 
+    /** Does this server know this PC's sign-in (agentId + secret)? */
+    private boolean stillRegistered(String url) {
+        try {
+            String basic = java.util.Base64.getEncoder().encodeToString(
+                    (cfg.agentId + ":" + cfg.agentSecret).getBytes(StandardCharsets.UTF_8));
+            HttpResponse<String> r = client.send(HttpRequest.newBuilder(URI.create(url + "/agent/v1/token"))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Basic " + basic)
+                    .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+            return r.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** A new counter password for the server on this PC: the server takes it, and this PC signs in with it. */
+    private synchronized Map<String, Object> serverCounterPassword(JsonNode b) throws Exception {
+        String password = b.path("password").asText("");
+        serverActions.counterPassword(password);
+        cfg.counterPassword = password;
+        cfg.counterSession = "";
+        cfg.save();
+        return state();
+    }
+
     private Map<String, Object> savePassword(JsonNode b) throws Exception {
+        if (serverActions.enabled()) return serverCounterPassword(b);
         String password = b.path("password").asText("");
         HttpResponse<String> r = call("GET", cfg.backendUrl + "/api/v1/counter/summary", password, null);
         if (r == null) throw new UserProblem("The server did not answer. Try again.");

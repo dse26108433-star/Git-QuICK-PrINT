@@ -72,6 +72,8 @@ public class JobProcessor {
     private volatile long noPicturesUntil;
 
     private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
+    // Leases are renewed with a fixed DELAY between two tries, not at a fixed rate: after the PC slept (or was
+    // very busy) a fixed rate would run every missed turn at once, hundreds of calls within a second.
     private final ScheduledExecutorService leaseTimer = Executors.newScheduledThreadPool(1, r -> {
         Thread t = new Thread(r, "lease-renewal");
         t.setDaemon(true);
@@ -329,7 +331,7 @@ public class JobProcessor {
         log.info("Order {}: still in the Windows queue of \"{}\" after a restart; watching it again",
                 e.pickupCode(), e.printer());
         resumer.execute(() -> {
-            ScheduledFuture<?> renew = leaseTimer.scheduleAtFixedRate(() -> {
+            ScheduledFuture<?> renew = leaseTimer.scheduleWithFixedDelay(() -> {
                 try {
                     backend.renewLease(e.orderId(), e.claimToken());
                 } catch (Exception ignored) {
@@ -440,7 +442,7 @@ public class JobProcessor {
 
         Lease(ClaimedJob j) {
             long every = Math.max(20, j.leaseSeconds() / 3);
-            task = leaseTimer.scheduleAtFixedRate(() -> {
+            task = leaseTimer.scheduleWithFixedDelay(() -> {
                 try {
                     backend.renewLease(j.jobId(), j.claimToken());
                 } catch (RejectedException e) {

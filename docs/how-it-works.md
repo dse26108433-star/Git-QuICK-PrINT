@@ -15,6 +15,38 @@
 Phones and browsers **never** talk to the database. Only the backend does, with its own connection.
 The database has row level security switched on and gives nothing to Supabase's public keys.
 
+### Where the backend runs: in the cloud, or on the Xerox center's PC
+
+The picture above is the cloud way: the backend on a host like Render, the database and the files at Supabase.
+From Station 5.0.0 the same backend can run **on the Xerox center's PC**, started and looked after by the
+Station (`agent/.../server/LocalStack`):
+
+```
+ phones ─► https://print.yourcollege.in ─► Cloudflare ══ tunnel (the PC calls out) ══► the Xerox center's PC
+                                                                                       ├─ backend      127.0.0.1:47810
+                                                                                       ├─ PostgreSQL   127.0.0.1:47812
+                                                                                       ├─ files        a folder on its disk
+                                                                                       └─ Station      printing, counter
+                                                             backups ──► the PC's disk, and your Supabase project
+```
+
+It is the same program with three settings changed (the Station sets them):
+
+| Setting | Cloud | On the Xerox PC |
+|---|---|---|
+| `STORAGE_MODE` | `supabase`: `storage/SupabaseStorage` | `local`: `storage/LocalFileStorage` + `LocalFilesController` |
+| `DB_PLAIN_POSTGRES` | no (a Supabase project) | `true`: the few things Supabase brings along are made first (`db/plain-postgres.sql`) |
+| `BIND_ADDRESS` | everything | `127.0.0.1`: only the tunnel and the Station on that PC get in |
+
+Everything else in this document is the same either way. What the Station does around it (starting in the
+right order, restarting, backups, repair, the "closed right now" that students see while the PC is off) is in
+`docs/own-server.md`.
+
+**A print service that has moved** says so itself: with `MOVED_TO` set, the old server answers `GET /api/v1/shop`
+with `"movedTo": "https://…"` and refuses new orders (410 `MOVED`). The website and the apps (3.4.0) go to that
+address and remember it (`https` only); if the remembered address stops answering they ask the address they
+were built with whether it has moved again.
+
 **The database keeps itself up to date.** `db/setup.sql` owns the tables and the rules and can be run again and
 again. A copy travels inside the server (`backend/src/main/resources/db/setup.sql`); when the server starts it
 compares that copy with what the database was last brought up to (`schema_version`) and, if it differs, runs it
@@ -282,8 +314,13 @@ Prices and the extra percentages (e.g. A3 = 200 %) and finishing prices are set 
 (Settings → Shop, and "Paper sizes, paper types and finishing"); they are in `shop_settings`. A two-sided sheet
 is two printed sides.
 
-1. Each file is uploaded straight to storage with its own 5-minute upload link (`POST
+1. Each file is uploaded straight to storage with its own upload link (`POST
    /orders/{id}/documents/{doc}/upload-url`); up to 3 at a time, each can be cancelled and tried again.
+   With cloud storage it is one `PUT` of the whole file. A backend that keeps the files itself says
+   `uploadChunkBytes` in the answer: the file then goes in pieces of that size (`PUT` with
+   `Content-Range: bytes first-last/total`); `GET` on the same link answers `{"received": n}`, a piece that
+   does not follow on gets `409` with `received`, and the file counts as uploaded only when its last byte
+   arrived. So a connection that drops loses one piece, and "try again" carries on from what is there.
 2. `POST .../documents/{doc}/uploaded`: the backend downloads the file, checks what it really is (first bytes,
    not the name), opens it (PDFBox / ImageIO), counts pages, reads picture size, resolution and EXIF turn.
    Locked or broken files are refused here, before any payment.
@@ -302,6 +339,24 @@ off (`ClosedGateway`): nothing ever prints for free because a setting was forgot
 The Android app (3.0.0) uses the same endpoints and settings as the website; its rules (`core/PrintCore.kt`) run
 the shared `spec/cases`, and its tests check against the real backend that the reviewed settings, prices and the
 print jobs the PC receives are identical. Older app versions (one file per order, `/orders/{id}/uploaded`) keep working.
+
+## When the connection is bad (website and apps)
+
+- No call waits for ever: an ordinary call is given up after 30 s (the server's check of a big file after
+  3 minutes), an upload after 45 s (website) or 60 s (apps) without a byte moving. Before, a phone that walked out of its signal
+  could wait on a dead connection for minutes while new files queued up behind it.
+- A file that stopped for lack of a connection says *"The upload stopped. It carries on by itself when the
+  connection is back"* and is sent again by itself: at once when the phone reports a connection, and otherwise
+  after a few seconds, a little longer each time, for about ten minutes. Then **Try again** is still there.
+- A file that did arrive, but whose answer got lost, is asked about (`GET /orders/{id}`), not sent again; and
+  "already uploaded" (`409 ALREADY_UPLOADED`, with the document as it stands) is taken as "ready", not shown as
+  an error.
+- An order that ran out while the phone was away (two hours without a change, or the center closed for the
+  night) is replaced: a new order is started and every file still on the device is sent into it, with the
+  settings chosen. The same when the app is opened again the next day.
+- Choosing the same file again while its first try is stuck means "try again".
+- While the Xerox center's own PC is off, its address answers "nothing behind it": the website and the apps say
+  **closed right now** and look again by themselves.
 
 ## Why a file is never printed twice by accident
 
@@ -367,7 +422,13 @@ For a new printer model, `PrinterSmokeTest` shows what the Station reads and pri
 
 - Private bucket `print-documents`, max 50 MB per file, only PDF/PNG/JPEG. Up to 25 files per order, up to 2000
   pages per PDF, up to 300 pages printed per file (`application.yml`).
-- Uploads and downloads use 5-minute signed links made by the backend.
+- Uploads and downloads use short-lived signed links made by the backend: Supabase's own in the cloud; on the
+  Xerox center's PC a ticket signed by the backend (which file, send or fetch, until when; HMAC-SHA256 with a
+  key made from the server's secret), checked by `LocalFilesController`. A ticket opens one file, never a path
+  outside the files folder, and nothing larger than the limit is ever written.
+- On the Xerox center's PC a file being sent is `<name>.part` until its last byte arrived. Files of orders that
+  no longer need them, and half-sent files nobody touched for a day, are swept away every six hours; uploads are
+  refused while the disk has less than 2 GB free.
 - On the PC, files sit in the Station's own work folder and are deleted after printing.
 - In storage: deleted after printing; unpaid or cancelled after expiry; failed paid files kept 24 h (for "Print again").
 - First-sheet pictures: at most 200 KB each, in the database (`document_previews`), deleted when the order is

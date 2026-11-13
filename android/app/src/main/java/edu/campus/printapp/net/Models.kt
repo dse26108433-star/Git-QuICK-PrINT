@@ -29,7 +29,8 @@ data class ShopView(
     val colorOnline: Boolean,
     val ordersWaiting: Long = 0,
     val printing: Printing? = null, // null = a server older than version 4
-    val wordFiles: Boolean = false  // Word files (.docx) can be added right now: a Xerox PC with Word is online
+    val wordFiles: Boolean = false, // Word files (.docx) can be added right now: a Xerox PC with Word is online
+    val movedTo: String? = null     // not null: the print service has moved to this address (the app goes there)
 ) {
     /** The printers students can use, in the shape the rules expect. */
     fun printers(): List<Printer> = (printing?.printers ?: emptyList()).map {
@@ -77,9 +78,19 @@ data class CreateOrderResponse(
 @Serializable
 data class AddDocumentRequest(val fileName: String, val fileType: String, val fileSizeBytes: Long)
 
-/** Where to send the file (PUT, with this Content-Type), and the document so far. */
+/**
+ * Where to send the file (PUT, with this Content-Type), and the document so far.
+ * uploadChunkBytes: null = the whole file in one PUT (cloud storage). A number = in pieces of that many bytes,
+ * each a PUT with "Content-Range: bytes first-last/total"; GET on the same link says how much has arrived, so
+ * an upload that stopped carries on from there (a server on the Xerox center's own PC).
+ */
 @Serializable
-data class UploadTicket(val document: DocumentView, val uploadUrl: String, val uploadContentType: String)
+data class UploadTicket(val document: DocumentView, val uploadUrl: String, val uploadContentType: String,
+                        val uploadChunkBytes: Int? = null)
+
+/** How much of a file being sent in pieces the server has. */
+@Serializable
+data class UploadState(val received: Long = 0, val complete: Boolean = false)
 
 /** One document of an order, as the server sees it. */
 @Serializable
@@ -281,13 +292,24 @@ data class DocumentProblem(val id: String, val fileName: String? = null, val mes
 internal data class ApiError(
     val error: String? = null,
     val message: String? = null,
-    val documents: List<DocumentProblem> = emptyList()
+    val documents: List<DocumentProblem> = emptyList(),
+    val document: DocumentView? = null,
+    val received: Long? = null
 )
 
-/** The server said no. code: e.g. CHECK_SETTINGS, PRICED; documents: which files, for CHECK_SETTINGS. */
+/**
+ * The server said no. code: e.g. CHECK_SETTINGS, PRICED; documents: which files, for CHECK_SETTINGS.
+ * document: with ALREADY_UPLOADED, the file as the server has it. received: with a piece of an upload that
+ * did not fit, how much of the file the server has.
+ */
 class ApiException(
     val status: Int,
     override val message: String,
     val code: String? = null,
-    val documents: List<DocumentProblem> = emptyList()
-) : Exception(message)
+    val documents: List<DocumentProblem> = emptyList(),
+    val document: DocumentView? = null,
+    val received: Long? = null
+) : Exception(message) {
+    /** "Not now" (busy, starting up, a gateway in between): worth trying again by itself. */
+    val temporary: Boolean get() = status >= 500 || status == 429 || status == 408
+}

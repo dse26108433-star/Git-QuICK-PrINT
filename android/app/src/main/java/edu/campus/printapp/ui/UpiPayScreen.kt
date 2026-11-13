@@ -61,14 +61,14 @@ fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpe
     val clipboard = LocalClipboardManager.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max = 520.dp).align(Alignment.CenterHorizontally).padding(16.dp)) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(CP.Surface)) {
+            Column(Modifier.fillMaxWidth().softShadow(RoundedCornerShape(26.dp), 14.dp).clip(RoundedCornerShape(26.dp)).background(CP.Surface)) {
                 // the amount, and who is paid
-                Column(Modifier.fillMaxWidth().background(CP.Ink).padding(vertical = 24.dp, horizontal = 18.dp),
+                Column(Modifier.fillMaxWidth().background(CP.Night).padding(vertical = 24.dp, horizontal = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PAY WITH UPI", fontSize = 12.5.sp, letterSpacing = 3.sp, color = Color(0xFF9FB0C3), fontWeight = FontWeight.SemiBold)
+                    Text("PAY WITH UPI", fontSize = 12.5.sp, letterSpacing = 3.sp, color = Color(0xFFA9C0FF), fontWeight = FontWeight.SemiBold)
                     Text("₹" + u.amountText, fontSize = 50.sp, fontWeight = FontWeight.Bold, color = Color.White,
                         modifier = Modifier.testTag("upiAmount"))
-                    Text("to " + u.payeeName, fontSize = 15.sp, color = Color(0xFFC9D3DE))
+                    Text("to " + u.payeeName, fontSize = 15.sp, color = Color(0xFFD5DFFA))
                     Spacer(Modifier.size(10.dp))
                     Row(Modifier.clip(RoundedCornerShape(20.dp)).border(1.dp, Color(0x38FFFFFF), RoundedCornerShape(20.dp))
                         .clickable { clipboard.setText(AnnotatedString(u.payeeVpa)) }.padding(horizontal = 14.dp, vertical = 7.dp),
@@ -76,7 +76,7 @@ fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpe
                         Text(u.payeeVpa, fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = Color.White,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.width(8.dp))
-                        Text("Copy", fontSize = 12.5.sp, color = Color(0xFF9FB0C3))
+                        Text("Copy", fontSize = 12.5.sp, color = Color(0xFFA9C0FF))
                     }
                     if (u.tagPaise > 0) {
                         Text("Includes ${UpiRef.paiseWords(u.tagPaise)} that ${if (u.tagPaise == 1) "marks" else "mark"} this " +
@@ -134,7 +134,7 @@ fun UpiPayScreen(vm: PrintViewModel, st: SessionState, apps: List<UpiApp>, onOpe
                         Button(
                             onClick = { session.claimUpi() }, enabled = !st.claiming,
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("upiPaid"),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = CP.Accent)
                         ) {
                             Text(if (st.claiming) "Sending…" else if (u.autoConfirm) "Find my payment" else "I have paid ₹${u.amountText}",
@@ -164,7 +164,7 @@ private fun AppTile(app: UpiApp, modifier: Modifier, onClick: () -> Unit) {
         if (app.icon != null) {
             Image(app.icon, contentDescription = null, modifier = Modifier.size(40.dp))
         } else {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(CP.Ink), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(CP.Brand), contentAlignment = Alignment.Center) {
                 Text(app.label.take(1), color = Color.White, fontWeight = FontWeight.Bold)
             }
         }

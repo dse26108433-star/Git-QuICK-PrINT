@@ -1,6 +1,9 @@
 package edu.campus.printapp
 
 import android.app.Application
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
@@ -32,8 +35,7 @@ data class EditorUi(
 /**
  * Connects the order (flow/OrderSession, plain Kotlin) to Android: picked and
  * shared files, drawing pages (and the picture of each file that is shown at
- * the counter), keeping the printers' options up to date, and Razorpay's
- * screen (opened by MainActivity).
+ * the counter), and keeping the printers' options up to date.
  */
 class PrintViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -41,11 +43,13 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
     private val work = File(app.filesDir, "work").apply { mkdirs() }
 
     val images = PageImages()
-    val session = OrderSession(PrintApi(AppConfig.API_BASE, staffToken = { if (AppConfig.STAFF) stores.token() else null }),
+    val session = OrderSession(PrintApi(AppConfig.API_BASE, staffToken = { if (AppConfig.STAFF) stores.token() else null },
+            moved = stores.movedTo()),
         viewModelScope, PageImages.reader, stores, stores, workDir = work,
         log = { what, e -> android.util.Log.w("CampusPrint", what, e) },
         pictures = PhonePictures(app), painter = edu.campus.printapp.ui.SheetPictureMaker(images),
-        staffStore = if (AppConfig.STAFF) stores else null)
+        staffStore = if (AppConfig.STAFF) stores else null,
+        onMoved = { to -> stores.saveMovedTo(to) })
 
     private val _ui = MutableStateFlow(EditorUi())
     val ui: StateFlow<EditorUi> = _ui.asStateFlow()
@@ -61,7 +65,24 @@ class PrintViewModel(app: Application) : AndroidViewModel(app) {
 
     private var refresher: Job? = null
 
+    /**
+     * Android says the moment the phone has a connection again (Wi-Fi back, out of the lift, mobile data on).
+     * Files whose upload stopped for lack of one carry on right then, without anybody pressing "Try again".
+     */
+    private val connectivity = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private val networkWatch = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            session.networkBack()
+        }
+    }
+
+    override fun onCleared() {
+        runCatching { connectivity?.unregisterNetworkCallback(networkWatch) }
+        super.onCleared()
+    }
+
     init {
+        runCatching { connectivity?.registerDefaultNetworkCallback(networkWatch) }
         viewModelScope.launch {
             session.refreshStaff()                        // the staff app: who is signed in, and the pages left
             session.loadShop()
