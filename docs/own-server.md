@@ -330,12 +330,12 @@ for exactly the "connection lost" cases), the website's rules 93.
 - **Real Canon printers.** How fast the queue empties depends on the printers. Four printers at 30 pages a
   minute print about 7,000 pages an hour; 400 orders arriving in four minutes is more than that for a while,
   and the last student then waits accordingly, whatever the software does.
-- **Your network and the tunnel: not tested at all.** Everything above ran on one computer. The path
-  phone → internet → Cloudflare → tunnel → PC has not been tried: not with your domain, not on the college's
-  network, not even with a temporary tunnel. The tunnel program is the standard one from Cloudflare and the
-  Station starts and watches it like the other two programs, but whether your network lets it out (port 7844)
-  and how fast a 50 MB file comes in over your line can only be seen at the Xerox center. **Step 3 and step 6
-  are that test: do them before telling students.**
+- **Your network and the tunnel: tried once, from a laptop on home Wi-Fi.** On 13 November a free Cloudflare
+  quick tunnel (`FREE-TEST-ADDRESS.bat`) to the laptop's server worked from outside: the shop answered, a
+  test website was allowed to use it, the upload link pointed at the https address, and a PDF sent in
+  pieces through it was accepted. Not tried yet: your own domain with a named tunnel, the college's network
+  (it must let the tunnel out, port 7844), and a 50 MB file over your line. **Steps 3 and 6 are that test:
+  do them before telling students.**
 - **The copy in the cloud with your real Supabase project.** It was run against a stand-in that answers like
   Supabase's storage (make the bucket, send, fetch back, restore). With your own project and key the Station
   says at once whether the first copy arrived (Settings → Backup lamp).
