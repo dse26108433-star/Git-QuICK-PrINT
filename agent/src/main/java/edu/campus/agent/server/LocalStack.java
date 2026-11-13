@@ -106,6 +106,7 @@ public final class LocalStack {
     private int databaseFailures;
     private int serviceFailures;
     private long serviceRetryAt;
+    private long serviceStoppedAt;                 // when this Station last stopped its own print service
     private long serviceStartedAt;
     private long tunnelStartedAt;
     private long tunnelRetryAt;
@@ -538,6 +539,7 @@ public final class LocalStack {
             if (service != null) {
                 log.info("Print service: restarting with the new settings");
                 Proc.stop(service, 8);
+                serviceStoppedAt = System.currentTimeMillis();
                 service = null;
             }
             serviceFailures = 0;
@@ -565,6 +567,7 @@ public final class LocalStack {
             log.error("The print service does not answer after five minutes: starting it again. {}",
                     Proc.tailOf(logs.resolve("server-start.log"), 800));
             Proc.stop(service, 5);
+            serviceStoppedAt = System.currentTimeMillis();
             service = null;
         } else if (service != null) {
             serviceFailures++;
@@ -581,8 +584,9 @@ public final class LocalStack {
 
     private void startService() {
         if (portTaken(cfg.httpPort)) {
-            // Our own print service from before the Station was restarted ends by itself within seconds.
-            serviceState = healthy()
+            // Our own print service from before the Station was restarted ends by itself within seconds, and one this
+            // Station has just stopped (to restart it with new settings) can hold the port a moment longer.
+            serviceState = healthy() || System.currentTimeMillis() - serviceStoppedAt < 60_000
                     ? Part.starting("Waiting for the previous print service to end…")
                     : Part.problem("Another program on this PC uses port " + cfg.httpPort + ", which the print service needs.");
             serviceRetryAt = System.currentTimeMillis() + 4000;
